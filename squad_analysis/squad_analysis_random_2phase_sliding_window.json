@@ -1,0 +1,39 @@
+{
+  "total_steps": 10,
+  "unique_texts": 10,
+  "duplicate_rate": 0.0,
+  "context_duplicate_rate": 0.0,
+  "suspicious_cross_connections": 0,
+  "question": "How many representatives does each electorate have?",
+  "num_contexts": 5,
+  "connection_type_percentages": {
+    "anchor": 10.0,
+    "same_paragraph": 70.0,
+    "cross_document": 20.0
+  },
+  "depth_distribution": {
+    "0": 1,
+    "1": 5,
+    "2": 3,
+    "3": 1
+  },
+  "document_distribution": {
+    "0": 5,
+    "4": 5
+  },
+  "context_distribution": {
+    "570d26efb3d812140066d491": 5,
+    "570d418dfed7b91900d45dbd": 5
+  },
+  "average_paragraph_jump": 0.0,
+  "max_paragraph_jump": 0,
+  "paragraph_locality_score": 70.0,
+  "cross_document_rate": 20.0,
+  "semantic_diversity_score": 40.0,
+  "reranking_analysis": {
+    "top_similarity": 0.5605063438415527,
+    "bottom_similarity": 0.3088304400444031,
+    "similarity_range": 0.25167590379714966,
+    "num_results": 10
+  }
+}

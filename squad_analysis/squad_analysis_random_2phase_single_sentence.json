@@ -1,0 +1,38 @@
+{
+  "total_steps": 9,
+  "unique_texts": 9,
+  "duplicate_rate": 0.0,
+  "context_duplicate_rate": 0.0,
+  "suspicious_cross_connections": 0,
+  "question": "At what pressure is nuclear power heated in the Rankine cycle?",
+  "num_contexts": 5,
+  "connection_type_percentages": {
+    "anchor": 11.11111111111111,
+    "same_paragraph": 44.44444444444444,
+    "cross_document": 44.44444444444444
+  },
+  "depth_distribution": {
+    "0": 1,
+    "1": 6,
+    "2": 2
+  },
+  "document_distribution": {
+    "0": 6,
+    "4": 3
+  },
+  "context_distribution": {
+    "5ad3bd8f604f3c001a3fef30": 6,
+    "571135b8a58dae1900cd6d0e": 3
+  },
+  "average_paragraph_jump": 0.0,
+  "max_paragraph_jump": 0,
+  "paragraph_locality_score": 44.44444444444444,
+  "cross_document_rate": 44.44444444444444,
+  "semantic_diversity_score": 40.0,
+  "reranking_analysis": {
+    "top_similarity": 0.68096923828125,
+    "bottom_similarity": 0.23783081769943237,
+    "similarity_range": 0.4431384205818176,
+    "num_results": 9
+  }
+}

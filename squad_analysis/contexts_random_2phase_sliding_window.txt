@@ -1,0 +1,31 @@
+Question: How many representatives does each electorate have?
+
+============================================================
+SQUAD CONTEXTS USED
+============================================================
+
+Context 1: 570d26efb3d812140066d491
+Title: Primary Context (570d26efb3d812140066d491)
+Length: 658 characters
+Text: In November 2006, the Victorian Legislative Council elections were held under a new multi-member proportional representation system. The State of Victoria was divided into eight electorates with each ...
+
+Context 2: 56de4a474396321400ee2787
+Title: Related Context (56de4a474396321400ee2787) - Score: 8
+Length: 539 characters
+Text: The customary law of Normandy was developed between the 10th and 13th centuries and survives today through the legal systems of Jersey and Guernsey in the Channel Islands. Norman customary law was tra...
+
+Context 3: 5705e26d75f01819005e76d5
+Title: Related Context (5705e26d75f01819005e76d5) - Score: 8
+Length: 580 characters
+Text: Southern California, often abbreviated SoCal, is a geographic and cultural region that generally comprises California's southernmost 10 counties. The region is traditionally described as "eight counti...
+
+Context 4: 5706139252bb891400689867
+Title: Related Context (5706139252bb891400689867) - Score: 8
+Length: 980 characters
+Text: The Tech Coast is a moniker that has gained use as a descriptor for the region's diversified technology and industrial base as well as its multitude of prestigious and world-renowned research universi...
+
+Context 5: 570d418dfed7b91900d45dbd
+Title: Related Context (570d418dfed7b91900d45dbd) - Score: 7
+Length: 655 characters
+Text: Politically, Victoria has 37 seats in the Australian House of Representatives and 12 seats in the Australian Senate. At state level, the Parliament of Victoria consists of the Legislative Assembly (th...
+

@@ -1,0 +1,31 @@
+Question: At what pressure is nuclear power heated in the Rankine cycle?
+
+============================================================
+SQUAD CONTEXTS USED
+============================================================
+
+Context 1: 5ad3bd8f604f3c001a3fef30
+Title: Primary Context (5ad3bd8f604f3c001a3fef30)
+Length: 545 characters
+Text: Steam engines are external combustion engines, where the working fluid is separate from the combustion products. Non-combustion heat sources such as solar power, nuclear power or geothermal energy may...
+
+Context 2: 56de51244396321400ee27ef
+Title: Related Context (56de51244396321400ee27ef) - Score: 12
+Length: 989 characters
+Text: In Britain, Norman art primarily survives as stonework or metalwork, such as capitals and baptismal fonts. In southern Italy, however, Norman artwork survives plentifully in forms strongly influenced ...
+
+Context 3: 570610b275f01819005e792a
+Title: Related Context (570610b275f01819005e792a) - Score: 12
+Length: 610 characters
+Text: Southern California is home to Los Angeles International Airport, the second-busiest airport in the United States by passenger volume (see World's busiest airports by passenger traffic) and the third ...
+
+Context 4: 570d4606b3d812140066d619
+Title: Related Context (570d4606b3d812140066d619) - Score: 12
+Length: 622 characters
+Text: Victoria is the centre of dairy farming in Australia. It is home to 60% of Australia's 3 million dairy cattle and produces nearly two-thirds of the nation's milk, almost 6.4 billion litres. The state ...
+
+Context 5: 571135b8a58dae1900cd6d0e
+Title: Related Context (571135b8a58dae1900cd6d0e) - Score: 12
+Length: 503 characters
+Text: The Rankine cycle and most practical steam engines have a water pump to recycle or top up the boiler water, so that they may be run continuously. Utility and industrial boilers commonly use multi-stag...
+

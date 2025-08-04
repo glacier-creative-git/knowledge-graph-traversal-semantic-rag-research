@@ -1,0 +1,30 @@
+Question: How many representatives does each electorate have?
+
+============================================================
+RETRIEVED TEXTS (Reranked by Direct Query Similarity)
+============================================================
+
+Best result similarity: 0.561
+Worst result similarity: 0.309
+Similarity range: 0.252
+
+1. The State of Victoria was divided into eight electorates with each electorate represented by five representatives elected by Single Transferable Vote.
+
+2. In November 2006, the Victorian Legislative Council elections were held under a new multi-member proportional representation system.
+
+3. Politically, Victoria has 37 seats in the Australian House of Representatives and 12 seats in the Australian Senate.
+
+4. Prior to the 2006 election, the Legislative Council consisted of 44 members elected to eight-year terms from 22 two-member electorates.
+
+5. Elections for the Victorian Parliament are now fixed and occur in November every four years.
+
+6. The total number of upper house members was reduced from 44 to 40 and their term of office is now the same as the lower house members—four years.
+
+7. At state level, the Parliament of Victoria consists of the Legislative Assembly (the lower house) and the Legislative Council (the upper house).
+
+8. Local government is concentrated in 79 municipal districts, including 33 cities, although a number of unincorporated areas still exist, which are administered directly by the state.
+
+9. The personal representative of the Queen of Australia in the state is the Governor of Victoria, currently Linda Dessau.
+
+10. Victoria is currently governed by the Labor Party, with Daniel Andrews the current Premier.
+
