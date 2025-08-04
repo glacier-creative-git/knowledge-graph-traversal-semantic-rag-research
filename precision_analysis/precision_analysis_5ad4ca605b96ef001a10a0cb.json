@@ -1,0 +1,47 @@
+{
+  "question_data": {
+    "id": "5ad4ca605b96ef001a10a0cb",
+    "question": "Whose army liberated Duchy in 1806?",
+    "context": "Warsaw remained the capital of the Polish\u2013Lithuanian Commonwealth until 1796, when it was annexed by the Kingdom of Prussia to become the capital of the province of South Prussia. Liberated by Napoleon's army in 1806, Warsaw was made the capital of the newly created Duchy of Warsaw. Following the Congress of Vienna of 1815, Warsaw became the centre of the Congress Poland, a constitutional monarchy under a personal union with Imperial Russia. The Royal University of Warsaw was established in 1816.",
+    "answers": {
+      "text": [],
+      "answer_start": []
+    },
+    "title": "Warsaw",
+    "is_answerable": false
+  },
+  "ragas_scores": {
+    "context_precision": 0.0,
+    "context_recall": 1.0,
+    "faithfulness": 1.0,
+    "answer_relevancy": 0.0,
+    "ragas_score": 0.5,
+    "answer": "The answer cannot be determined from the given context."
+  },
+  "retrieved_contexts": [
+    "Following the Congress of Vienna of 1815, Warsaw became the centre of the Congress Poland, a constitutional monarchy under a personal union with Imperial Russia.",
+    "The Royal University of Warsaw was established in 1816.",
+    "Liberated by Napoleon's army in 1806, Warsaw was made the capital of the newly created Duchy of Warsaw.",
+    "Warsaw remained the capital of the Polish\u2013Lithuanian Commonwealth until 1796, when it was annexed by the Kingdom of Prussia to become the capital of the province of South Prussia."
+  ],
+  "system_answer": "The answer cannot be determined from the given context.",
+  "analysis_metadata": {
+    "ingest_time": 0.4514129161834717,
+    "num_sentences": 4,
+    "config": {
+      "k_value": 30,
+      "cross_k_value": 15,
+      "embedding_model": "all-mpnet-base-v2",
+      "traversal_depth": 3,
+      "sliding_window": true,
+      "retrieval_k": 7
+    }
+  },
+  "traversal_summary": {
+    "total_steps": 4,
+    "connection_types": {
+      "anchor": 1,
+      "same_paragraph": 3
+    }
+  }
+}
