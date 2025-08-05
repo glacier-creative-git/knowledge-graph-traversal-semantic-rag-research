@@ -1,39 +1,39 @@
 {
-  "total_steps": 10,
-  "unique_texts": 10,
+  "total_steps": 16,
+  "unique_texts": 16,
   "duplicate_rate": 0.0,
   "context_duplicate_rate": 0.0,
   "suspicious_cross_connections": 0,
-  "question": "How many representatives does each electorate have?",
+  "question": "What is the present-day location of this church?",
   "num_contexts": 5,
   "connection_type_percentages": {
-    "anchor": 10.0,
-    "same_paragraph": 70.0,
-    "cross_document": 20.0
+    "anchor": 6.25,
+    "same_paragraph": 81.25,
+    "cross_document": 12.5
   },
   "depth_distribution": {
     "0": 1,
-    "1": 5,
-    "2": 3,
+    "1": 9,
+    "2": 5,
     "3": 1
   },
   "document_distribution": {
-    "0": 5,
-    "4": 5
+    "0": 9,
+    "2": 7
   },
   "context_distribution": {
-    "570d26efb3d812140066d491": 5,
-    "570d418dfed7b91900d45dbd": 5
+    "57111992b654c5140001fb45": 9,
+    "56de51244396321400ee27ef": 7
   },
   "average_paragraph_jump": 0.0,
   "max_paragraph_jump": 0,
-  "paragraph_locality_score": 70.0,
-  "cross_document_rate": 20.0,
+  "paragraph_locality_score": 81.25,
+  "cross_document_rate": 12.5,
   "semantic_diversity_score": 40.0,
   "reranking_analysis": {
-    "top_similarity": 0.5605063438415527,
-    "bottom_similarity": 0.3088304400444031,
-    "similarity_range": 0.25167590379714966,
-    "num_results": 10
+    "top_similarity": 0.47946643829345703,
+    "bottom_similarity": 0.1384425014257431,
+    "similarity_range": 0.34102393686771393,
+    "num_results": 15
   }
 }

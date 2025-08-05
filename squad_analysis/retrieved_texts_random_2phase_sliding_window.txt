@@ -1,30 +1,40 @@
-Question: How many representatives does each electorate have?
+Question: What is the present-day location of this church?
 
 ============================================================
 RETRIEVED TEXTS (Reranked by Direct Query Similarity)
 ============================================================
 
-Best result similarity: 0.561
-Worst result similarity: 0.309
-Similarity range: 0.252
+Best result similarity: 0.479
+Worst result similarity: 0.138
+Similarity range: 0.341
 
-1. The State of Victoria was divided into eight electorates with each electorate represented by five representatives elected by Single Transferable Vote.
+1. The French Protestant Church of London was established by Royal Charter in 1550.
 
-2. In November 2006, the Victorian Legislative Council elections were held under a new multi-member proportional representation system.
+2. Many churches preserve sculptured fonts, capitals, and more importantly mosaics, which were common in Norman Italy and drew heavily on the Greek heritage.
 
-3. Politically, Victoria has 37 seats in the Australian House of Representatives and 12 seats in the Australian Senate.
+3. Finally should be noted the intercourse between French Crusaders traveling to the Holy Land who brought with them French artefacts with which to gift the churches at which they stopped in southern Italy amongst their Norman cousins.
 
-4. Prior to the 2006 election, the Legislative Council consisted of 44 members elected to eight-year terms from 22 two-member electorates.
+4. For this reason many south Italian churches preserve works from France alongside their native pieces.
 
-5. Elections for the Victorian Parliament are now fixed and occur in November every four years.
+5. Lombard Salerno was a centre of ivorywork in the 11th century and this continued under Norman domination.
 
-6. The total number of upper house members was reduced from 44 to 40 and their term of office is now the same as the lower house members—four years.
+6. It is now located at Soho Square.
 
-7. At state level, the Parliament of Victoria consists of the Legislative Assembly (the lower house) and the Legislative Council (the upper house).
+7. Of the royal regalia preserved in Palermo, the crown is Byzantine in style and the coronation cloak is of Arab craftsmanship with Arabic inscriptions.
 
-8. Local government is concentrated in 79 municipal districts, including 33 cities, although a number of unincorporated areas still exist, which are administered directly by the state.
+8. In southern Italy, however, Norman artwork survives plentifully in forms strongly influenced by its Greek, Lombard, and Arab forebears.
 
-9. The personal representative of the Queen of Australia in the state is the Governor of Victoria, currently Linda Dessau.
+9. Huguenot refugees flocked to Shoreditch, London.
 
-10. Victoria is currently governed by the Labor Party, with Daniel Andrews the current Premier.
+10. In Britain, Norman art primarily survives as stonework or metalwork, such as capitals and baptismal fonts.
+
+11. The Old Truman Brewery, then known as the Black Eagle Brewery, was founded in 1724.
+
+12. They established a major weaving industry in and around Spitalfields (see Petticoat Lane and the Tenterground) in East London.
+
+13. In Wandsworth, their gardening skills benefited the Battersea market gardens.
+
+14. [citation needed] Some of these immigrants moved to Norwich, which had accommodated an earlier settlement of Walloon weavers.
+
+15. The French added to the existing immigrant population, then comprising about a third of the population of the city.
 
