@@ -261,287 +261,301 @@ class NaturalQuestionsDataLoader(BaseDataLoader):
         return "Natural Questions"
 
     def load_dataset(self) -> bool:
-        """Load Natural Questions dataset from HuggingFace with streaming to avoid disk usage"""
-        # Set environment variable to avoid tokenizer warnings
-        import os
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
+        """
+        For Natural Questions, we DON'T pre-load the dataset.
+        Instead, we just verify we can access the streaming dataset.
+        """
         try:
-            # Use streaming to avoid downloading massive dataset to disk
             split_name = getattr(self.config, 'nq_split', 'validation')
-            max_samples = getattr(self.config, 'nq_max_samples', 1000)
-            use_streaming = getattr(self.config, 'nq_streaming', True)
+            logger.info(f"📚 Preparing Natural Questions streaming access...")
+            logger.info(f"   Split: {split_name} (streaming mode - no pre-loading)")
 
-            logger.info(f"📚 Loading Natural Questions dataset...")
-            logger.info(f"   Split: {split_name}, Max samples: {max_samples}, Streaming: {use_streaming}")
+            # Just test that we can access the streaming dataset
+            test_dataset = load_dataset("natural_questions", split=split_name, streaming=True)
 
-            # First, try traditional loading with a small sample - most reliable
-            logger.info("🔄 Trying traditional loading with small sample first...")
-            try:
-                small_sample_size = min(100, max_samples)
-                split_spec = f"{split_name}[:{small_sample_size}]"
-
-                dataset = load_dataset("natural_questions", split=split_spec)
-
-                # Convert to list and filter
-                if hasattr(dataset, '__iter__'):
-                    dataset_samples = []
-                    for sample in dataset:
-                        # Basic validation
-                        if (sample.get('document', {}).get('html') and
-                            1000 <= len(sample['document']['html']) <= 30000):
-                            dataset_samples.append(sample)
-
-                        # Stop when we have enough good samples
-                        if len(dataset_samples) >= min(50, max_samples):
-                            break
-
-                    if dataset_samples:
-                        # Extend to requested size if needed and possible
-                        if len(dataset_samples) < max_samples and len(dataset) > small_sample_size:
-                            logger.info(f"📈 Expanding sample size to get {max_samples} samples...")
-                            try:
-                                larger_sample_size = min(max_samples * 3, 1000)  # Cap at 1000
-                                split_spec_large = f"{split_name}[:{larger_sample_size}]"
-                                larger_dataset = load_dataset("natural_questions", split=split_spec_large)
-
-                                for sample in larger_dataset:
-                                    if len(dataset_samples) >= max_samples:
-                                        break
-                                    if (sample.get('document', {}).get('html') and
-                                        1000 <= len(sample['document']['html']) <= 30000 and
-                                        sample not in dataset_samples):  # Avoid duplicates
-                                        dataset_samples.append(sample)
-
-                            except Exception as expand_error:
-                                logger.warning(f"⚠️ Could not expand sample size: {expand_error}")
-                                # Continue with smaller sample
-
-                        self.dataset = dataset_samples
-                        logger.info(f"✅ Successfully loaded {len(self.dataset)} Natural Questions samples via traditional loading")
-                        return True
-                    else:
-                        raise ValueError("No valid samples found in traditional loading")
-
-            except Exception as traditional_error:
-                logger.warning(f"⚠️ Traditional loading failed: {traditional_error}")
-
-                # Fallback to streaming if traditional fails
-                if use_streaming:
-                    logger.info("🌊 Falling back to streaming approach...")
-                    try:
-                        streaming_dataset = load_dataset(
-                            "natural_questions",
-                            split=split_name,
-                            streaming=True
-                        )
-
-                        # Convert streaming dataset to list with better filtering
-                        logger.info(f"📊 Processing samples from stream...")
-                        dataset_samples = []
-                        samples_processed = 0
-                        max_process_attempts = max_samples * 5  # Reasonable limit
-
-                        for sample in streaming_dataset:
-                            samples_processed += 1
-
-                            # Check if sample has required fields and reasonable size
-                            doc = sample.get('document', {})
-                            html = doc.get('html', '')
-
-                            if html and 1000 <= len(html) <= 30000:  # Reasonable size range
-                                dataset_samples.append(sample)
-
-                                # Progress logging
-                                if len(dataset_samples) % 25 == 0:
-                                    logger.info(f"   ✅ Collected {len(dataset_samples)} valid samples (processed {samples_processed})...")
-
-                            # Stop conditions
-                            if len(dataset_samples) >= max_samples:
-                                logger.info(f"   🎯 Reached target of {max_samples} samples")
-                                break
-
-                            if samples_processed >= max_process_attempts:
-                                logger.info(f"   ⚠️ Processed {samples_processed} samples, stopping search")
-                                break
-
-                        if dataset_samples:
-                            self.dataset = dataset_samples
-                            logger.info(f"✅ Successfully loaded {len(self.dataset)} Natural Questions samples via streaming")
-                            return True
-                        else:
-                            raise ValueError(f"No valid samples found after processing {samples_processed} examples via streaming")
-
-                    except Exception as streaming_error:
-                        logger.error(f"❌ Streaming also failed: {streaming_error}")
-
-            # If we get here, both methods failed - try absolute minimal fallback
-            logger.info("🆘 Trying minimal fallback...")
-            try:
-                minimal_dataset = load_dataset("natural_questions", split="validation[:10]")
-
-                if minimal_dataset and len(minimal_dataset) > 0:
-                    # Take whatever we can get
-                    dataset_samples = []
-                    for sample in minimal_dataset:
-                        if sample.get('document', {}).get('html'):
-                            dataset_samples.append(sample)
-
-                    if dataset_samples:
-                        self.dataset = dataset_samples
-                        logger.warning(f"⚠️ Using minimal fallback: {len(self.dataset)} samples")
-                        return True
-
-            except Exception as minimal_error:
-                logger.error(f"❌ Even minimal fallback failed: {minimal_error}")
-
-            # Complete failure
-            logger.error("❌ All Natural Questions loading methods failed")
-            logger.error("💡 Troubleshooting suggestions:")
-            logger.error("   - Check internet connection")
-            logger.error("   - Try setting nq_streaming=False in config")
-            logger.error("   - Use WikiEval dataset instead: dataset_name='wikieval'")
-            return False
+            # Test by taking just one sample
+            first_sample = next(iter(test_dataset))
+            if first_sample:
+                logger.info(f"✅ Natural Questions streaming access verified")
+                # Don't store the dataset - we'll stream it fresh each time
+                self.dataset = None  # Explicitly set to None to indicate streaming mode
+                return True
+            else:
+                raise ValueError("Could not access any samples from streaming dataset")
 
         except Exception as e:
-            logger.error(f"❌ Unexpected error in load_dataset: {e}")
-            import traceback
-            logger.error(f"❌ Full traceback: {traceback.format_exc()}")
+            logger.error(f"❌ Could not access Natural Questions streaming dataset: {e}")
             return False
 
     def select_random_question_with_contexts(self, num_contexts: int = 5) -> Tuple[str, List[Dict]]:
         """
-        Select random question from Natural Questions with related contexts.
+        Select random question from Natural Questions using streaming + islice.
+        Much more memory efficient than loading the full dataset.
         """
-        if not self.dataset:
-            raise ValueError("Natural Questions dataset not loaded. Call load_dataset() first.")
+        from itertools import islice
+        import random
 
-        # Filter for samples with valid answers and reasonable size HTML
-        valid_samples = []
-        for sample in self.dataset:
-            doc = sample.get('document', {})
-            html_content = doc.get('html', '')
+        try:
+            split_name = getattr(self.config, 'nq_split', 'validation')
+            max_samples = getattr(self.config, 'nq_max_samples', 1000)
 
-            # Skip samples with no HTML or extremely large HTML
-            if html_content and 200 <= len(html_content) <= 50000:  # Reasonable size range
-                valid_samples.append(sample)
+            logger.info(f"🎲 Starting Natural Questions streaming random selection...")
+            logger.info(f"   Split: {split_name}")
+            logger.info(f"   Target contexts: {num_contexts}")
+            logger.info(f"   Max samples to process: {max_samples}")
 
-            # Stop after we have enough valid samples to choose from
-            if len(valid_samples) >= max(100, num_contexts * 5):
-                break
+            # Load streaming dataset
+            logger.info("🔧 Loading streaming dataset...")
+            streaming_dataset = load_dataset("natural_questions", split=split_name, streaming=True)
+            logger.info("✅ Streaming dataset loaded")
 
-        if not valid_samples:
-            logger.warning("⚠️ No valid Natural Questions samples found, using demo dataset")
+            # MUCH more permissive filter - let's see what we're actually getting
+            def is_valid_sample(sample):
+                try:
+                    # First, let's examine a few samples to understand the structure
+                    doc = sample.get('document', {})
+                    html = doc.get('html', '')
+                    question = sample.get('question', {})
+
+                    # Log the first few samples we see to understand structure
+                    if not hasattr(is_valid_sample, 'samples_examined'):
+                        is_valid_sample.samples_examined = 0
+
+                    if is_valid_sample.samples_examined < 5:
+                        logger.info(f"🔍 EXAMINING SAMPLE {is_valid_sample.samples_examined + 1}:")
+                        logger.info(f"   Sample keys: {list(sample.keys())}")
+                        if doc:
+                            logger.info(f"   Document keys: {list(doc.keys())}")
+                            logger.info(f"   HTML length: {len(html)} chars")
+                            logger.info(f"   HTML preview: {html[:200]}..." if html else "   No HTML")
+                        if question:
+                            logger.info(
+                                f"   Question keys: {list(question.keys()) if isinstance(question, dict) else 'not_dict'}")
+                            if isinstance(question, dict) and 'text' in question:
+                                logger.info(f"   Question text: {question['text']}")
+                        is_valid_sample.samples_examined += 1
+
+                    # VERY permissive validation - just check we have the basics
+                    has_html = bool(html and len(html) > 50)  # Very low bar
+                    has_question_text = bool(question and
+                                             isinstance(question, dict) and
+                                             question.get('text') and
+                                             len(question['text']) > 5)
+
+                    result = has_html and has_question_text
+
+                    # Log rejections for the first few samples
+                    if is_valid_sample.samples_examined <= 10 and not result:
+                        logger.info(f"   ❌ REJECTED: has_html={has_html}, has_question={has_question_text}")
+                    elif is_valid_sample.samples_examined <= 10 and result:
+                        logger.info(f"   ✅ ACCEPTED: has_html={has_html}, has_question={has_question_text}")
+
+                    return result
+
+                except Exception as filter_error:
+                    logger.warning(f"   Filter error: {filter_error}")
+                    return False
+
+            # Apply filter and collect samples
+            logger.info("🔧 Starting to filter and collect samples...")
+            filtered_dataset = filter(is_valid_sample, streaming_dataset)
+
+            # Skip some samples for randomness, but be more conservative
+            skip_samples = random.randint(0, min(50, max_samples // 20))
+            if skip_samples > 0:
+                logger.info(f"   🎲 Randomly skipping first {skip_samples} valid samples")
+                skipped = 0
+                for sample in filtered_dataset:
+                    skipped += 1
+                    logger.info(f"   📝 Skipped sample {skipped} (question: {sample['question']['text'][:50]}...)")
+                    if skipped >= skip_samples:
+                        break
+
+            # Now collect the samples we need
+            sample_target = min(num_contexts * 2, num_contexts)  # Conservative target
+            logger.info(f"🔧 Collecting {sample_target} samples...")
+
+            selected_samples = []
+            processed_after_skip = 0
+
+            for sample in filtered_dataset:
+                selected_samples.append(sample)
+                processed_after_skip += 1
+
+                # Detailed progress logging
+                logger.info(f"   📊 Collected sample {len(selected_samples)}: {sample['question']['text'][:80]}...")
+
+                if len(selected_samples) >= sample_target:
+                    logger.info(f"   🎯 Reached target of {sample_target} samples")
+                    break
+
+                if processed_after_skip >= max_samples // 2:  # Safety valve
+                    logger.warning(f"   ⚠️ Hit safety limit, stopping collection")
+                    break
+
+            if not selected_samples:
+                logger.error("❌ No valid Natural Questions samples found in streaming")
+                logger.error("🔧 This suggests the filter is too strict or dataset structure changed")
+                logger.warning("⚠️ Falling back to demo dataset")
+                return self.create_demo_dataset()
+
+            logger.info(f"✅ Successfully collected {len(selected_samples)} valid samples via streaming")
+
+            # Select primary sample randomly from what we got
+            primary_sample = random.choice(selected_samples)
+            selected_question = primary_sample['question']['text']
+
+            logger.info(f"🎯 Selected Natural Questions Query: {selected_question}")
+
+            # Build contexts with detailed logging
+            contexts = []
+
+            # Primary context
+            logger.info("🔧 Building primary context...")
+            primary_context = self._extract_text_from_html(primary_sample['document']['html'])
+            logger.info(f"   Primary context extracted: {len(primary_context)} chars")
+            logger.info(f"   Primary context preview: {primary_context[:200]}...")
+
+            contexts.append({
+                'context': primary_context,
+                'question': selected_question,
+                'id': primary_sample.get('id', f"nq_{hash(primary_context) % 100000}"),
+                'title': f"Document 1: {primary_sample['document'].get('title', 'Natural Questions Context')}",
+                'answers': self._extract_answers(primary_sample)
+            })
+
+            # Add additional contexts from remaining samples
+            remaining_samples = [s for s in selected_samples if s != primary_sample]
+            contexts_needed = min(num_contexts - 1, len(remaining_samples))
+
+            logger.info(f"🔧 Adding {contexts_needed} additional contexts...")
+
+            for i, sample in enumerate(remaining_samples[:contexts_needed]):
+                context_text = self._extract_text_from_html(sample['document']['html'])
+                contexts.append({
+                    'context': context_text,
+                    'question': sample['question']['text'],
+                    'id': sample.get('id', f"nq_{hash(context_text) % 100000}"),
+                    'title': f"Document {i + 2}: {sample['document'].get('title', 'Natural Questions Context')}",
+                    'answers': self._extract_answers(sample)
+                })
+                logger.info(
+                    f"   📄 Added Context {i + 2}: {len(context_text)} chars - {sample['question']['text'][:50]}...")
+
+            logger.info(f"✅ Created Natural Questions dataset with {len(contexts)} contexts")
+            return selected_question, contexts
+
+        except Exception as e:
+            logger.error(f"❌ Streaming random selection failed: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            logger.warning("⚠️ Falling back to demo dataset")
             return self.create_demo_dataset()
 
-        # Select primary sample
-        primary_sample = random.choice(valid_samples)
-        selected_question = primary_sample['question']['text']
-
-        logger.info(f"🎯 Selected Natural Questions Query: {selected_question}")
-
-        # Extract context from HTML (simplified - in practice you'd want to parse HTML properly)
-        primary_context = self._extract_text_from_html(primary_sample['document']['html'])
-
-        contexts = [{
-            'context': primary_context,
-            'question': selected_question,
-            'id': primary_sample.get('id', f"nq_{hash(primary_context) % 100000}"),
-            'title': f"Document 1: {primary_sample['document'].get('title', 'Natural Questions Context')}",
-            'answers': self._extract_answers(primary_sample)
-        }]
-
-        # Add related contexts by finding similar questions
-        remaining_samples = [s for s in valid_samples if s != primary_sample]
-        question_keywords = set(selected_question.lower().split())
-
-        scored_samples = []
-        for sample in remaining_samples[:100]:  # Limit search for performance
-            other_question = sample['question']['text'].lower()
-            overlap = len(question_keywords.intersection(set(other_question.split())))
-            if overlap > 0:
-                scored_samples.append((overlap, sample))
-
-        # Select top related samples
-        scored_samples.sort(key=lambda x: x[0], reverse=True)
-        for i, (score, sample) in enumerate(scored_samples[:num_contexts-1]):
-            context_text = self._extract_text_from_html(sample['document']['html'])
-            contexts.append({
-                'context': context_text,
-                'question': sample['question']['text'],
-                'id': sample.get('id', f"nq_{hash(context_text) % 100000}"),
-                'title': f"Document {i+2}: {sample['document'].get('title', 'Natural Questions Context')}",
-                'answers': self._extract_answers(sample)
-            })
-            logger.info(f"📄 Added Related Context: {len(context_text)} chars (relevance: {score})")
-
-        logger.info(f"✅ Created Natural Questions dataset with {len(contexts)} contexts")
-        return selected_question, contexts
-
     def create_focused_context_set(self, topic_keywords: List[str], num_contexts: int = 5) -> Tuple[str, List[Dict]]:
-        """Create focused contexts from Natural Questions based on topic keywords"""
-        if not self.dataset:
-            raise ValueError("Natural Questions dataset not loaded. Call load_dataset() first.")
+        """
+        Create focused contexts from Natural Questions using streaming + keyword filtering.
+        Reports actual number found vs requested.
+        """
+        from itertools import islice
 
-        logger.info(f"🔍 Searching Natural Questions for topics: {topic_keywords}")
+        try:
+            split_name = getattr(self.config, 'nq_split', 'validation')
+            max_samples_to_check = getattr(self.config, 'nq_max_samples', 1000) * 2  # Check more for focused search
 
-        # Score samples based on keyword relevance - limit search for performance
-        topic_samples = []
-        samples_checked = 0
-        max_samples_to_check = 1000  # Limit search scope for streaming datasets
+            logger.info(f"🔍 Streaming Natural Questions for focused search...")
+            logger.info(f"   Keywords: {topic_keywords}")
+            logger.info(f"   Target contexts: {num_contexts}, Max samples to check: {max_samples_to_check}")
 
-        for sample in self.dataset:
-            if samples_checked >= max_samples_to_check:
-                break
+            # Load streaming dataset
+            streaming_dataset = load_dataset("natural_questions", split=split_name, streaming=True)
 
-            if not sample.get('document', {}).get('html'):
-                continue
+            # Combined filter function for keywords AND validity
+            def matches_topics_and_valid(sample):
+                # Check validity first (faster)
+                doc = sample.get('document', {})
+                html = doc.get('html', '')
+                if not (html and 1000 <= len(html) <= 30000):
+                    return False
 
-            question_text = sample['question']['text'].lower()
-            # Use title for search instead of full HTML for performance
-            document_title = sample['document'].get('title', '').lower()
+                # Check keyword matches
+                question_text = sample['question']['text'].lower()
+                document_title = doc.get('title', '').lower()
 
-            keyword_matches = sum(1 for keyword in topic_keywords
-                                 if keyword.lower() in question_text or keyword.lower() in document_title)
+                # Count keyword matches
+                keyword_matches = sum(1 for keyword in topic_keywords
+                                      if keyword.lower() in question_text or keyword.lower() in document_title)
 
-            if keyword_matches >= 1 and 1000 <= len(sample['document']['html']) <= 30000:  # Reasonable size range
-                topic_samples.append((keyword_matches, sample))
+                return keyword_matches >= 1
 
-            samples_checked += 1
+            # Apply combined filter lazily
+            filtered_dataset = filter(matches_topics_and_valid, streaming_dataset)
 
-            # Stop early if we have plenty of good matches
-            if len(topic_samples) >= num_contexts * 3:
-                break
+            # Limit how many samples we'll check to prevent infinite processing
+            limited_filtered = islice(filtered_dataset, max_samples_to_check)
 
-        if not topic_samples:
-            logger.warning("⚠️ No focused Natural Questions contexts found, using random selection")
+            # Take the samples we need
+            target_samples = max(num_contexts, 20)  # Get at least 20 to choose the best from
+            selected_samples = list(islice(limited_filtered, target_samples))
+
+            if not selected_samples:
+                logger.warning(f"⚠️ No focused Natural Questions contexts found for {topic_keywords}")
+                logger.warning("⚠️ Falling back to random selection")
+                return self.select_random_question_with_contexts(num_contexts)
+
+            # Report what we found
+            actual_found = len(selected_samples)
+            logger.info(f"📊 Found {actual_found} samples matching topics (requested {num_contexts})")
+
+            if actual_found < num_contexts:
+                logger.warning(f"⚠️ Only found {actual_found} matching samples, using all available")
+                num_contexts = actual_found
+
+            # Score samples by keyword relevance and select the best
+            scored_samples = []
+            for sample in selected_samples:
+                question_text = sample['question']['text'].lower()
+                document_title = sample['document'].get('title', '').lower()
+
+                score = sum(1 for keyword in topic_keywords
+                            if keyword.lower() in question_text or keyword.lower() in document_title)
+                scored_samples.append((score, sample))
+
+            # Sort by relevance and take the top samples
+            scored_samples.sort(key=lambda x: x[0], reverse=True)
+            final_samples = [sample for _, sample in scored_samples[:num_contexts]]
+
+            # Use the highest-scoring question
+            primary_sample = final_samples[0]
+            selected_question = primary_sample['question']['text']
+
+            logger.info(f"🎯 Selected Focused Natural Questions Query: {selected_question}")
+
+            # Build contexts
+            contexts = []
+            for i, sample in enumerate(final_samples):
+                context_text = self._extract_text_from_html(sample['document']['html'])
+                contexts.append({
+                    'context': context_text,
+                    'question': sample['question']['text'],
+                    'id': sample.get('id', f"nq_focused_{i}"),
+                    'title': f"Document {i + 1}: {sample['document'].get('title', 'Natural Questions')}",
+                    'answers': self._extract_answers(sample)
+                })
+
+                # Show relevance score for debugging
+                question_lower = sample['question']['text'].lower()
+                title_lower = sample['document'].get('title', '').lower()
+                matches = [kw for kw in topic_keywords if kw.lower() in question_lower or kw.lower() in title_lower]
+                logger.info(f"📄 Context {i + 1}: {len(context_text)} chars, matches: {matches}")
+
+            logger.info(f"✅ Created focused Natural Questions dataset with {len(contexts)} contexts")
+            return selected_question, contexts
+
+        except Exception as e:
+            logger.error(f"❌ Streaming focused selection failed: {e}")
+            logger.warning("⚠️ Falling back to random selection")
             return self.select_random_question_with_contexts(num_contexts)
-
-        # Sort by relevance
-        topic_samples.sort(key=lambda x: x[0], reverse=True)
-        selected_samples = [sample for _, sample in topic_samples[:num_contexts]]
-
-        # Use most relevant question
-        primary_sample = selected_samples[0]
-        selected_question = primary_sample['question']['text']
-
-        logger.info(f"🎯 Selected Focused Natural Questions Query: {selected_question}")
-
-        # Build contexts
-        contexts = []
-        for i, sample in enumerate(selected_samples):
-            context_text = self._extract_text_from_html(sample['document']['html'])
-            contexts.append({
-                'context': context_text,
-                'question': sample['question']['text'],
-                'id': sample.get('id', f"nq_focused_{i}"),
-                'title': f"Document {i+1}: {sample['document'].get('title', 'Natural Questions')}",
-                'answers': self._extract_answers(sample)
-            })
-            logger.info(f"📄 Context {i+1}: {len(context_text)} chars")
-
-        logger.info(f"✅ Created focused Natural Questions dataset with {len(contexts)} contexts")
-        return selected_question, contexts
 
     def get_evaluation_dataset(self, max_samples: int = 50) -> Dict[str, Any]:
         """Get Natural Questions evaluation dataset"""
@@ -608,29 +622,59 @@ class NaturalQuestionsDataLoader(BaseDataLoader):
         return text
 
     def _extract_answers(self, sample: Dict) -> Dict[str, List]:
-        """Extract answers from Natural Questions sample format"""
+        """Extract answers from Natural Questions - CORRECTED STRUCTURE VERSION"""
         answers = {'text': [], 'answer_start': []}
 
-        # Natural Questions has complex answer structure
-        if 'annotations' in sample and sample['annotations']:
-            annotation = sample['annotations'][0]  # Use first annotation
+        try:
+            # CORRECTED: annotations is a DICT, not a list!
+            if ('annotations' in sample and
+                    isinstance(sample['annotations'], dict) and
+                    'short_answers' in sample['annotations']):
 
-            # Extract short answers if available
-            if 'short_answers' in annotation and annotation['short_answers']:
-                for short_answer in annotation['short_answers']:
-                    if 'text' in short_answer:
-                        answers['text'].append(short_answer['text'])
-                        answers['answer_start'].append(short_answer.get('start_byte', 0))
+                short_answers_list = sample['annotations']['short_answers']
 
-            # Fall back to long answer if no short answers
-            elif 'long_answer' in annotation and annotation['long_answer'].get('candidate_index', -1) >= 0:
-                # Long answer would require more complex extraction from HTML
-                answers['text'].append("Long answer available - requires HTML parsing")
+                # short_answers is a list of 5 annotator responses
+                # Find the first non-empty answer
+                for annotator_answer in short_answers_list:
+                    if (isinstance(annotator_answer, dict) and
+                            'text' in annotator_answer and
+                            annotator_answer['text']):  # Non-empty list
+
+                        # Got a good answer!
+                        for text in annotator_answer['text']:
+                            if text and text.strip():
+                                answers['text'].append(text.strip())
+
+                        # Get corresponding start positions
+                        if 'start_byte' in annotator_answer:
+                            answers['answer_start'].extend(annotator_answer['start_byte'])
+                        else:
+                            answers['answer_start'].extend([0] * len(annotator_answer['text']))
+
+                        # Found good answers, stop looking
+                        break
+
+                # If no short answers, try long answers
+                if not answers['text'] and 'long_answer' in sample['annotations']:
+                    long_answers_list = sample['annotations']['long_answer']
+
+                    for annotator_long_answer in long_answers_list:
+                        if (isinstance(annotator_long_answer, dict) and
+                                annotator_long_answer.get('candidate_index', -1) >= 0):
+                            answers['text'].append("Long answer available in HTML")
+                            answers['answer_start'].append(annotator_long_answer.get('start_byte', 0))
+                            break
+
+            # Fallback: Create a research-appropriate answer from the question
+            if not answers['text']:
+                question_text = sample.get('question', {}).get('text', 'Unknown question')
+                answers['text'].append(f"Research context for: {question_text}")
                 answers['answer_start'].append(0)
 
-        # If no answers found, provide placeholder
-        if not answers['text']:
-            answers['text'].append("Answer extraction requires further processing")
+        except Exception as extract_error:
+            # For research purposes, we don't need perfect answers
+            question_text = sample.get('question', {}).get('text', 'Unknown question')
+            answers['text'].append(f"Research context for: {question_text}")
             answers['answer_start'].append(0)
 
         return answers
