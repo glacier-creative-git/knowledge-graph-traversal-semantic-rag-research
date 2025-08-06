@@ -7,4 +7,7 @@
     <orderEntry type="jdk" jdkName="Python 3.12 (semantic-rag-chunking-research)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="TestRunnerService">
+    <option name="PROJECT_TEST_RUNNER" value="Unittests" />
+  </component>
 </module>
