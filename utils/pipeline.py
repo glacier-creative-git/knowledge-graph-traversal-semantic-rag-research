@@ -1,9 +1,10 @@
 """
-Research Pipeline Orchestration
-===============================
+Research Pipeline Orchestration - Updated for Enhanced Dataset System
+====================================================================
 
 High-level pipeline functions that orchestrate the entire research workflow.
-Perfect for Jupyter notebook usage.
+Updated to use the new modular dataset loading system supporting WikiEval,
+Natural Questions, and future datasets.
 """
 
 import os
@@ -13,19 +14,25 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
 from .config import ResearchConfig, get_config
-from .data_loader import SQuADDataLoader
+from .data_loader import create_data_loader, BaseDataLoader  # Updated import
 from .rag_system import SemanticGraphRAG, TraversalStep
 from .visualizations import SemanticGraphVisualizer
 from .evaluation import RAGASEvaluator, EvaluationResults, print_evaluation_results
 
 class ResearchPipeline:
     """
-    Complete research pipeline orchestration
+    Complete research pipeline orchestration with enhanced dataset support.
+
+    Now supports seamless swapping between WikiEval, Natural Questions,
+    and future datasets through the enhanced data loading system.
     """
 
     def __init__(self, config: ResearchConfig):
         self.config = config
-        self.data_loader = SQuADDataLoader(config.data)
+
+        # Create appropriate data loader based on configuration
+        self.data_loader = create_data_loader(config.data.dataset_name, config.data)
+
         self.rag_system = SemanticGraphRAG(
             top_k_per_sentence=config.rag.top_k_per_sentence,
             cross_doc_k=config.rag.cross_doc_k,
@@ -54,7 +61,9 @@ class ResearchPipeline:
 
     def run_single_demo(self, demo_type: str = "random") -> Dict:
         """
-        Run a single demonstration of the RAG system
+        Run a single demonstration of the RAG system.
+
+        Updated to work with any dataset through the enhanced data loader system.
 
         Args:
             demo_type: "demo", "random", or "focused"
@@ -63,16 +72,17 @@ class ResearchPipeline:
             Dictionary with all results
         """
         print("🚀 Starting Single RAG Demonstration")
+        print(f"📊 Using dataset: {self.config.data.get_dataset_display_name()}")
         print("=" * 50)
 
         start_time = time.time()
 
-        # Load data based on demo type
+        # Load data based on demo type using the configured dataset
         if demo_type == "demo":
             question, contexts = self.data_loader.create_demo_dataset()
         elif demo_type == "focused":
-            if not self.data_loader.load_squad_data():
-                print("⚠️ Falling back to demo data")
+            if not self.data_loader.load_dataset():
+                print(f"⚠️ Failed to load {self.config.data.get_dataset_display_name()}, falling back to demo data")
                 question, contexts = self.data_loader.create_demo_dataset()
             else:
                 question, contexts = self.data_loader.create_focused_context_set(
@@ -80,8 +90,8 @@ class ResearchPipeline:
                     self.config.rag.num_contexts
                 )
         else:  # random
-            if not self.data_loader.load_squad_data():
-                print("⚠️ Falling back to demo data")
+            if not self.data_loader.load_dataset():
+                print(f"⚠️ Failed to load {self.config.data.get_dataset_display_name()}, falling back to demo data")
                 question, contexts = self.data_loader.create_demo_dataset()
             else:
                 question, contexts = self.data_loader.select_random_question_with_contexts(
@@ -137,15 +147,7 @@ class ResearchPipeline:
         }
 
     def create_2d_visualization(self, save: bool = None) -> plt.Figure:
-        """
-        Create 2D matplotlib visualization of the last demo
-
-        Args:
-            save: Whether to save the plot (overrides config)
-
-        Returns:
-            Matplotlib figure
-        """
+        """Create 2D matplotlib visualization of the last demo"""
         if not self.last_traversal_steps:
             print("⚠️ No traversal data available. Run a demo first.")
             return plt.Figure()
@@ -170,15 +172,7 @@ class ResearchPipeline:
         return fig
 
     def create_3d_visualization(self, method: str = "pca") -> go.Figure:
-        """
-        Create 3D plotly visualization of the last demo
-
-        Args:
-            method: Dimensionality reduction method ("pca" or "tsne")
-
-        Returns:
-            Plotly figure
-        """
+        """Create 3D plotly visualization of the last demo"""
         if not self.last_traversal_steps:
             print("⚠️ No traversal data available. Run a demo first.")
             return go.Figure()
@@ -200,12 +194,7 @@ class ResearchPipeline:
         return fig
 
     def create_analysis_charts(self) -> go.Figure:
-        """
-        Create analysis charts for the last demo
-
-        Returns:
-            Plotly figure
-        """
+        """Create analysis charts for the last demo"""
         if not self.last_analysis:
             print("⚠️ No analysis data available. Run a demo first.")
             return go.Figure()
@@ -223,17 +212,17 @@ class ResearchPipeline:
 
     def run_ragas_evaluation(self) -> EvaluationResults:
         """
-        Run RAGAS evaluation on SQuAD dataset
+        Run RAGAS evaluation on the configured dataset.
 
-        Returns:
-            EvaluationResults object
+        Updated to work with any dataset (WikiEval, Natural Questions, etc.)
         """
-        print("🔍 Starting RAGAS Evaluation on SQuAD Dataset")
+        print("🔍 Starting RAGAS Evaluation")
+        print(f"📊 Using dataset: {self.config.data.get_dataset_display_name()}")
         print("=" * 50)
 
-        # Load evaluation dataset
-        if not self.data_loader.load_squad_data():
-            print("⚠️ Could not load SQuAD data for evaluation")
+        # Load evaluation dataset using the configured data loader
+        if not self.data_loader.load_dataset():
+            print(f"⚠️ Could not load {self.config.data.get_dataset_display_name()} data for evaluation")
             return EvaluationResults(
                 context_precision=0.0,
                 context_recall=0.0,
@@ -243,7 +232,7 @@ class ResearchPipeline:
                 ingest_time=0.0,
                 eval_time=0.0,
                 num_samples=0,
-                error="Could not load SQuAD data"
+                error=f"Could not load {self.config.data.get_dataset_display_name()} data"
             )
 
         eval_dataset = self.data_loader.get_evaluation_dataset(self.config.data.max_eval_samples)
@@ -259,11 +248,11 @@ class ResearchPipeline:
         results = evaluator.benchmark_rag_system(
             self.rag_system,
             eval_dataset,
-            "Semantic Graph RAG"
+            f"Semantic Graph RAG ({self.config.data.get_dataset_display_name()})"
         )
 
         # Print results
-        print_evaluation_results(results, "Semantic Graph RAG")
+        print_evaluation_results(results, f"Semantic Graph RAG ({self.config.data.get_dataset_display_name()})")
 
         return results
 
@@ -273,7 +262,7 @@ class ResearchPipeline:
                              show_analysis: bool = True,
                              run_evaluation: bool = False) -> Dict:
         """
-        Run the complete research pipeline
+        Run the complete research pipeline with the configured dataset.
 
         Args:
             demo_type: Type of demo to run
@@ -286,6 +275,7 @@ class ResearchPipeline:
             Dictionary with all results
         """
         print("🚀 STARTING COMPLETE RESEARCH PIPELINE")
+        print(f"📊 Dataset: {self.config.data.get_dataset_display_name()}")
         print("=" * 70)
 
         results = {}
@@ -329,38 +319,43 @@ class ResearchPipeline:
             results['evaluation'] = eval_results
 
         print("\n✅ COMPLETE PIPELINE FINISHED")
+        print(f"📊 Dataset: {self.config.data.get_dataset_display_name()}")
         print("=" * 70)
 
         return results
 
-# Convenience functions for easy notebook usage
+# Enhanced convenience functions for easy notebook usage
 def quick_demo(demo_type: str = "random",
+               dataset_name: str = "wikieval",
                openai_api_key: Optional[str] = None,
                config_type: str = "default") -> Dict:
     """
-    Quick demo function for notebook usage
+    Quick demo function for notebook usage with dataset selection.
 
     Args:
         demo_type: "demo", "random", or "focused"
+        dataset_name: "wikieval" or "natural_questions"
         openai_api_key: OpenAI API key
         config_type: "default" or "demo"
 
     Returns:
         Dictionary with results
     """
-    config = get_config(config_type, openai_api_key=openai_api_key)
+    config = get_config(config_type, openai_api_key=openai_api_key, dataset_name=dataset_name)
     pipeline = ResearchPipeline(config)
     return pipeline.run_single_demo(demo_type)
 
 def quick_visualization(demo_type: str = "random",
+                       dataset_name: str = "wikieval",
                        openai_api_key: Optional[str] = None,
                        show_2d: bool = True,
                        show_3d: bool = True) -> Dict:
     """
-    Quick visualization function for notebook usage
+    Quick visualization function for notebook usage with dataset selection.
 
     Args:
         demo_type: Type of demo to run
+        dataset_name: "wikieval" or "natural_questions"
         openai_api_key: OpenAI API key
         show_2d: Whether to show 2D visualization
         show_3d: Whether to show 3D visualization
@@ -368,7 +363,7 @@ def quick_visualization(demo_type: str = "random",
     Returns:
         Dictionary with results and figures
     """
-    config = get_config("demo", openai_api_key=openai_api_key)
+    config = get_config("demo", openai_api_key=openai_api_key, dataset_name=dataset_name)
     pipeline = ResearchPipeline(config)
 
     # Run demo
@@ -390,21 +385,27 @@ def quick_visualization(demo_type: str = "random",
     return results
 
 def full_evaluation_pipeline(openai_api_key: str,
+                            dataset_name: str = "wikieval",
                             demo_type: str = "focused",
                             max_eval_samples: int = 10) -> Dict:
     """
-    Full evaluation pipeline including RAGAS assessment
+    Full evaluation pipeline including RAGAS assessment with dataset selection.
 
     Args:
         openai_api_key: OpenAI API key (required for RAGAS)
+        dataset_name: "wikieval" or "natural_questions"
         demo_type: Type of demo to run
         max_eval_samples: Maximum samples for evaluation
 
     Returns:
         Dictionary with all results
     """
-    config = get_config("demo",
+    # Use dataset-specific configuration if available
+    config_type = dataset_name if dataset_name in ["wikieval", "natural_questions"] else "demo"
+
+    config = get_config(config_type,
                        openai_api_key=openai_api_key,
+                       dataset_name=dataset_name,
                        max_eval_samples=max_eval_samples)
 
     pipeline = ResearchPipeline(config)
@@ -418,28 +419,34 @@ def full_evaluation_pipeline(openai_api_key: str,
     )
 
 def print_pipeline_summary():
-    """Print a summary of available pipeline functions"""
+    """Print a summary of available pipeline functions with dataset options"""
     print("🔬 SEMANTIC GRAPH RAG RESEARCH PIPELINE")
     print("=" * 50)
     print()
+    print("📚 Available Datasets:")
+    print("   • WikiEval: 50 human-annotated Wikipedia QA pairs")
+    print("   • Natural Questions: Real Google queries with Wikipedia answers")
+    print()
     print("📚 Available Functions:")
     print()
-    print("1. quick_demo(demo_type='random')")
-    print("   - Run a single RAG demonstration")
+    print("1. quick_demo(demo_type='random', dataset_name='wikieval')")
+    print("   - Run a single RAG demonstration on specified dataset")
     print("   - demo_type: 'demo', 'random', or 'focused'")
+    print("   - dataset_name: 'wikieval' or 'natural_questions'")
     print()
-    print("2. quick_visualization(demo_type='random', show_2d=True, show_3d=True)")
-    print("   - Run demo + create visualizations")
+    print("2. quick_visualization(dataset_name='wikieval', show_2d=True, show_3d=True)")
+    print("   - Run demo + create visualizations on specified dataset")
     print("   - Automatically shows plots")
     print()
-    print("3. full_evaluation_pipeline(openai_api_key, demo_type='focused')")
+    print("3. full_evaluation_pipeline(openai_api_key, dataset_name='wikieval')")
     print("   - Complete pipeline with RAGAS evaluation")
     print("   - Requires OpenAI API key")
     print()
     print("4. ResearchPipeline(config) - for advanced usage")
-    print("   - Full control over configuration")
+    print("   - Full control over configuration and dataset selection")
     print("   - Run individual components")
     print()
     print("💡 Example notebook usage:")
     print("   from utils.pipeline import quick_visualization")
-    print("   results = quick_visualization('focused')")
+    print("   results = quick_visualization(dataset_name='natural_questions')")
+    print("   results = quick_demo('focused', dataset_name='wikieval')")
