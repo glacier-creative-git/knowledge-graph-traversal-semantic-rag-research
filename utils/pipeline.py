@@ -1,452 +1,379 @@
+#!/usr/bin/env python3
 """
-Research Pipeline Orchestration - Updated for Enhanced Dataset System
-====================================================================
+Semantic RAG Pipeline
+====================
 
-High-level pipeline functions that orchestrate the entire research workflow.
-Updated to use the new modular dataset loading system supporting WikiEval,
-Natural Questions, and future datasets.
+Main orchestrator for the semantic graph traversal RAG system.
+Handles all phases from data acquisition to evaluation with intelligent caching.
 """
 
 import os
-import time
-from typing import Dict, List, Tuple, Optional
-import matplotlib.pyplot as plt
-import plotly.graph_objects as go
+import sys
+import yaml
+import logging
+import platform
+import psutil
+import shutil
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+import torch
 
-from .config import ResearchConfig, get_config
-from .data_loader import create_data_loader, BaseDataLoader  # Updated import
-from .rag_system import SemanticGraphRAG, TraversalStep
-from .visualizations import SemanticGraphVisualizer
-from .evaluation import RAGASEvaluator, EvaluationResults, print_evaluation_results
+# Import engines
+from wiki import WikiEngine
 
-class ResearchPipeline:
-    """
-    Complete research pipeline orchestration with enhanced dataset support.
 
-    Now supports seamless swapping between WikiEval, Natural Questions,
-    and future datasets through the enhanced data loading system.
-    """
+class SemanticRAGPipeline:
+    """Main pipeline orchestrator for semantic RAG system."""
 
-    def __init__(self, config: ResearchConfig):
-        self.config = config
+    def __init__(self, config_path: str = "config.yaml"):
+        """Initialize the pipeline with configuration."""
+        self.config_path = config_path
+        self.config = None
+        self.experiment_id = None
+        self.logger = None
+        self.device = None
+        self.start_time = None
 
-        # Create appropriate data loader based on configuration
-        self.data_loader = create_data_loader(config.data.dataset_name, config.data)
+        # Data storage for pipeline phases
+        self.articles = []
+        self.corpus_stats = {}
 
-        self.rag_system = SemanticGraphRAG(
-            top_k_per_sentence=config.rag.top_k_per_sentence,
-            cross_doc_k=config.rag.cross_doc_k,
-            embedding_model=config.models.embedding_model,
-            traversal_depth=config.rag.traversal_depth,
-            use_sliding_window=config.rag.use_sliding_window,
-            num_contexts=config.rag.num_contexts,
-            similarity_threshold=config.rag.similarity_threshold
-        )
-        self.visualizer = SemanticGraphVisualizer(
-            figure_size_2d=config.viz.figure_size_2d,
-            figure_size_3d=config.viz.figure_size_3d,
-            dpi=config.viz.dpi
-        )
-
-        # Results storage
-        self.last_question = None
-        self.last_contexts = None
-        self.last_retrieved_texts = None
-        self.last_traversal_steps = None
-        self.last_analysis = None
-
-        # Set up output directory
-        if config.viz.save_plots:
-            os.makedirs(config.viz.output_dir, exist_ok=True)
-
-    def run_single_demo(self, demo_type: str = "random") -> Dict:
+    def pipe(self) -> Dict[str, Any]:
         """
-        Run a single demonstration of the RAG system.
-
-        Updated to work with any dataset through the enhanced data loader system.
-
-        Args:
-            demo_type: "demo", "random", or "focused"
+        Main pipeline execution function.
 
         Returns:
-            Dictionary with all results
+            Dictionary containing experiment results and metadata
         """
-        print("🚀 Starting Single RAG Demonstration")
-        print(f"📊 Using dataset: {self.config.data.get_dataset_display_name()}")
+        try:
+            # Phase 1: Setup & Initialization
+            self._phase_1_setup_and_initialization()
+
+            # Phase 2: Data Acquisition
+            if self.config['execution']['mode'] in ['full_pipeline', 'data_only']:
+                if 'data_acquisition' not in self.config['execution']['skip_phases']:
+                    self._phase_2_data_acquisition()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 2: Data Acquisition")
+
+            # TODO: Add remaining phases
+            # self._phase_3_embedding_generation()
+            # etc.
+
+            self.logger.info("Pipeline completed successfully!")
+            return {
+                "experiment_id": self.experiment_id,
+                "status": "completed",
+                "execution_time": datetime.now() - self.start_time
+            }
+
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Pipeline failed: {str(e)}")
+            else:
+                print(f"Pipeline failed: {str(e)}")
+            raise
+
+    def _phase_1_setup_and_initialization(self):
+        """Phase 1: Setup & Initialization"""
+        print("🚀 Starting Semantic RAG Pipeline")
         print("=" * 50)
 
-        start_time = time.time()
+        # Record start time
+        self.start_time = datetime.now()
 
-        # Load data based on demo type using the configured dataset
-        if demo_type == "demo":
-            question, contexts = self.data_loader.create_demo_dataset()
-        elif demo_type == "focused":
-            if not self.data_loader.load_dataset():
-                print(f"⚠️ Failed to load {self.config.data.get_dataset_display_name()}, falling back to demo data")
-                question, contexts = self.data_loader.create_demo_dataset()
+        # 1. Load config.yaml
+        self._load_config()
+
+        # 2. Initialize experiment tracker
+        self._initialize_experiment_tracker()
+
+        # 3. Create output directories
+        self._create_output_directories()
+
+        # 4. Initialize logging
+        self._initialize_logging()
+
+        # 5. Check system resources
+        self._check_system_resources()
+
+        # 6. Detect and configure device (M1 Mac compatible)
+        self._detect_and_configure_device()
+
+        # 7. Validate config parameters
+        self._validate_config()
+
+        self.logger.info(f"Phase 1 completed - Experiment ID: {self.experiment_id}")
+
+    def _phase_2_data_acquisition(self):
+        """Phase 2: Data Acquisition"""
+        self.logger.info("🌐 Starting Phase 2: Data Acquisition")
+
+        # Initialize WikiEngine
+        wiki_engine = WikiEngine(self.config, self.logger)
+
+        # Check if we should force recompute
+        force_recompute = 'data' in self.config['execution'].get('force_recompute', [])
+
+        if force_recompute:
+            self.logger.info("🔄 Force recompute enabled - will fetch fresh articles")
+            # Temporarily disable caching
+            original_use_cached = self.config['wikipedia']['use_cached_articles']
+            self.config['wikipedia']['use_cached_articles'] = False
+
+        try:
+            # Acquire articles
+            wiki_path = Path(self.config['directories']['data']) / "wiki.json"
+            articles = wiki_engine.acquire_articles(wiki_path)
+
+            if not articles:
+                raise RuntimeError("No articles were successfully acquired")
+
+            # Get and log corpus statistics
+            stats = wiki_engine.get_corpus_statistics()
+            self.logger.info("📊 Corpus Statistics:")
+            self.logger.info(f"   Articles: {stats['total_articles']:,}")
+            self.logger.info(f"   Sentences: {stats['total_sentences']:,}")
+            self.logger.info(f"   Words: {stats['total_words']:,}")
+            self.logger.info(f"   Avg sentences/article: {stats['avg_sentences_per_article']:.1f}")
+            self.logger.info(f"   Avg words/sentence: {stats['avg_words_per_sentence']:.1f}")
+
+            # Store articles in pipeline for later phases
+            self.articles = articles
+            self.corpus_stats = stats
+
+            self.logger.info("✅ Phase 2 completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"❌ Phase 2 failed: {e}")
+            raise
+
+        finally:
+            # Restore original caching setting if we changed it
+            if force_recompute:
+                self.config['wikipedia']['use_cached_articles'] = original_use_cached
+
+    def _load_config(self):
+        """Load configuration from YAML file."""
+        try:
+            config_path = Path(self.config_path)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+
+            with open(config_path, 'r') as f:
+                self.config = yaml.safe_load(f)
+
+            print(f"✅ Config loaded from {config_path}")
+
+        except Exception as e:
+            print(f"❌ Failed to load config: {e}")
+            raise
+
+    def _initialize_experiment_tracker(self):
+        """Initialize experiment tracking with unique ID."""
+        # Generate experiment ID
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        short_uuid = str(uuid.uuid4())[:8]
+        self.experiment_id = f"{self.config['experiment']['name']}_{timestamp}_{short_uuid}"
+
+        print(f"🔬 Experiment ID: {self.experiment_id}")
+
+    def _create_output_directories(self):
+        """Create all necessary output directories."""
+        directories = self.config['directories']
+
+        base_dirs = [
+            directories['data'],
+            directories['embeddings'],
+            directories['visualizations'],
+            directories['logs']
+        ]
+
+        # Create subdirectories
+        subdirs = [
+            f"{directories['embeddings']}/raw",
+            f"{directories['embeddings']}/similarities",
+            f"{directories['embeddings']}/cross_document",
+            f"{directories['visualizations']}/experiments",
+            f"{directories['data']}/datasets",
+            f"{directories['data']}/experiments"
+        ]
+
+        all_dirs = base_dirs + subdirs
+
+        for dir_path in all_dirs:
+            Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+        # Create experiment-specific directories
+        exp_viz_dir = Path(directories['visualizations']) / "experiments" / self.experiment_id
+        exp_data_dir = Path(directories['data']) / "experiments" / self.experiment_id
+
+        exp_viz_dir.mkdir(parents=True, exist_ok=True)
+        exp_data_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"📁 Created directory structure")
+
+    def _initialize_logging(self):
+        """Initialize logging configuration."""
+        log_config = self.config['logging']
+
+        # Create logger
+        self.logger = logging.getLogger('semantic_rag_pipeline')
+        self.logger.setLevel(getattr(logging, log_config['level']))
+
+        # Clear any existing handlers
+        self.logger.handlers.clear()
+
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+
+        # Console handler
+        if log_config['log_to_console']:
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
+
+        # File handler
+        if log_config['log_to_file']:
+            log_file = Path(self.config['directories']['logs']) / f"{self.experiment_id}.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
+
+        # Log initial info
+        self.logger.info(f"Logging initialized for experiment: {self.experiment_id}")
+        self.logger.info(f"Config: {self.config['experiment']}")
+
+        print(f"📝 Logging initialized")
+
+    def _check_system_resources(self):
+        """Check system resources and warn if insufficient."""
+        # Check available memory
+        memory = psutil.virtual_memory()
+        available_gb = memory.available / (1024 ** 3)
+        max_memory_gb = self.config['system']['max_memory_gb']
+
+        if available_gb < max_memory_gb:
+            warning_msg = f"⚠️  Low memory: {available_gb:.1f}GB available, {max_memory_gb}GB recommended"
+            print(warning_msg)
+            if self.logger:
+                self.logger.warning(warning_msg)
+        else:
+            print(f"💾 Memory check: {available_gb:.1f}GB available ✅")
+
+        # Check disk space
+        disk = psutil.disk_usage('.')
+        free_gb = disk.free / (1024 ** 3)
+        min_disk_gb = self.config['system']['min_disk_space_gb']
+
+        if free_gb < min_disk_gb:
+            error_msg = f"❌ Insufficient disk space: {free_gb:.1f}GB free, {min_disk_gb}GB required"
+            print(error_msg)
+            if self.logger:
+                self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            print(f"💽 Disk space check: {free_gb:.1f}GB free ✅")
+
+        # Log system info
+        if self.logger:
+            self.logger.info(f"System: {platform.system()} {platform.machine()}")
+            self.logger.info(f"Python: {sys.version}")
+            self.logger.info(f"Memory: {available_gb:.1f}GB available")
+            self.logger.info(f"Disk: {free_gb:.1f}GB free")
+
+    def _detect_and_configure_device(self):
+        """Detect and configure computation device (M1 Mac compatible)."""
+        device_config = self.config['system']['device']
+
+        if device_config == "auto":
+            # Auto-detect best available device
+            if torch.cuda.is_available():
+                self.device = "cuda"
+                device_name = torch.cuda.get_device_name()
+                print(f"🖥️  Using CUDA device: {device_name}")
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.device = "mps"
+                print(f"🍎 Using MPS device (Apple Silicon)")
             else:
-                question, contexts = self.data_loader.create_focused_context_set(
-                    ['technology', 'computer', 'science', 'research', 'data'],
-                    self.config.rag.num_contexts
-                )
-        else:  # random
-            if not self.data_loader.load_dataset():
-                print(f"⚠️ Failed to load {self.config.data.get_dataset_display_name()}, falling back to demo data")
-                question, contexts = self.data_loader.create_demo_dataset()
-            else:
-                question, contexts = self.data_loader.select_random_question_with_contexts(
-                    self.config.rag.num_contexts
-                )
-
-        print(f"\n🎯 Question: {question}")
-        print(f"📚 Contexts: {len(contexts)}")
-
-        # Ingest contexts first
-        print("\n📚 Ingesting contexts into RAG system...")
-        ingest_time = self.rag_system.ingest_contexts(contexts)
-        print(f"✅ Contexts ingested in {ingest_time:.2f}s")
-
-        # Run RAG retrieval
-        print("\n🔍 Running semantic graph traversal...")
-        retrieved_texts, traversal_steps, analysis = self.rag_system.retrieve(
-            question, top_k=self.config.rag.retrieval_top_k
-        )
-
-        # Store results
-        self.last_question = question
-        self.last_contexts = contexts
-        self.last_retrieved_texts = retrieved_texts
-        self.last_traversal_steps = traversal_steps
-        self.last_analysis = analysis
-
-        total_time = time.time() - start_time
-
-        print(f"\n✅ Demo completed in {total_time:.2f}s")
-        print(f"📊 Retrieved {len(retrieved_texts)} texts from {len(traversal_steps)} traversal steps")
-
-        # Show key analysis metrics
-        if analysis.get('reranking_improvement_percent', 0) != 0:
-            improvement = analysis['reranking_improvement_percent']
-            if improvement > 0:
-                print(f"🎯 Reranking improved results by {improvement:.1f}%")
-            else:
-                print(f"📊 Original traversal order was already optimal")
-
-        if analysis.get('sliding_window_enabled'):
-            print(f"🪟 Used 3-sentence forward-looking sliding windows")
-
-        print(f"🔗 Graph: {analysis['graph_parameters']['top_k_per_sentence']} connections/sentence, {analysis['graph_parameters']['cross_doc_k']} cross-doc, threshold: {analysis['graph_parameters']['similarity_threshold']}")
-
-        return {
-            'question': question,
-            'contexts': contexts,
-            'retrieved_texts': retrieved_texts,
-            'traversal_steps': traversal_steps,
-            'analysis': analysis,
-            'total_time': total_time
-        }
-
-    def create_2d_visualization(self, save: bool = None) -> plt.Figure:
-        """Create 2D matplotlib visualization of the last demo"""
-        if not self.last_traversal_steps:
-            print("⚠️ No traversal data available. Run a demo first.")
-            return plt.Figure()
-
-        print("🎨 Creating 2D visualization...")
-
-        save_path = None
-        if save or (save is None and self.config.viz.save_plots):
-            save_path = os.path.join(self.config.viz.output_dir, "traversal_2d.png")
-
-        fig = self.visualizer.create_2d_visualization(
-            self.rag_system,
-            self.last_question,
-            self.last_traversal_steps,
-            max_steps=self.config.viz.max_steps_shown,
-            save_path=save_path
-        )
-
-        if save_path:
-            print(f"💾 2D visualization saved to {save_path}")
-
-        return fig
-
-    def create_3d_visualization(self, method: str = "pca") -> go.Figure:
-        """Create 3D plotly visualization of the last demo"""
-        if not self.last_traversal_steps:
-            print("⚠️ No traversal data available. Run a demo first.")
-            return go.Figure()
-
-        print(f"🎨 Creating 3D visualization using {method.upper()}...")
-
-        fig = self.visualizer.create_3d_visualization(
-            self.last_question,
-            self.last_traversal_steps,
-            method=method,
-            max_steps=self.config.viz.max_steps_shown
-        )
-
-        if self.config.viz.save_plots:
-            save_path = os.path.join(self.config.viz.output_dir, f"traversal_3d_{method}.html")
-            fig.write_html(save_path)
-            print(f"💾 3D visualization saved to {save_path}")
-
-        return fig
-
-    def create_analysis_charts(self) -> go.Figure:
-        """Create analysis charts for the last demo"""
-        if not self.last_analysis:
-            print("⚠️ No analysis data available. Run a demo first.")
-            return go.Figure()
-
-        print("📊 Creating analysis charts...")
-
-        fig = self.visualizer.create_analysis_charts(self.last_analysis)
-
-        if self.config.viz.save_plots:
-            save_path = os.path.join(self.config.viz.output_dir, "analysis_charts.html")
-            fig.write_html(save_path)
-            print(f"💾 Analysis charts saved to {save_path}")
-
-        return fig
-
-    def run_ragas_evaluation(self) -> EvaluationResults:
-        """
-        Run RAGAS evaluation on the configured dataset.
-
-        Updated to work with any dataset (WikiEval, Natural Questions, etc.)
-        """
-        print("🔍 Starting RAGAS Evaluation")
-        print(f"📊 Using dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 50)
-
-        # Load evaluation dataset using the configured data loader
-        if not self.data_loader.load_dataset():
-            print(f"⚠️ Could not load {self.config.data.get_dataset_display_name()} data for evaluation")
-            return EvaluationResults(
-                context_precision=0.0,
-                context_recall=0.0,
-                faithfulness=0.0,
-                answer_relevancy=0.0,
-                ragas_score=0.0,
-                ingest_time=0.0,
-                eval_time=0.0,
-                num_samples=0,
-                error=f"Could not load {self.config.data.get_dataset_display_name()} data"
-            )
-
-        eval_dataset = self.data_loader.get_evaluation_dataset(self.config.data.max_eval_samples)
-
-        print(f"📊 Evaluation dataset: {eval_dataset['name']}")
-        print(f"📄 Documents: {len(eval_dataset['documents'])}")
-        print(f"❓ Queries: {len(eval_dataset['queries'])}")
-
-        # Initialize evaluator
-        evaluator = RAGASEvaluator(self.config.models, self.config.data.max_eval_samples)
-
-        # Run evaluation
-        results = evaluator.benchmark_rag_system(
-            self.rag_system,
-            eval_dataset,
-            f"Semantic Graph RAG ({self.config.data.get_dataset_display_name()})"
-        )
-
-        # Print results
-        print_evaluation_results(results, f"Semantic Graph RAG ({self.config.data.get_dataset_display_name()})")
-
-        return results
-
-    def run_complete_pipeline(self, demo_type: str = "random",
-                             show_2d: bool = True,
-                             show_3d: bool = True,
-                             show_analysis: bool = True,
-                             run_evaluation: bool = False) -> Dict:
-        """
-        Run the complete research pipeline with the configured dataset.
-
-        Args:
-            demo_type: Type of demo to run
-            show_2d: Whether to create 2D visualization
-            show_3d: Whether to create 3D visualization
-            show_analysis: Whether to create analysis charts
-            run_evaluation: Whether to run RAGAS evaluation
-
-        Returns:
-            Dictionary with all results
-        """
-        print("🚀 STARTING COMPLETE RESEARCH PIPELINE")
-        print(f"📊 Dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 70)
-
-        results = {}
-
-        # Step 1: Run demo
-        print("STEP 1: Running RAG Demo")
-        print("-" * 30)
-        demo_results = self.run_single_demo(demo_type)
-        results['demo'] = demo_results
-
-        # Step 2: Create visualizations
-        if show_2d:
-            print("\nSTEP 2: Creating 2D Visualization")
-            print("-" * 30)
-            fig_2d = self.create_2d_visualization()
-            results['fig_2d'] = fig_2d
-
-            # Show plot if not saving
-            if not self.config.viz.save_plots:
-                plt.show()
-
-        if show_3d:
-            print("\nSTEP 3: Creating 3D Visualization")
-            print("-" * 30)
-            fig_3d = self.create_3d_visualization()
-            results['fig_3d'] = fig_3d
-            fig_3d.show()
-
-        if show_analysis:
-            print("\nSTEP 4: Creating Analysis Charts")
-            print("-" * 30)
-            fig_analysis = self.create_analysis_charts()
-            results['fig_analysis'] = fig_analysis
-            fig_analysis.show()
-
-        # Step 5: Run evaluation
-        if run_evaluation:
-            print("\nSTEP 5: Running RAGAS Evaluation")
-            print("-" * 30)
-            eval_results = self.run_ragas_evaluation()
-            results['evaluation'] = eval_results
-
-        print("\n✅ COMPLETE PIPELINE FINISHED")
-        print(f"📊 Dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 70)
-
-        return results
-
-# Enhanced convenience functions for easy notebook usage
-def quick_demo(demo_type: str = "random",
-               dataset_name: str = "wikieval",
-               openai_api_key: Optional[str] = None,
-               config_type: str = "default") -> Dict:
-    """
-    Quick demo function for notebook usage with dataset selection.
-
-    Args:
-        demo_type: "demo", "random", or "focused"
-        dataset_name: "wikieval" or "natural_questions"
-        openai_api_key: OpenAI API key
-        config_type: "default" or "demo"
-
-    Returns:
-        Dictionary with results
-    """
-    config = get_config(config_type, openai_api_key=openai_api_key, dataset_name=dataset_name)
-    pipeline = ResearchPipeline(config)
-    return pipeline.run_single_demo(demo_type)
-
-def quick_visualization(demo_type: str = "random",
-                       dataset_name: str = "wikieval",
-                       openai_api_key: Optional[str] = None,
-                       show_2d: bool = True,
-                       show_3d: bool = True) -> Dict:
-    """
-    Quick visualization function for notebook usage with dataset selection.
-
-    Args:
-        demo_type: Type of demo to run
-        dataset_name: "wikieval" or "natural_questions"
-        openai_api_key: OpenAI API key
-        show_2d: Whether to show 2D visualization
-        show_3d: Whether to show 3D visualization
-
-    Returns:
-        Dictionary with results and figures
-    """
-    config = get_config("demo", openai_api_key=openai_api_key, dataset_name=dataset_name)
-    pipeline = ResearchPipeline(config)
-
-    # Run demo
-    demo_results = pipeline.run_single_demo(demo_type)
-
-    results = {'demo': demo_results}
-
-    # Create visualizations
-    if show_2d:
-        fig_2d = pipeline.create_2d_visualization()
-        results['fig_2d'] = fig_2d
-        plt.show()
-
-    if show_3d:
-        fig_3d = pipeline.create_3d_visualization()
-        results['fig_3d'] = fig_3d
-        fig_3d.show()
-
-    return results
-
-def full_evaluation_pipeline(openai_api_key: str,
-                            dataset_name: str = "wikieval",
-                            demo_type: str = "focused",
-                            max_eval_samples: int = 10) -> Dict:
-    """
-    Full evaluation pipeline including RAGAS assessment with dataset selection.
-
-    Args:
-        openai_api_key: OpenAI API key (required for RAGAS)
-        dataset_name: "wikieval" or "natural_questions"
-        demo_type: Type of demo to run
-        max_eval_samples: Maximum samples for evaluation
-
-    Returns:
-        Dictionary with all results
-    """
-    # Use dataset-specific configuration if available
-    config_type = dataset_name if dataset_name in ["wikieval", "natural_questions"] else "demo"
-
-    config = get_config(config_type,
-                       openai_api_key=openai_api_key,
-                       dataset_name=dataset_name,
-                       max_eval_samples=max_eval_samples)
-
-    pipeline = ResearchPipeline(config)
-
-    return pipeline.run_complete_pipeline(
-        demo_type=demo_type,
-        show_2d=True,
-        show_3d=True,
-        show_analysis=True,
-        run_evaluation=True
-    )
-
-def print_pipeline_summary():
-    """Print a summary of available pipeline functions with dataset options"""
-    print("🔬 SEMANTIC GRAPH RAG RESEARCH PIPELINE")
-    print("=" * 50)
-    print()
-    print("📚 Available Datasets:")
-    print("   • WikiEval: 50 human-annotated Wikipedia QA pairs")
-    print("   • Natural Questions: Real Google queries with Wikipedia answers")
-    print()
-    print("📚 Available Functions:")
-    print()
-    print("1. quick_demo(demo_type='random', dataset_name='wikieval')")
-    print("   - Run a single RAG demonstration on specified dataset")
-    print("   - demo_type: 'demo', 'random', or 'focused'")
-    print("   - dataset_name: 'wikieval' or 'natural_questions'")
-    print()
-    print("2. quick_visualization(dataset_name='wikieval', show_2d=True, show_3d=True)")
-    print("   - Run demo + create visualizations on specified dataset")
-    print("   - Automatically shows plots")
-    print()
-    print("3. full_evaluation_pipeline(openai_api_key, dataset_name='wikieval')")
-    print("   - Complete pipeline with RAGAS evaluation")
-    print("   - Requires OpenAI API key")
-    print()
-    print("4. ResearchPipeline(config) - for advanced usage")
-    print("   - Full control over configuration and dataset selection")
-    print("   - Run individual components")
-    print()
-    print("💡 Example notebook usage:")
-    print("   from utils.pipeline import quick_visualization")
-    print("   results = quick_visualization(dataset_name='natural_questions')")
-    print("   results = quick_demo('focused', dataset_name='wikieval')")
+                self.device = "cpu"
+                print(f"💻 Using CPU device")
+        else:
+            # Use specified device
+            self.device = device_config
+            print(f"🎯 Using specified device: {self.device}")
+
+        # Validate device availability
+        if self.device == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("CUDA device specified but not available")
+        elif self.device == "mps" and not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
+            raise RuntimeError("MPS device specified but not available")
+
+        # Log device info
+        if self.logger:
+            self.logger.info(f"Device configured: {self.device}")
+            if self.device == "cuda":
+                self.logger.info(f"CUDA device: {torch.cuda.get_device_name()}")
+                self.logger.info(f"CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024 ** 3:.1f}GB")
+
+    def _validate_config(self):
+        """Validate configuration parameters."""
+        try:
+            # Validate required sections
+            required_sections = ['experiment', 'system', 'directories', 'logging']
+            for section in required_sections:
+                if section not in self.config:
+                    raise ValueError(f"Missing required config section: {section}")
+
+            # Validate model names (basic check)
+            for model in self.config['models']['embedding_models']:
+                if not isinstance(model, str) or len(model) == 0:
+                    raise ValueError(f"Invalid embedding model: {model}")
+
+            # Validate numeric parameters
+            if self.config['models']['embedding_batch_size'] <= 0:
+                raise ValueError("embedding_batch_size must be positive")
+
+            if self.config['chunking']['window_size'] <= 0:
+                raise ValueError("window_size must be positive")
+
+            # Validate execution mode
+            valid_modes = ['full_pipeline', 'data_only', 'embedding_only', 'evaluation_only', 'visualization_only']
+            if self.config['execution']['mode'] not in valid_modes:
+                raise ValueError(f"Invalid execution mode. Must be one of: {valid_modes}")
+
+            print(f"✅ Configuration validated")
+            if self.logger:
+                self.logger.info("Configuration validation passed")
+
+        except Exception as e:
+            error_msg = f"Configuration validation failed: {e}"
+            print(f"❌ {error_msg}")
+            if self.logger:
+                self.logger.error(error_msg)
+            raise
+
+
+def main():
+    """Main entry point for the pipeline."""
+    try:
+        # Initialize and run pipeline
+        pipeline = SemanticRAGPipeline()
+        results = pipeline.pipe()
+
+        print("\n" + "=" * 50)
+        print("🎉 Pipeline completed successfully!")
+        print(f"📋 Experiment ID: {results['experiment_id']}")
+        print(f"⏱️  Execution time: {results['execution_time']}")
+
+    except Exception as e:
+        print(f"\n❌ Pipeline failed: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

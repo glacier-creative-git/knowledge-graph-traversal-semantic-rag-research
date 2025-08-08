@@ -1,31 +1,42 @@
-# Core dependencies for semantic chunking research
-numpy>=1.24.0
-matplotlib>=3.6.0
-scipy>=1.10.0
-scikit-learn>=1.2.0
+# Core dependencies for Semantic RAG Pipeline
+# ==========================================
 
-# For embeddings and NLP
-sentence-transformers>=2.2.0
-transformers>=4.25.0
+# Configuration and data handling
+PyYAML>=6.0
+numpy>=1.21.0
+pandas>=1.3.0
+
+# Machine learning and embeddings
 torch>=2.0.0
+sentence-transformers>=2.2.0
 
-# For notebook and visualization
-jupyter>=1.0.0
-ipywidgets>=8.0.0
-plotly>=5.12.0
-seaborn>=0.12.0
+# System monitoring
+psutil>=5.8.0
 
-# For text processing
-nltk>=3.8.0
-spacy>=3.5.0
+# Sparse matrix operations (for similarity storage)
+scipy>=1.7.0
 
-# Optional: For advanced visualizations
-networkx>=3.0.0
+# Text processing and NLP
+nltk>=3.7
+regex>=2022.3.2
 
-# Development and testing
-pytest>=7.2.0
-black>=22.0.0
-isort>=5.11.0
+# LangChain Wikipedia loader (more reliable than wikipedia library)
+langchain-community>=0.0.10
+langchain-core>=0.1.0
 
-# For data handling
-pandas>=1.5.0
+# Text processing
+beautifulsoup4>=4.11.0
+requests>=2.28.0
+
+# Visualization (for later phases)
+matplotlib>=3.5.0
+seaborn>=0.11.0
+plotly>=5.0.0
+
+# Logging and utilities
+tqdm>=4.62.0
+
+# Future dependencies (will be needed for later phases)
+# scikit-learn>=1.0.0  # For clustering and evaluation
+# openai>=1.0.0       # For OpenAI embeddings
+# ragas>=0.1.0        # For RAG evaluation
