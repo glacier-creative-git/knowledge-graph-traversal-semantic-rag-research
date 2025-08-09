@@ -22,6 +22,11 @@ import torch
 
 # Import engines
 from wiki import WikiEngine
+from chunking import ChunkEngine
+from models import EmbeddingEngine
+from similarity import SimilarityEngine
+from retrieval import RetrievalEngine
+from datasets import DatasetEngine
 
 
 class SemanticRAGPipeline:
@@ -39,6 +44,16 @@ class SemanticRAGPipeline:
         # Data storage for pipeline phases
         self.articles = []
         self.corpus_stats = {}
+        self.chunks = []
+        self.chunk_stats = {}
+        self.embeddings = {}  # Dict[model_name, List[ChunkEmbedding]]
+        self.embedding_stats = {}
+        self.similarities = {}  # Dict[model_name, similarity_data]
+        self.similarity_stats = {}
+        self.retrieval_engine = None  # RetrievalEngine instance
+        self.retrieval_stats = {}
+        self.dataset = []  # List[EvaluationQuestion]
+        self.dataset_stats = {}
 
     def pipe(self) -> Dict[str, Any]:
         """
@@ -58,8 +73,36 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 2: Data Acquisition")
 
+            # Phase 3: Embedding Generation
+            if self.config['execution']['mode'] in ['full_pipeline', 'embedding_only']:
+                if 'embedding_generation' not in self.config['execution']['skip_phases']:
+                    self._phase_3_embedding_generation()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 3: Embedding Generation")
+
+            # Phase 4: Similarity Matrix Construction
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'similarity_matrices' not in self.config['execution']['skip_phases']:
+                    self._phase_4_similarity_matrices()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 4: Similarity Matrix Construction")
+
+            # Phase 5: Retrieval Graph Construction
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'retrieval_graphs' not in self.config['execution']['skip_phases']:
+                    self._phase_5_retrieval_graphs()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 5: Retrieval Graph Construction")
+
+            # Phase 6: Dataset Generation
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'dataset_generation' not in self.config['execution']['skip_phases']:
+                    self._phase_6_dataset_generation()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 6: Dataset Generation")
+
             # TODO: Add remaining phases
-            # self._phase_3_embedding_generation()
+            # self._phase_7_rag_evaluation()
             # etc.
 
             self.logger.info("Pipeline completed successfully!")
@@ -154,6 +197,255 @@ class SemanticRAGPipeline:
             # Restore original caching setting if we changed it
             if force_recompute:
                 self.config['wikipedia']['use_cached_articles'] = original_use_cached
+
+    def _phase_3_embedding_generation(self):
+        """Phase 3: Embedding Generation"""
+        self.logger.info("🧠 Starting Phase 3: Embedding Generation")
+
+        # Check if we have articles from Phase 2
+        if not self.articles:
+            self.logger.warning("No articles available from Phase 2. Loading from cache...")
+            # Try to load articles from cache
+            wiki_engine = WikiEngine(self.config, self.logger)
+            wiki_path = Path(self.config['directories']['data']) / "wiki.json"
+            if wiki_path.exists():
+                self.articles = wiki_engine._load_cached_articles(wiki_path)
+            else:
+                raise RuntimeError("No articles available and no cache found. Please run Phase 2 first.")
+
+        try:
+            # Step 1: Create chunks using ChunkEngine
+            self.logger.info("✂️  Creating chunks from articles")
+            chunk_engine = ChunkEngine(self.config, self.logger)
+            chunks = chunk_engine.create_chunks(self.articles)
+            
+            if not chunks:
+                raise RuntimeError("No chunks were created from articles")
+            
+            # Get and log chunk statistics
+            chunk_stats = chunk_engine.get_chunking_statistics(chunks)
+            self.logger.info("📊 Chunk Statistics:")
+            self.logger.info(f"   Total chunks: {chunk_stats['total_chunks']:,}")
+            self.logger.info(f"   From articles: {chunk_stats['total_articles']:,}")
+            self.logger.info(f"   Avg chunks/article: {chunk_stats['avg_chunks_per_article']:.1f}")
+            self.logger.info(f"   Avg words/chunk: {chunk_stats['chunk_length_stats']['mean_words']:.1f}")
+            self.logger.info(f"   Avg sentences/chunk: {chunk_stats['sentence_count_stats']['mean_sentences']:.1f}")
+            
+            # Store chunks in pipeline
+            self.chunks = chunks
+            self.chunk_stats = chunk_stats
+            
+            # Step 2: Generate embeddings using EmbeddingEngine
+            self.logger.info("✨ Generating embeddings for all models")
+            embedding_engine = EmbeddingEngine(self.config, self.logger)
+            
+            # Check if we should force recompute embeddings
+            force_recompute = 'embeddings' in self.config['execution'].get('force_recompute', [])
+            
+            embeddings = embedding_engine.generate_embeddings(chunks, force_recompute=force_recompute)
+            
+            if not embeddings:
+                raise RuntimeError("No embeddings were generated")
+            
+            # Get and log embedding statistics
+            embedding_stats = embedding_engine.get_embedding_statistics(embeddings)
+            self.logger.info("📈 Embedding Statistics:")
+            for model_name, stats in embedding_stats.items():
+                self.logger.info(f"   {model_name}:")
+                self.logger.info(f"      Chunks: {stats['total_chunks']:,}")
+                self.logger.info(f"      Dimensions: {stats['embedding_dimension']}")
+                self.logger.info(f"      Mean norm: {stats['mean_norm']:.3f}")
+                self.logger.info(f"      Std norm: {stats['std_norm']:.3f}")
+            
+            # Store embeddings in pipeline
+            self.embeddings = embeddings
+            self.embedding_stats = embedding_stats
+            
+            self.logger.info("✅ Phase 3 completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 3 failed: {e}")
+            raise
+
+    def _phase_4_similarity_matrices(self):
+        """Phase 4: Similarity Matrix Construction"""
+        self.logger.info("🕰 Starting Phase 4: Similarity Matrix Construction")
+
+        # Check if we have embeddings from Phase 3
+        if not self.embeddings:
+            self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
+            # Try to load embeddings from cache
+            embedding_engine = EmbeddingEngine(self.config, self.logger)
+            # We'd need to reload chunks and embeddings here
+            raise RuntimeError("No embeddings available and no cache loading implemented yet. Please run Phase 3 first.")
+
+        try:
+            # Initialize SimilarityEngine
+            self.logger.info("🔗 Initializing similarity engine")
+            similarity_engine = SimilarityEngine(self.config, self.logger)
+            
+            # Check if we should force recompute similarities
+            force_recompute = 'similarities' in self.config['execution'].get('force_recompute', [])
+            
+            # Compute similarity matrices
+            self.logger.info(f"🎯 Computing similarity matrices for {len(self.embeddings)} models")
+            similarities = similarity_engine.compute_similarity_matrices(self.embeddings, force_recompute=force_recompute)
+            
+            if not similarities:
+                raise RuntimeError("No similarity matrices were computed")
+            
+            # Get and log similarity statistics
+            similarity_stats = similarity_engine.get_similarity_statistics(similarities)
+            self.logger.info("📊 Similarity Matrix Statistics:")
+            for model_name, stats in similarity_stats.items():
+                self.logger.info(f"   {model_name}:")
+                self.logger.info(f"      Total chunks: {stats['total_chunks']:,}")
+                self.logger.info(f"      Intra-document connections: {stats['connections']['intra_document']:,}")
+                self.logger.info(f"      Inter-document connections: {stats['connections']['inter_document']:,}")
+                self.logger.info(f"      Total connections: {stats['connections']['total']:,}")
+                self.logger.info(f"      Sparsity ratio: {stats['sparsity_ratio']:.6f}")
+                self.logger.info(f"      Memory usage: {stats['memory_usage_mb']:.1f} MB")
+                self.logger.info(f"      Computation time: {stats['computation_time']:.2f}s")
+                
+                if 'matrix_stats' in stats:
+                    matrix_stats = stats['matrix_stats']
+                    self.logger.info(f"      Matrix shape: {matrix_stats['shape']}")
+                    self.logger.info(f"      Non-zero entries: {matrix_stats['nnz']:,}")
+                    self.logger.info(f"      Matrix density: {matrix_stats['density']:.8f}")
+            
+            # Store similarities in pipeline
+            self.similarities = similarities
+            self.similarity_stats = similarity_stats
+            
+            self.logger.info("✅ Phase 4 completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 4 failed: {e}")
+            raise
+
+    def _phase_5_retrieval_graphs(self):
+        """Phase 5: Retrieval Graph Construction"""
+        self.logger.info("🕰 Starting Phase 5: Retrieval Graph Construction")
+
+        # Check if we have similarities from Phase 4
+        if not self.similarities:
+            self.logger.warning("No similarity matrices available from Phase 4. Loading from cache...")
+            # We'd need to reload similarities here - for now, throw error
+            raise RuntimeError("No similarity matrices available. Please run Phase 4 first.")
+        
+        # Check if we have embeddings for retrieval
+        if not self.embeddings:
+            self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
+            raise RuntimeError("No embeddings available. Please run Phase 3 first.")
+
+        try:
+            # Initialize RetrievalEngine
+            self.logger.info("🎯 Initializing retrieval engine")
+            retrieval_engine = RetrievalEngine(
+                self.config, 
+                self.embeddings, 
+                self.similarities, 
+                self.logger
+            )
+            
+            # Get retrieval statistics
+            retrieval_stats = retrieval_engine.get_retrieval_statistics()
+            self.logger.info("📊 Retrieval Engine Statistics:")
+            self.logger.info(f"   Algorithm: {retrieval_stats['algorithm']}")
+            self.logger.info(f"   Models available: {retrieval_stats['models_available']}")
+            for model, count in retrieval_stats['total_chunks_per_model'].items():
+                self.logger.info(f"   {model}: {count:,} chunks")
+            
+            if 'semantic_traversal_config' in retrieval_stats:
+                config = retrieval_stats['semantic_traversal_config']
+                self.logger.info(f"   Traversal config:")
+                self.logger.info(f"      Max hops: {config['max_hops']}")
+                self.logger.info(f"      Num anchors: {config['num_anchors']}")
+                self.logger.info(f"      Similarity threshold: {config['similarity_threshold']}")
+                self.logger.info(f"      Max results: {config['max_results']}")
+            
+            # Store retrieval engine in pipeline
+            self.retrieval_engine = retrieval_engine
+            self.retrieval_stats = retrieval_stats
+            
+            self.logger.info("✅ Phase 5 completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 5 failed: {e}")
+            raise
+
+    def _phase_6_dataset_generation(self):
+        """Phase 6: Dataset Generation"""
+        self.logger.info("📊 Starting Phase 6: Dataset Generation")
+
+        # Check if we have embeddings from Phase 3
+        if not self.embeddings:
+            self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
+            raise RuntimeError("No embeddings available. Please run Phase 3 first.")
+
+        try:
+            # Initialize DatasetEngine
+            self.logger.info("📈 Initializing dataset engine")
+            dataset_engine = DatasetEngine(
+                self.config, 
+                self.embeddings, 
+                self.logger
+            )
+            
+            # Check if we should force recompute datasets
+            force_recompute = 'datasets' in self.config['execution'].get('force_recompute', [])
+            
+            # Generate evaluation dataset
+            self.logger.info(f"📝 Generating evaluation dataset")
+            dataset = dataset_engine.generate_dataset(force_recompute=force_recompute)
+            
+            if not dataset:
+                raise RuntimeError("No questions were generated for the dataset")
+            
+            # Get and log dataset statistics
+            dataset_stats = dataset_engine.get_dataset_statistics(dataset)
+            self.logger.info("📊 Dataset Generation Statistics:")
+            self.logger.info(f"   Total questions: {dataset_stats['total_questions']:,}")
+            
+            if 'by_generation_method' in dataset_stats:
+                self.logger.info(f"   By generation method:")
+                for method, count in dataset_stats['by_generation_method'].items():
+                    self.logger.info(f"      {method}: {count:,}")
+            
+            if 'by_question_type' in dataset_stats:
+                self.logger.info(f"   By question type:")
+                for q_type, count in dataset_stats['by_question_type'].items():
+                    self.logger.info(f"      {q_type}: {count:,}")
+            
+            if 'by_expected_advantage' in dataset_stats:
+                self.logger.info(f"   By expected advantage:")
+                for advantage, count in dataset_stats['by_expected_advantage'].items():
+                    self.logger.info(f"      {advantage}: {count:,}")
+            
+            if 'by_difficulty' in dataset_stats:
+                self.logger.info(f"   By difficulty:")
+                for difficulty, count in dataset_stats['by_difficulty'].items():
+                    self.logger.info(f"      {difficulty}: {count:,}")
+            
+            if 'question_length_stats' in dataset_stats:
+                length_stats = dataset_stats['question_length_stats']
+                self.logger.info(f"   Question length: avg={length_stats['mean']:.0f}, min={length_stats['min']}, max={length_stats['max']}")
+            
+            # Show sample questions
+            self.logger.info(f"   Sample questions:")
+            for i, question in enumerate(dataset[:3]):
+                self.logger.info(f"      {i+1}. [{question.question_type}] {question.question_text}")
+                self.logger.info(f"         Expected advantage: {question.expected_advantage}")
+            
+            # Store dataset in pipeline
+            self.dataset = dataset
+            self.dataset_stats = dataset_stats
+            
+            self.logger.info("✅ Phase 6 completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 6 failed: {e}")
+            raise
 
     def _load_config(self):
         """Load configuration from YAML file."""
@@ -319,6 +611,9 @@ class SemanticRAGPipeline:
             if self.device == "cuda":
                 self.logger.info(f"CUDA device: {torch.cuda.get_device_name()}")
                 self.logger.info(f"CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024 ** 3:.1f}GB")
+        
+        # Update config with resolved device so other components can use it
+        self.config['system']['device'] = self.device
 
     def _validate_config(self):
         """Validate configuration parameters."""

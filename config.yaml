@@ -86,11 +86,59 @@ chunking:
 retrieval:
   algorithm: "semantic_traversal"  # semantic_traversal, baseline_vector, hybrid
   cache_graphs: true
+  
+  # Semantic Traversal Parameters
+  semantic_traversal:
+    num_anchors: 3                    # Number of anchor points from baseline
+    max_hops: 3                      # Maximum traversal hops from each anchor
+    similarity_threshold: 0.3        # Minimum similarity to continue traversal
+    max_results: 10                  # Maximum chunks to return after reranking
+    
+  # Baseline Vector Parameters (for anchor finding)
+  baseline_vector:
+    top_k: 10                        # Top-k for anchor finding
+    similarity_threshold: 0.5        # Minimum similarity for anchors
+
+# Similarity Matrix Configuration
+similarities:
+  use_cached: true
+  similarity_metric: "cosine"  # cosine, dot_product, euclidean
+  intra_document:
+    enabled: true
+    top_k: 10  # Top K most similar chunks within same document
+  inter_document:
+    enabled: true
+    top_x: 5   # Top X most similar chunks from other documents
+  batch_size: 1000  # Batch size for similarity computation
+  max_memory_gb: 4  # Memory limit for matrix computation
 
 # Dataset configuration (will expand later)
 datasets:
   use_cached: true
-  generation_method: "ragas"  # ragas, custom, mixed
+  generation_method: "mixed"  # ragas, custom, mixed
+  
+  # RAGAS Configuration
+  ragas:
+    num_questions: 50
+    question_types: ["factual", "reasoning", "multi_context"]
+    difficulty_levels: ["easy", "medium", "hard"]
+    
+  # Custom Question Generation
+  custom:
+    num_questions: 100
+    focus_areas:
+      - "conceptual_relationships" 
+      - "multi_hop_reasoning"
+      - "contextual_understanding" 
+      - "reading_flow"
+    semantic_bias: 0.7  # Favor semantic traversal advantages
+    
+  # Quality Control
+  validation:
+    min_answer_length: 50
+    max_answer_length: 500
+    require_multiple_chunks: true
+    manual_validation_sample: 0.1
 
 # Evaluation configuration (will expand later)
 evaluation:
