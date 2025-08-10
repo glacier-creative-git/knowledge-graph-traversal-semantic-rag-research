@@ -361,11 +361,13 @@ class RetrievalEngine:
     """Main engine for handling different retrieval algorithms."""
     
     def __init__(self, config: Dict[str, Any], embeddings: Dict[str, List[ChunkEmbedding]], 
-                 similarities: Dict[str, Dict[str, Any]], logger: Optional[logging.Logger] = None):
+                 similarities: Dict[str, Dict[str, Any]], logger: Optional[logging.Logger] = None,
+                 knowledge_graph: Optional[Any] = None):
         """Initialize the retrieval engine."""
         self.config = config
         self.embeddings = embeddings
         self.similarities = similarities
+        self.knowledge_graph = knowledge_graph
         self.logger = logger or logging.getLogger(__name__)
         self.retrieval_config = config['retrieval']
         
