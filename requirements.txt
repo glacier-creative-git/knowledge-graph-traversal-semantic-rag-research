@@ -20,6 +20,8 @@ scipy>=1.7.0
 # Text processing and NLP
 nltk>=3.7
 regex>=2022.3.2
+spacy>=3.4.0  # For named entity recognition
+scikit-learn>=1.1.0  # For TF-IDF and additional similarity metrics
 
 # LangChain Wikipedia loader (more reliable than wikipedia library)
 langchain-community>=0.0.10
@@ -40,3 +42,6 @@ tqdm>=4.62.0
 # Future dependencies (will be needed for later phases)
 # openai>=1.0.0       # For OpenAI embeddings
 # ragas>=0.1.0        # For RAG evaluation
+
+# Note: To use spaCy NER, download the English model:
+# python -m spacy download en_core_web_sm

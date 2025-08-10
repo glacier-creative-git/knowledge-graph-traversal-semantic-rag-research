@@ -1,0 +1,87 @@
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Logging initialized for experiment: semantic_rag_pipeline_20250809_201234_fff4e8c4
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Config: {'name': 'semantic_rag_pipeline', 'description': 'Semantic graph traversal RAG system', 'version': '1.0.0', 'tags': ['semantic_chunking', 'graph_traversal', 'rag']}
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - WARNING - ⚠️  Low memory: 4.9GB available, 8GB recommended
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - System: Darwin arm64
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Python: 3.12.3 (v3.12.3:f6650f9ad7, Apr  9 2024, 08:18:47) [Clang 13.0.0 (clang-1300.0.29.30)]
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Memory: 4.9GB available
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Disk: 34.4GB free
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Device configured: mps
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Configuration validation passed
+2025-08-09 20:12:34,910 - semantic_rag_pipeline - INFO - Phase 1 completed - Experiment ID: semantic_rag_pipeline_20250809_201234_fff4e8c4
+2025-08-09 20:12:34,921 - semantic_rag_pipeline - INFO - Loaded 39 cached articles
+2025-08-09 20:12:34,922 - semantic_rag_pipeline - INFO -   Sentences: 7,815
+2025-08-09 20:12:34,922 - semantic_rag_pipeline - INFO -   Words: 178,196
+2025-08-09 20:12:34,922 - semantic_rag_pipeline - INFO - 🧠 Starting Phase 3: Embedding Generation
+2025-08-09 20:12:34,922 - semantic_rag_pipeline - INFO - ✂️  Creating chunks from articles
+2025-08-09 20:12:34,922 - semantic_rag_pipeline - INFO - Creating sliding window chunks: window_size=3, overlap=1, step_size=2
+2025-08-09 20:12:35,015 - semantic_rag_pipeline - INFO - Created 3899 chunks from 39 articles
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO - 📊 Chunk Statistics:
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO -    Total chunks: 3,899
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO -    From articles: 36
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO -    Avg chunks/article: 108.3
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO -    Avg words/chunk: 63.1
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO -    Avg sentences/chunk: 3.0
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO - ✨ Generating embeddings for all models
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO - EmbeddingEngine initialized with device: mps
+2025-08-09 20:12:35,025 - semantic_rag_pipeline - INFO - Processing model: sentence-transformers/all-mpnet-base-v2
+2025-08-09 20:12:35,796 - semantic_rag_pipeline - INFO - Loading cached embeddings for sentence-transformers/all-mpnet-base-v2
+2025-08-09 20:12:36,583 - semantic_rag_pipeline - INFO - Processing model: sentence-transformers/all-MiniLM-L6-v2
+2025-08-09 20:12:36,933 - semantic_rag_pipeline - INFO - Loading cached embeddings for sentence-transformers/all-MiniLM-L6-v2
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO - 📈 Embedding Statistics:
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -    sentence-transformers/all-mpnet-base-v2:
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Chunks: 3,899
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Dimensions: 768
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Mean norm: 1.000
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Std norm: 0.000
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -    sentence-transformers/all-MiniLM-L6-v2:
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Chunks: 3,899
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Dimensions: 384
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Mean norm: 1.000
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO -       Std norm: 0.000
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO - ✅ Phase 3 completed successfully
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO - 🕰 Starting Phase 4: Similarity Matrix Construction
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO - 🔗 Initializing similarity engine
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO - 🎯 Computing similarity matrices for 2 models
+2025-08-09 20:12:37,341 - semantic_rag_pipeline - INFO - Computing similarities for model: sentence-transformers/all-mpnet-base-v2
+2025-08-09 20:12:37,342 - semantic_rag_pipeline - INFO - Loading cached similarities for sentence-transformers/all-mpnet-base-v2
+2025-08-09 20:12:37,349 - semantic_rag_pipeline - INFO - Successfully loaded 3 similarity matrices from cache
+2025-08-09 20:12:37,349 - semantic_rag_pipeline - INFO - Computing similarities for model: sentence-transformers/all-MiniLM-L6-v2
+2025-08-09 20:12:37,350 - semantic_rag_pipeline - INFO - Loading cached similarities for sentence-transformers/all-MiniLM-L6-v2
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO - Successfully loaded 3 similarity matrices from cache
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO - 📊 Similarity Matrix Statistics:
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -    sentence-transformers/all-mpnet-base-v2:
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Total chunks: 3,899
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Intra-document connections: 38,852
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Inter-document connections: 19,495
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Total connections: 58,347
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Sparsity ratio: 0.003839
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Memory usage: 0.7 MB
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Computation time: 1.51s
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Matrix shape: (3899, 3899)
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Non-zero entries: 58,347
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Matrix density: 0.00383806
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -    sentence-transformers/all-MiniLM-L6-v2:
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Total chunks: 3,899
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Intra-document connections: 38,852
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Inter-document connections: 19,495
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Total connections: 58,347
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Sparsity ratio: 0.003839
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Memory usage: 0.7 MB
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Computation time: 1.45s
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Matrix shape: (3899, 3899)
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Non-zero entries: 58,347
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO -       Matrix density: 0.00383806
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO - ✅ Phase 4 completed successfully
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO - 🏗️  Starting Phase 5: Knowledge Graph Construction
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO - 🔨 Building fresh knowledge graph
+2025-08-09 20:12:37,355 - semantic_rag_pipeline - INFO - 🏗️  Building RAGAS-compatible knowledge graph
+2025-08-09 20:13:05,798 - semantic_rag_pipeline - INFO - ✅ Knowledge graph built: 3935 nodes, 3790758 relationships in 28.16s
+2025-08-09 20:13:05,809 - semantic_rag_pipeline - INFO - 💾 Saving knowledge graph to data/knowledge_graph.json
+2025-08-09 20:13:29,202 - semantic_rag_pipeline - INFO - 📊 Knowledge Graph Statistics:
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - INFO -    Total nodes: 3,935
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - INFO -    Total relationships: 3,790,758
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - INFO -    Node types: {'document': 36, 'chunk': 3899}
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - INFO -    Relationship types: {'contains': 3899, 'entity_similarity': 255192, 'thematic_similarity': 3531667}
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - INFO -    Build time: 28.16s
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - INFO - 🎯 Initializing enhanced retrieval engine with knowledge graph
+2025-08-09 20:13:29,203 - semantic_rag_pipeline - ERROR - ❌ Phase 5 failed: RetrievalEngine.__init__() got an unexpected keyword argument 'knowledge_graph'

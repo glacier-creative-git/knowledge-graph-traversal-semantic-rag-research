@@ -26,7 +26,8 @@ from chunking import ChunkEngine
 from models import EmbeddingEngine
 from similarity import SimilarityEngine
 from retrieval import RetrievalEngine
-from datasets import DatasetEngine
+from utils.datasets import DatasetEngine
+from knowledge_graph import KnowledgeGraphBuilder, KnowledgeGraph
 
 
 class SemanticRAGPipeline:
@@ -50,6 +51,8 @@ class SemanticRAGPipeline:
         self.embedding_stats = {}
         self.similarities = {}  # Dict[model_name, similarity_data]
         self.similarity_stats = {}
+        self.knowledge_graph = None  # KnowledgeGraph instance
+        self.kg_stats = {}
         self.retrieval_engine = None  # RetrievalEngine instance
         self.retrieval_stats = {}
         self.dataset = []  # List[EvaluationQuestion]
@@ -87,12 +90,12 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 4: Similarity Matrix Construction")
 
-            # Phase 5: Retrieval Graph Construction
+            # Phase 5: Knowledge Graph Construction
             if self.config['execution']['mode'] in ['full_pipeline']:
-                if 'retrieval_graphs' not in self.config['execution']['skip_phases']:
-                    self._phase_5_retrieval_graphs()
+                if 'knowledge_graph_construction' not in self.config['execution']['skip_phases']:
+                    self._phase_5_knowledge_graph_construction()
                 else:
-                    self.logger.info("⏭️  Skipping Phase 5: Retrieval Graph Construction")
+                    self.logger.info("⏭️  Skipping Phase 5: Knowledge Graph Construction")
 
             # Phase 6: Dataset Generation
             if self.config['execution']['mode'] in ['full_pipeline']:
@@ -323,36 +326,74 @@ class SemanticRAGPipeline:
             self.logger.error(f"❌ Phase 4 failed: {e}")
             raise
 
-    def _phase_5_retrieval_graphs(self):
-        """Phase 5: Retrieval Graph Construction"""
-        self.logger.info("🕰 Starting Phase 5: Retrieval Graph Construction")
+    def _phase_5_knowledge_graph_construction(self):
+        """Phase 5: Knowledge Graph Construction"""
+        self.logger.info("🏗️  Starting Phase 5: Knowledge Graph Construction")
 
-        # Check if we have similarities from Phase 4
-        if not self.similarities:
-            self.logger.warning("No similarity matrices available from Phase 4. Loading from cache...")
-            # We'd need to reload similarities here - for now, throw error
-            raise RuntimeError("No similarity matrices available. Please run Phase 4 first.")
+        # Check if we have required data from previous phases
+        if not self.chunks:
+            self.logger.warning("No chunks available from Phase 3. Loading from cache...")
+            raise RuntimeError("No chunks available. Please run Phase 3 first.")
         
-        # Check if we have embeddings for retrieval
         if not self.embeddings:
             self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
             raise RuntimeError("No embeddings available. Please run Phase 3 first.")
+        
+        if not self.similarities:
+            self.logger.warning("No similarity matrices available from Phase 4. Loading from cache...")
+            raise RuntimeError("No similarity matrices available. Please run Phase 4 first.")
 
         try:
-            # Initialize RetrievalEngine
-            self.logger.info("🎯 Initializing retrieval engine")
+            # Check if we should force recompute
+            force_recompute = 'knowledge_graph' in self.config['execution'].get('force_recompute', [])
+            
+            # Check cache
+            kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
+            if not force_recompute and kg_path.exists():
+                self.logger.info("📂 Loading cached knowledge graph")
+                self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
+                self.kg_stats = self.knowledge_graph.metadata
+            else:
+                # Build fresh knowledge graph
+                self.logger.info("🔨 Building fresh knowledge graph")
+                kg_builder = KnowledgeGraphBuilder(self.config, self.logger)
+                
+                self.knowledge_graph = kg_builder.build_knowledge_graph(
+                    self.chunks, 
+                    self.embeddings, 
+                    self.similarities
+                )
+                
+                # Save knowledge graph
+                self.logger.info(f"💾 Saving knowledge graph to {kg_path}")
+                self.knowledge_graph.save(str(kg_path))
+                
+                self.kg_stats = self.knowledge_graph.metadata
+            
+            # Log knowledge graph statistics
+            self.logger.info("📊 Knowledge Graph Statistics:")
+            self.logger.info(f"   Total nodes: {self.kg_stats['total_nodes']:,}")
+            self.logger.info(f"   Total relationships: {self.kg_stats['total_relationships']:,}")
+            self.logger.info(f"   Node types: {self.kg_stats['node_types']}")
+            self.logger.info(f"   Relationship types: {self.kg_stats['relationship_types']}")
+            self.logger.info(f"   Build time: {self.kg_stats.get('build_time', 0):.2f}s")
+            
+            # Initialize enhanced retrieval engine with knowledge graph
+            self.logger.info("🎯 Initializing enhanced retrieval engine with knowledge graph")
             retrieval_engine = RetrievalEngine(
                 self.config, 
                 self.embeddings, 
                 self.similarities, 
-                self.logger
+                self.logger,
+                knowledge_graph=self.knowledge_graph  # Pass KG to retrieval engine
             )
             
             # Get retrieval statistics
             retrieval_stats = retrieval_engine.get_retrieval_statistics()
-            self.logger.info("📊 Retrieval Engine Statistics:")
+            self.logger.info("📊 Enhanced Retrieval Engine Statistics:")
             self.logger.info(f"   Algorithm: {retrieval_stats['algorithm']}")
             self.logger.info(f"   Models available: {retrieval_stats['models_available']}")
+            self.logger.info(f"   Knowledge graph enabled: {self.knowledge_graph is not None}")
             for model, count in retrieval_stats['total_chunks_per_model'].items():
                 self.logger.info(f"   {model}: {count:,} chunks")
             

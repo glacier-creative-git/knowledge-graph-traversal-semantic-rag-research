@@ -82,10 +82,11 @@ chunking:
   window_size: 3
   overlap: 1
 
-# Basic retrieval configuration (will expand later)
+# Enhanced retrieval configuration with knowledge graph support
 retrieval:
   algorithm: "semantic_traversal"  # semantic_traversal, baseline_vector, hybrid
   cache_graphs: true
+  use_knowledge_graph: true         # Enable knowledge graph enhanced retrieval
   
   # Semantic Traversal Parameters
   semantic_traversal:
@@ -93,6 +94,7 @@ retrieval:
     max_hops: 3                      # Maximum traversal hops from each anchor
     similarity_threshold: 0.3        # Minimum similarity to continue traversal
     max_results: 10                  # Maximum chunks to return after reranking
+    relationship_types: ["entity_similarity", "thematic_similarity", "embedding_similarity"]  # KG relationships to use
     
   # Baseline Vector Parameters (for anchor finding)
   baseline_vector:
@@ -111,6 +113,52 @@ similarities:
     top_x: 5   # Top X most similar chunks from other documents
   batch_size: 1000  # Batch size for similarity computation
   max_memory_gb: 4  # Memory limit for matrix computation
+
+# Knowledge Graph Configuration
+knowledge_graph:
+  use_cached: true
+  
+  # Sparsity Configuration - Crucial for scalability
+  sparsity:
+    max_relationships_per_node: 25        # Hard limit per node
+    relationship_limits:
+      entity_similarity: 10               # Top 10 per node
+      thematic_similarity: 5              # Top 5 per node  
+      embedding_similarity: 10            # Top 10 per node
+      hierarchical: 1000                  # Unlimited for doc->chunk
+    min_thresholds:
+      entity_similarity: 0.3              # Much higher threshold
+      thematic_similarity: 0.6            # Much higher threshold
+      embedding_similarity: 0.5           # Higher threshold
+  
+  extractors:
+    ner:
+      enabled: true
+      entity_types: ["PERSON", "ORG", "GPE", "MISC"]
+    keyphrases:
+      enabled: true
+      max_features: 20
+    themes:
+      enabled: true
+      max_themes: 5
+    summary:
+      enabled: true
+      max_sentences: 2
+  relationships:
+    entity_similarity:
+      enabled: true
+      min_similarity: 0.3
+      entity_types: ["PERSON", "ORG", "GPE", "MISC"]
+    thematic_similarity:
+      enabled: true
+      min_similarity: 0.6
+    embedding_similarity:
+      enabled: true
+      min_similarity: 0.5
+    hierarchical:
+      enabled: true
+  export_format: "json"
+  save_path: "data/knowledge_graph.json"
 
 # Dataset configuration (will expand later)
 datasets:
