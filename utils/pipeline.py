@@ -26,7 +26,7 @@ from chunking import ChunkEngine
 from models import EmbeddingEngine
 from similarity import SimilarityEngine
 from retrieval import RetrievalEngine
-from utils.datasets import DatasetEngine
+from questions import QuestionEngine
 from knowledge_graph import KnowledgeGraphBuilder, KnowledgeGraph
 
 
@@ -55,8 +55,8 @@ class SemanticRAGPipeline:
         self.kg_stats = {}
         self.retrieval_engine = None  # RetrievalEngine instance
         self.retrieval_stats = {}
-        self.dataset = []  # List[EvaluationQuestion]
-        self.dataset_stats = {}
+        self.questions = []  # List[EvaluationQuestion] from QuestionEngine
+        self.question_stats = {}
 
     def pipe(self) -> Dict[str, Any]:
         """
@@ -97,12 +97,12 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 5: Knowledge Graph Construction")
 
-            # Phase 6: Dataset Generation
+            # Phase 6: Question Generation
             if self.config['execution']['mode'] in ['full_pipeline']:
-                if 'dataset_generation' not in self.config['execution']['skip_phases']:
-                    self._phase_6_dataset_generation()
+                if 'question_generation' not in self.config['execution']['skip_phases']:
+                    self._phase_6_question_generation()
                 else:
-                    self.logger.info("⏭️  Skipping Phase 6: Dataset Generation")
+                    self.logger.info("⏭️  Skipping Phase 6: Question Generation")
 
             # TODO: Add remaining phases
             # self._phase_7_rag_evaluation()
@@ -415,75 +415,54 @@ class SemanticRAGPipeline:
             self.logger.error(f"❌ Phase 5 failed: {e}")
             raise
 
-    def _phase_6_dataset_generation(self):
-        """Phase 6: Dataset Generation"""
-        self.logger.info("📊 Starting Phase 6: Dataset Generation")
+    def _phase_6_question_generation(self):
+        """Phase 7: Question Generation using RAGAS"""
+        self.logger.info("📊 Starting Phase 6: Question Generation")
 
-        # Check if we have embeddings from Phase 3
-        if not self.embeddings:
-            self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
-            raise RuntimeError("No embeddings available. Please run Phase 3 first.")
+        # Check if we have knowledge graph from Phase 5
+        if not hasattr(self, 'knowledge_graph') or not self.knowledge_graph:
+            self.logger.warning("No knowledge graph available. Loading from cache...")
+            # Load from cache or run previous phases
+            raise RuntimeError("No knowledge graph available. Please run Phase 5 first.")
 
         try:
-            # Initialize DatasetEngine
-            self.logger.info("📈 Initializing dataset engine")
-            dataset_engine = DatasetEngine(
-                self.config, 
-                self.embeddings, 
-                self.logger
+            # Initialize QuestionEngine
+            from questions import QuestionEngine
+            question_engine = QuestionEngine(self.config, self.logger)
+
+            # Check if we should force recompute
+            force_recompute = 'questions' in self.config['execution'].get('force_recompute', [])
+
+            # Generate questions
+            questions = question_engine.generate_questions(
+                self.knowledge_graph,
+                force_recompute=force_recompute
             )
-            
-            # Check if we should force recompute datasets
-            force_recompute = 'datasets' in self.config['execution'].get('force_recompute', [])
-            
-            # Generate evaluation dataset
-            self.logger.info(f"📝 Generating evaluation dataset")
-            dataset = dataset_engine.generate_dataset(force_recompute=force_recompute)
-            
-            if not dataset:
-                raise RuntimeError("No questions were generated for the dataset")
-            
-            # Get and log dataset statistics
-            dataset_stats = dataset_engine.get_dataset_statistics(dataset)
-            self.logger.info("📊 Dataset Generation Statistics:")
-            self.logger.info(f"   Total questions: {dataset_stats['total_questions']:,}")
-            
-            if 'by_generation_method' in dataset_stats:
-                self.logger.info(f"   By generation method:")
-                for method, count in dataset_stats['by_generation_method'].items():
-                    self.logger.info(f"      {method}: {count:,}")
-            
-            if 'by_question_type' in dataset_stats:
+
+            if not questions:
+                raise RuntimeError("No questions were generated")
+
+            # Get statistics
+            question_stats = question_engine.get_question_statistics(questions)
+            self.logger.info("📊 Question Generation Statistics:")
+            self.logger.info(f"   Total questions: {question_stats['total_questions']:,}")
+
+            if 'by_question_type' in question_stats:
                 self.logger.info(f"   By question type:")
-                for q_type, count in dataset_stats['by_question_type'].items():
-                    self.logger.info(f"      {q_type}: {count:,}")
-            
-            if 'by_expected_advantage' in dataset_stats:
+                for q_type, count in question_stats['by_question_type'].items():
+                    self.logger.info(f"      {q_type}: {count}")
+
+            if 'by_expected_advantage' in question_stats:
                 self.logger.info(f"   By expected advantage:")
-                for advantage, count in dataset_stats['by_expected_advantage'].items():
-                    self.logger.info(f"      {advantage}: {count:,}")
-            
-            if 'by_difficulty' in dataset_stats:
-                self.logger.info(f"   By difficulty:")
-                for difficulty, count in dataset_stats['by_difficulty'].items():
-                    self.logger.info(f"      {difficulty}: {count:,}")
-            
-            if 'question_length_stats' in dataset_stats:
-                length_stats = dataset_stats['question_length_stats']
-                self.logger.info(f"   Question length: avg={length_stats['mean']:.0f}, min={length_stats['min']}, max={length_stats['max']}")
-            
-            # Show sample questions
-            self.logger.info(f"   Sample questions:")
-            for i, question in enumerate(dataset[:3]):
-                self.logger.info(f"      {i+1}. [{question.question_type}] {question.question_text}")
-                self.logger.info(f"         Expected advantage: {question.expected_advantage}")
-            
-            # Store dataset in pipeline
-            self.dataset = dataset
-            self.dataset_stats = dataset_stats
-            
+                for advantage, count in question_stats['by_expected_advantage'].items():
+                    self.logger.info(f"      {advantage}: {count}")
+
+            # Store questions in pipeline
+            self.questions = questions
+            self.question_stats = question_stats
+
             self.logger.info("✅ Phase 6 completed successfully")
-            
+
         except Exception as e:
             self.logger.error(f"❌ Phase 6 failed: {e}")
             raise

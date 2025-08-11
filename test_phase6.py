@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Test Phase 6: Dataset Generation
-================================
+Test Phase 6: Question Generation
+=================================
 
-Test script to verify Phase 6 (Dataset Generation) functionality.
-Tests custom question generation, RAGAS integration, and dataset validation.
+Test script to verify Phase 6 (Question Generation) functionality.
+Tests RAGAS-based question generation from knowledge graphs.
 
 Run from project root:
     python test_phase6.py
@@ -21,8 +21,8 @@ from pipeline import SemanticRAGPipeline
 
 
 def test_phase6():
-    """Test Phase 6: Dataset Generation."""
-    print("🧪 Testing Phase 6: Dataset Generation")
+    """Test Phase 6: Question Generation."""
+    print("🧪 Testing Phase 6: Question Generation")
     print("=" * 55)
     
     try:
@@ -51,18 +51,20 @@ def test_phase6():
             "sentence-transformers/all-MiniLM-L6-v2"  # Faster model for testing
         ]
         
-        # Configure dataset generation for testing (smaller numbers)
-        pipeline.config['datasets']['ragas']['num_questions'] = 10
-        pipeline.config['datasets']['custom']['num_questions'] = 20
-        pipeline.config['datasets']['generation_method'] = 'mixed'
+        # Configure question generation for testing (smaller numbers)
+        pipeline.config['questions']['total_questions'] = 15
+        pipeline.config['questions']['model']['llm'] = 'gpt-3.5-turbo'
+        pipeline.config['questions']['distribution']['single_hop'] = 0.5
+        pipeline.config['questions']['distribution']['multi_hop_abstract'] = 0.3
+        pipeline.config['questions']['distribution']['multi_hop_specific'] = 0.2
         
         # Enable force recompute to see fresh generation
-        pipeline.config['execution']['force_recompute'] = ['datasets']
+        pipeline.config['execution']['force_recompute'] = ['questions']
         
         print(f"   Models: {pipeline.config['models']['embedding_models']}")
-        print(f"   Generation method: {pipeline.config['datasets']['generation_method']}")
-        print(f"   RAGAS questions: {pipeline.config['datasets']['ragas']['num_questions']}")
-        print(f"   Custom questions: {pipeline.config['datasets']['custom']['num_questions']}")
+        print(f"   Total questions: {pipeline.config['questions']['total_questions']}")
+        print(f"   LLM model: {pipeline.config['questions']['model']['llm']}")
+        print(f"   Question distribution: {pipeline.config['questions']['distribution']}")
         
         # Run pipeline phases 1-6
         print("\n🚀 Running pipeline phases 1-6...")
@@ -104,39 +106,39 @@ def test_phase6():
         
         print(f"✅ Phase 4: Similarity matrices for {len(pipeline.similarities)} models")
         
-        # Phase 5: Retrieval Graph Construction (if needed)
-        if not pipeline.retrieval_engine:
-            print("🎯 Running Phase 5: Retrieval Graph Construction...")
-            pipeline._phase_5_retrieval_graphs()
+        # Phase 5: Knowledge Graph Construction (if needed)
+        if not pipeline.knowledge_graph:
+            print("🏢 Running Phase 5: Knowledge Graph Construction...")
+            pipeline._phase_5_knowledge_graph_construction()
         else:
-            print("✅ Phase 5: Retrieval engine already available")
+            print("✅ Phase 5: Knowledge graph already available")
         
-        print(f"✅ Phase 5: Retrieval engine configured")
+        print(f"✅ Phase 5: Knowledge graph constructed")
         
-        # Phase 6: Dataset Generation
-        print("📊 Running Phase 6: Dataset Generation...")
-        pipeline._phase_6_dataset_generation()
+        # Phase 6: Question Generation
+        print("📊 Running Phase 6: Question Generation...")
+        pipeline._phase_6_question_generation()
         
         # Verify results
         print("\n🔍 Verifying Phase 6 results...")
         
-        # Check dataset
-        if not pipeline.dataset:
-            print("❌ No dataset was generated")
+        # Check questions
+        if not pipeline.questions:
+            print("❌ No questions were generated")
             return False
         
-        print(f"✅ Dataset generated successfully: {len(pipeline.dataset)} questions")
+        print(f"✅ Questions generated successfully: {len(pipeline.questions)} questions")
         
-        # Check dataset statistics
-        if pipeline.dataset_stats:
-            stats = pipeline.dataset_stats
-            print(f"   📊 Dataset Statistics:")
+        # Check question statistics
+        if pipeline.question_stats:
+            stats = pipeline.question_stats
+            print(f"   📊 Question Generation Statistics:")
             print(f"      Total questions: {stats['total_questions']:,}")
             
-            if 'by_generation_method' in stats:
-                print(f"      By generation method:")
-                for method, count in stats['by_generation_method'].items():
-                    print(f"         {method}: {count}")
+            if 'by_synthesizer' in stats:
+                print(f"      By synthesizer:")
+                for synthesizer, count in stats['by_synthesizer'].items():
+                    print(f"         {synthesizer}: {count}")
             
             if 'by_question_type' in stats:
                 print(f"      By question type:")
@@ -158,7 +160,7 @@ def test_phase6():
         
         # Group questions by type for display
         questions_by_type = {}
-        for question in pipeline.dataset:
+        for question in pipeline.questions:
             q_type = question.question_type
             if q_type not in questions_by_type:
                 questions_by_type[q_type] = []
@@ -167,10 +169,10 @@ def test_phase6():
         for q_type, questions in questions_by_type.items():
             print(f"\n   {q_type.upper()}:")
             sample_question = questions[0]  # Show first question of each type
-            print(f"      Question: \"{sample_question.question_text}\"")
+            print(f"      Question: \"{sample_question.question}\"")
             print(f"      Expected advantage: {sample_question.expected_advantage}")
             print(f"      Difficulty: {sample_question.difficulty_level}")
-            print(f"      Generation method: {sample_question.generation_method}")
+            print(f"      Synthesizer: {sample_question.synthesizer_name}")
             if sample_question.metadata:
                 print(f"      Metadata: {sample_question.metadata}")
         
@@ -179,8 +181,8 @@ def test_phase6():
         
         # Check for valid question indicators
         valid_questions = 0
-        for question in pipeline.dataset[:10]:  # Check first 10
-            text = question.question_text.lower()
+        for question in pipeline.questions[:10]:  # Check first 10
+            text = question.question.lower()
             has_question_word = any(word in text for word in ['what', 'how', 'why', 'when', 'where', 'which'])
             has_question_mark = '?' in text
             has_question_verb = any(word in text for word in ['explain', 'describe', 'compare'])
@@ -192,38 +194,38 @@ def test_phase6():
         
         # Check expected advantage distribution
         advantage_counts = {}
-        for question in pipeline.dataset:
+        for question in pipeline.questions:
             advantage = question.expected_advantage
             advantage_counts[advantage] = advantage_counts.get(advantage, 0) + 1
         
         print(f"   Expected advantage distribution:")
         for advantage, count in advantage_counts.items():
-            percentage = (count / len(pipeline.dataset)) * 100
+            percentage = (count / len(pipeline.questions)) * 100
             print(f"      {advantage}: {count} ({percentage:.1f}%)")
         
         # Verify semantic traversal questions
-        semantic_questions = [q for q in pipeline.dataset if q.expected_advantage == 'semantic_traversal']
+        semantic_questions = [q for q in pipeline.questions if q.expected_advantage == 'semantic_traversal']
         if semantic_questions:
             print(f"   ✅ Generated {len(semantic_questions)} questions favoring semantic traversal")
             sample_semantic = semantic_questions[0]
-            print(f"      Sample: \"{sample_semantic.question_text}\"")
+            print(f"      Sample: \"{sample_semantic.question}\"")
         else:
             print(f"   ⚠️  No questions favoring semantic traversal found")
         
         # Test caching functionality
-        print("\n💾 Testing dataset caching...")
+        print("\n💾 Testing question caching...")
         try:
             # Clear force recompute and run again (should use cache)
             pipeline.config['execution']['force_recompute'] = []
             
             import time
             cache_start = time.time()
-            pipeline._phase_6_dataset_generation()
+            pipeline._phase_6_question_generation()
             cache_end = time.time()
             cache_time = cache_end - cache_start
             
             print(f"   Cache load time: {cache_time:.3f}s")
-            print(f"   Cached dataset size: {len(pipeline.dataset)} questions")
+            print(f"   Cached questions size: {len(pipeline.questions)} questions")
             
             if cache_time < 1.0:  # Should be very fast
                 print("   ✅ Caching working effectively")
@@ -236,7 +238,7 @@ def test_phase6():
         print("\n🎉 Phase 6 test completed successfully!")
         print(f"📋 Experiment ID: {pipeline.experiment_id}")
         print(f"📁 Logs saved to: logs/{pipeline.experiment_id}.log")
-        print(f"📊 Dataset saved to: data/datasets/evaluation_dataset.json")
+        print(f"📊 Questions saved to: data/questions/evaluation_questions.json")
         
         return True
         
@@ -250,7 +252,7 @@ def test_phase6():
 def main():
     """Main test function."""
     print("🧪 Semantic RAG Pipeline - Phase 6 Test")
-    print("Testing dataset generation for semantic traversal evaluation")
+    print("Testing RAGAS-based question generation from knowledge graphs")
     print("=" * 75)
     
     # Check if we're in the right directory
@@ -269,11 +271,11 @@ def main():
         print("\n✅ All tests passed!")
         print("🚀 Phase 6 is ready for production use")
         print("\n📊 Key features verified:")
-        print("   • Mixed dataset generation (RAGAS + Custom)")
-        print("   • Custom questions favoring semantic traversal")
-        print("   • Question type categorization")
-        print("   • Expected advantage prediction")
-        print("   • Quality validation and filtering")
+        print("   • RAGAS-based question generation from knowledge graphs")
+        print("   • Multi-hop and single-hop question synthesis")
+        print("   • Semantic traversal advantage prediction")
+        print("   • Question type categorization and difficulty assignment")
+        print("   • Fallback generation when RAGAS unavailable")
         print("   • Intelligent caching system")
         print("\n🎯 Ready for Phase 7: RAG System Evaluation!")
     else:

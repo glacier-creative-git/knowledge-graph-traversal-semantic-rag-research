@@ -162,9 +162,11 @@ def test_phase5():
         sample_nodes = pipeline.knowledge_graph.nodes[:3]
         print(f"   Sample nodes ({len(sample_nodes)} shown):")
         for i, node in enumerate(sample_nodes):
-            print(f"      {i+1}. {node.node_type} - {node.node_id}")
+            print(f"      {i+1}. {node.type} - {node.id}")
             if 'title' in node.properties:
                 print(f"         Title: {node.properties['title']}")
+            if 'page_content' in node.properties:
+                print(f"         Content preview: {node.properties['page_content'][:50]}...")
             if 'entities' in node.properties:
                 entities = node.properties['entities']
                 total_entities = sum(len(v) for v in entities.values())
@@ -177,15 +179,15 @@ def test_phase5():
         sample_relationships = pipeline.knowledge_graph.relationships[:5]
         print(f"\n   Sample relationships ({len(sample_relationships)} shown):")
         for i, rel in enumerate(sample_relationships):
-            print(f"      {i+1}. {rel.relationship_type}: {rel.source_id} -> {rel.target_id} (weight: {rel.weight:.3f})")
+            print(f"      {i+1}. {rel.type}: {rel.source} -> {rel.target} (weight: {rel.weight:.3f})")
         
         # Test neighbor finding
         if sample_nodes:
             test_node = sample_nodes[0]
-            neighbors = pipeline.knowledge_graph.get_neighbors(test_node.node_id)
-            print(f"\n   Neighbors of {test_node.node_id}: {len(neighbors)} found")
+            neighbors = pipeline.knowledge_graph.get_neighbors(test_node.id)
+            print(f"\n   Neighbors of {test_node.id}: {len(neighbors)} found")
             for neighbor in neighbors[:3]:
-                print(f"      -> {neighbor.node_type}: {neighbor.node_id}")
+                print(f"      -> {neighbor.type}: {neighbor.id}")
         
         # Check retrieval engine
         if not pipeline.retrieval_engine:

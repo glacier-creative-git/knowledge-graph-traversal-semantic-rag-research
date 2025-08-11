@@ -1,19 +1,19 @@
-# Semantic RAG Pipeline Configuration
-# =================================
+# Semantic RAG Pipeline Configuration - RAGAS 0.3.0 Compatible
+# ================================================================
 
 # Experiment Configuration
 experiment:
   name: "semantic_rag_pipeline"
-  description: "Semantic graph traversal RAG system"
+  description: "Semantic graph traversal RAG system with RAGAS 0.3.0 question generation"
   version: "1.0.0"
-  tags: ["semantic_chunking", "graph_traversal", "rag"]
+  tags: ["semantic_chunking", "graph_traversal", "rag", "ragas"]
 
 # System Configuration
 system:
   device: "auto"  # auto, cpu, cuda, mps
-  max_memory_gb: 8  # Maximum memory usage warning threshold
-  min_disk_space_gb: 5  # Minimum disk space required
-  num_workers: 4  # For parallel processing
+  max_memory_gb: 8
+  min_disk_space_gb: 5
+  num_workers: 4
 
 # Directory Structure
 directories:
@@ -25,7 +25,7 @@ directories:
 
 # Logging Configuration
 logging:
-  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  level: "INFO"
   log_to_file: true
   log_to_console: true
   max_log_file_mb: 100
@@ -33,11 +33,11 @@ logging:
 
 # Pipeline Execution
 execution:
-  mode: "full_pipeline"  # full_pipeline, data_only, embedding_only, evaluation_only, visualization_only
-  skip_phases: []  # List of phases to skip
-  force_recompute: []  # List of components to force recomputation
+  mode: "full_pipeline"
+  skip_phases: []
+  force_recompute: []
 
-# Models Configuration (basic for Phase 1)
+# Models Configuration
 models:
   embedding_models:
     - "sentence-transformers/all-mpnet-base-v2"
@@ -50,18 +50,12 @@ wikipedia:
   use_cached_articles: true
   topics:
     - "Machine learning"
-    - "Artificial intelligence"
-    - "Natural language processing"
-    - "Computer vision"
-    - "Deep learning"
-    - "Neural networks"
-    - "Data science"
-    - "Statistics"
-  articles_per_topic: 5  # Max articles to fetch per topic
-  max_article_length: 5000000  # Skip articles longer than this (chars)
-  min_article_length: 1000   # Skip articles shorter than this (chars)
+
+  articles_per_topic: 1
+  max_article_length: 5000000
+  min_article_length: 1000
   language: "en"
-  rate_limit_delay: 1.0  # Seconds between API calls
+  rate_limit_delay: 1.0
   retry_attempts: 3
   timeout_seconds: 30
 
@@ -76,61 +70,54 @@ text_processing:
   min_sentence_length: 10
   max_sentence_length: 500
 
-# Basic chunking configuration (will expand later)
+# Chunking Configuration
 chunking:
-  strategy: "sliding_window"  # sliding_window, sentence_based, similarity_matrix
+  strategy: "sliding_window"
   window_size: 3
   overlap: 1
 
-# Enhanced retrieval configuration with knowledge graph support
+# Retrieval Configuration
 retrieval:
-  algorithm: "semantic_traversal"  # semantic_traversal, baseline_vector, hybrid
+  algorithm: "semantic_traversal"
   cache_graphs: true
-  use_knowledge_graph: true         # Enable knowledge graph enhanced retrieval
-  
-  # Semantic Traversal Parameters
+
   semantic_traversal:
-    num_anchors: 3                    # Number of anchor points from baseline
-    max_hops: 3                      # Maximum traversal hops from each anchor
-    similarity_threshold: 0.3        # Minimum similarity to continue traversal
-    max_results: 10                  # Maximum chunks to return after reranking
-    relationship_types: ["entity_similarity", "thematic_similarity", "embedding_similarity"]  # KG relationships to use
-    
-  # Baseline Vector Parameters (for anchor finding)
+    num_anchors: 3
+    max_hops: 3
+    similarity_threshold: 0.3
+    max_results: 10
+
   baseline_vector:
-    top_k: 10                        # Top-k for anchor finding
-    similarity_threshold: 0.5        # Minimum similarity for anchors
+    top_k: 10
+    similarity_threshold: 0.5
 
 # Similarity Matrix Configuration
 similarities:
   use_cached: true
-  similarity_metric: "cosine"  # cosine, dot_product, euclidean
+  similarity_metric: "cosine"
   intra_document:
     enabled: true
-    top_k: 10  # Top K most similar chunks within same document
+    top_k: 10
   inter_document:
     enabled: true
-    top_x: 5   # Top X most similar chunks from other documents
-  batch_size: 1000  # Batch size for similarity computation
-  max_memory_gb: 4  # Memory limit for matrix computation
+    top_x: 5
+  batch_size: 1000
+  max_memory_gb: 4
 
 # Knowledge Graph Configuration
 knowledge_graph:
-  use_cached: true
-  
-  # Sparsity Configuration - Crucial for scalability
+  # Sparsity controls for efficient graph construction
   sparsity:
-    max_relationships_per_node: 25        # Hard limit per node
     relationship_limits:
-      entity_similarity: 10               # Top 10 per node
-      thematic_similarity: 5              # Top 5 per node  
-      embedding_similarity: 10            # Top 10 per node
-      hierarchical: 1000                  # Unlimited for doc->chunk
+      entity_similarity: 10      # Top-k entity-based relationships per node
+      thematic_similarity: 5     # Top-k theme-based relationships per node
+      embedding_similarity: 15   # Top-k embedding-based relationships per node
     min_thresholds:
-      entity_similarity: 0.3              # Much higher threshold
-      thematic_similarity: 0.6            # Much higher threshold
-      embedding_similarity: 0.5           # Higher threshold
-  
+      entity_similarity: 0.3     # Minimum Jaccard similarity for entity relationships
+      thematic_similarity: 0.6   # Minimum theme overlap for thematic relationships
+      embedding_similarity: 0.5  # Minimum cosine similarity for embedding relationships
+
+  # Extractor configuration
   extractors:
     ner:
       enabled: true
@@ -144,43 +131,70 @@ knowledge_graph:
     summary:
       enabled: true
       max_sentences: 2
-  relationships:
-    entity_similarity:
-      enabled: true
-      min_similarity: 0.3
-      entity_types: ["PERSON", "ORG", "GPE", "MISC"]
-    thematic_similarity:
-      enabled: true
-      min_similarity: 0.6
-    embedding_similarity:
-      enabled: true
-      min_similarity: 0.5
-    hierarchical:
-      enabled: true
-  export_format: "json"
-  save_path: "data/knowledge_graph.json"
 
-# Dataset configuration (will expand later)
+# RAGAS Question Generation Configuration
+questions:
+  # Model configuration for RAGAS
+  model:
+    llm: "gpt-3.5-turbo"           # LLM for question generation
+    embeddings: "text-embedding-ada-002"  # Embedding model for RAGAS
+    temperature: 0.1               # Lower temperature for more consistent questions
+
+  # Question generation parameters
+  total_questions: 50              # Total questions to generate
+
+  # Question type distribution (weights should sum to 1.0)
+  distribution:
+    single_hop: 0.4               # Simple factual questions (favor baseline)
+    multi_hop_specific: 0.3       # Multi-hop specific questions (favor traversal)
+    multi_hop_abstract: 0.3       # Multi-hop abstract questions (favor traversal)
+
+  # Persona configuration (automatically created for AI/ML domain)
+  personas:
+    enabled: true
+    auto_generate: true           # Use built-in personas for AI/ML research
+    custom_personas: []           # Add custom personas if needed
+
+  # RAGAS transforms configuration
+  transforms:
+    headlines:
+      enabled: true
+      max_num: 10                 # Max headlines to extract per document
+    keyphrases:
+      enabled: true
+      max_num: 15                 # Max keyphrases to extract per document
+    summary:
+      enabled: true
+    embedding:
+      enabled: true               # Extract embeddings for similarity
+
+  # Quality control
+  validation:
+    min_question_length: 10
+    max_question_length: 200
+    require_reference_context: true
+
+# Dataset Generation (legacy - now uses RAGAS questions)
 datasets:
   use_cached: true
-  generation_method: "mixed"  # ragas, custom, mixed
-  
-  # RAGAS Configuration
+  generation_method: "ragas"      # Use RAGAS for question generation
+
+  # RAGAS Configuration (legacy compatibility)
   ragas:
     num_questions: 50
     question_types: ["factual", "reasoning", "multi_context"]
     difficulty_levels: ["easy", "medium", "hard"]
-    
-  # Custom Question Generation
+
+  # Custom Configuration (fallback only)
   custom:
-    num_questions: 100
+    num_questions: 20
     focus_areas:
-      - "conceptual_relationships" 
+      - "conceptual_relationships"
       - "multi_hop_reasoning"
-      - "contextual_understanding" 
+      - "contextual_understanding"
       - "reading_flow"
-    semantic_bias: 0.7  # Favor semantic traversal advantages
-    
+    semantic_bias: 0.7
+
   # Quality Control
   validation:
     min_answer_length: 50
@@ -188,30 +202,32 @@ datasets:
     require_multiple_chunks: true
     manual_validation_sample: 0.1
 
-# Evaluation configuration (will expand later)
+# Evaluation Configuration
 evaluation:
   include_ragas_metrics: true
   include_custom_metrics: true
   include_baseline_comparison: true
 
-# Visualization configuration (will expand later)
+# Visualization Configuration
 visualization:
   enabled: true
   similarity_matrices: true
   traversal_paths: true
   chunk_boundaries: true
+  question_distribution: true     # Visualize question type distribution
 
-# Output configuration
+# Output Configuration
 output:
   create_report: true
   export_data: true
   save_models: false
+  include_question_analysis: true  # Include question generation analysis
 
-# Cleanup configuration
+# Cleanup Configuration
 cleanup:
   remove_temp_files: false
   compress_large_files: true
 
-# Notifications (for later)
+# Notifications
 notifications:
   enabled: false

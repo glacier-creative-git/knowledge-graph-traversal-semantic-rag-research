@@ -33,15 +33,15 @@ from models import ChunkEmbedding
 @dataclass
 class KGNode:
     """RAGAS-compatible knowledge graph node."""
-    node_id: str
-    node_type: str  # "document", "chunk", "entity"
+    id: str  # RAGAS format
+    type: str  # RAGAS format - "DOCUMENT", "CHUNK", etc.
     properties: Dict[str, Any]
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            'node_id': self.node_id,
-            'node_type': self.node_type,
+            'id': self.id,
+            'type': self.type,
             'properties': self.properties
         }
 
@@ -49,18 +49,18 @@ class KGNode:
 @dataclass  
 class KGRelationship:
     """RAGAS-compatible knowledge graph relationship."""
-    source_id: str
-    target_id: str
-    relationship_type: str
+    source: str  # RAGAS format
+    target: str  # RAGAS format
+    type: str  # RAGAS format
     properties: Dict[str, Any]
     weight: float = 1.0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            'source_id': self.source_id,
-            'target_id': self.target_id,
-            'relationship_type': self.relationship_type,
+            'source': self.source,
+            'target': self.target,
+            'type': self.type,
             'properties': self.properties,
             'weight': self.weight
         }
@@ -310,13 +310,13 @@ class EntitySimilarityBuilder(BaseRelationshipBuilder):
             # Create relationships for top-k
             for similarity, target_node, target_idx in top_k_similar:
                 relationships.append(KGRelationship(
-                    source_id=source_node.node_id,
-                    target_id=target_node.node_id,
-                    relationship_type="entity_similarity",
+                    source=source_node.id,
+                    target=target_node.id,
+                    type="entity_similarity",
                     properties={
                         'similarity_score': similarity, 
                         'entity_types': self.entity_types,
-                        'rank': len([r for r in relationships if r.source_id == source_node.node_id]) + 1
+                        'rank': len([r for r in relationships if r.source == source_node.id]) + 1
                     },
                     weight=similarity
                 ))
@@ -369,7 +369,7 @@ class ThematicSimilarityBuilder(BaseRelationshipBuilder):
         total_added = 0
         
         # Only consider chunk nodes for efficiency
-        chunk_nodes = [n for n in nodes if n.node_type == 'chunk']
+        chunk_nodes = [n for n in nodes if n.type == 'CHUNK']
         print(f"Building thematic relationships for {len(chunk_nodes)} chunk nodes...")
         
         # For each node, find its top-k most similar neighbors by theme overlap
@@ -394,12 +394,12 @@ class ThematicSimilarityBuilder(BaseRelationshipBuilder):
             # Create relationships for top-k
             for similarity, target_node, target_idx in top_k_similar:
                 relationships.append(KGRelationship(
-                    source_id=source_node.node_id,
-                    target_id=target_node.node_id,
-                    relationship_type="thematic_similarity",
+                    source=source_node.id,
+                    target=target_node.id,
+                    type="thematic_similarity",
                     properties={
                         'similarity_score': similarity,
-                        'rank': len([r for r in relationships if r.source_id == source_node.node_id]) + 1
+                        'rank': len([r for r in relationships if r.source == source_node.id]) + 1
                     },
                     weight=similarity
                 ))
@@ -442,7 +442,7 @@ class EmbeddingSimilarityBuilder(BaseRelationshipBuilder):
             # Create chunk_id to node mapping
             chunk_to_node = {}
             for node in nodes:
-                if node.node_type == 'chunk':
+                if node.type == 'CHUNK':
                     chunk_id = node.properties.get('chunk_id')
                     if chunk_id:
                         chunk_to_node[chunk_id] = node
@@ -468,9 +468,9 @@ class EmbeddingSimilarityBuilder(BaseRelationshipBuilder):
                             target_node = chunk_to_node[target_chunk_id]
                             
                             relationships.append(KGRelationship(
-                                source_id=source_node.node_id,
-                                target_id=target_node.node_id,
-                                relationship_type="embedding_similarity",
+                                source=source_node.id,
+                                target=target_node.id,
+                                type="embedding_similarity",
                                 properties={
                                     'similarity_score': float(similarity_score),
                                     'model_name': model_name
@@ -489,8 +489,8 @@ class HierarchicalRelationshipBuilder(BaseRelationshipBuilder):
         relationships = []
         
         # Group nodes by type
-        document_nodes = [n for n in nodes if n.node_type == 'document']
-        chunk_nodes = [n for n in nodes if n.node_type == 'chunk']
+        document_nodes = [n for n in nodes if n.type == 'DOCUMENT']
+        chunk_nodes = [n for n in nodes if n.type == 'CHUNK']
         
         # Create document -> chunk relationships
         for chunk_node in chunk_nodes:
@@ -500,9 +500,9 @@ class HierarchicalRelationshipBuilder(BaseRelationshipBuilder):
                 for doc_node in document_nodes:
                     if doc_node.properties.get('title') == source_article:
                         relationships.append(KGRelationship(
-                            source_id=doc_node.node_id,
-                            target_id=chunk_node.node_id,
-                            relationship_type="contains",
+                            source=doc_node.id,
+                            target=chunk_node.id,
+                            type="contains",
                             properties={'relationship': 'document_contains_chunk'},
                             weight=1.0
                         ))
@@ -531,7 +531,7 @@ class KnowledgeGraph:
     def get_node(self, node_id: str) -> Optional[KGNode]:
         """Get a node by ID."""
         for node in self.nodes:
-            if node.node_id == node_id:
+            if node.id == node_id:
                 return node
         return None
     
@@ -540,15 +540,15 @@ class KnowledgeGraph:
         neighbors = []
         
         for rel in self.relationships:
-            if relationship_types and rel.relationship_type not in relationship_types:
+            if relationship_types and rel.type not in relationship_types:
                 continue
                 
-            if rel.source_id == node_id:
-                neighbor = self.get_node(rel.target_id)
+            if rel.source == node_id:
+                neighbor = self.get_node(rel.target)
                 if neighbor:
                     neighbors.append(neighbor)
-            elif rel.target_id == node_id:
-                neighbor = self.get_node(rel.source_id)
+            elif rel.target == node_id:
+                neighbor = self.get_node(rel.source)
                 if neighbor:
                     neighbors.append(neighbor)
         
@@ -578,19 +578,28 @@ class KnowledgeGraph:
         
         # Load nodes
         for node_data in data.get('nodes', []):
+            # Handle both old and new formats for backwards compatibility
+            node_id = node_data.get('id') or node_data.get('node_id')
+            node_type = node_data.get('type') or node_data.get('node_type')
+            
             node = KGNode(
-                node_id=node_data['node_id'],
-                node_type=node_data['node_type'],
+                id=node_id,
+                type=node_type,
                 properties=node_data['properties']
             )
             kg.add_node(node)
         
         # Load relationships
         for rel_data in data.get('relationships', []):
+            # Handle both old and new formats for backwards compatibility
+            source = rel_data.get('source') or rel_data.get('source_id')
+            target = rel_data.get('target') or rel_data.get('target_id')
+            rel_type = rel_data.get('type') or rel_data.get('relationship_type')
+            
             rel = KGRelationship(
-                source_id=rel_data['source_id'],
-                target_id=rel_data['target_id'],
-                relationship_type=rel_data['relationship_type'],
+                source=source,
+                target=target,
+                type=rel_type,
                 properties=rel_data['properties'],
                 weight=rel_data.get('weight', 1.0)
             )
@@ -653,12 +662,12 @@ class KnowledgeGraphBuilder:
             'build_time': build_time,
             'config': self.kg_config,
             'node_types': {
-                'document': len([n for n in kg.nodes if n.node_type == 'document']),
-                'chunk': len([n for n in kg.nodes if n.node_type == 'chunk'])
+                'DOCUMENT': len([n for n in kg.nodes if n.type == 'DOCUMENT']),
+                'CHUNK': len([n for n in kg.nodes if n.type == 'CHUNK'])
             },
             'relationship_types': {
-                rel_type: len([r for r in kg.relationships if r.relationship_type == rel_type])
-                for rel_type in set(r.relationship_type for r in kg.relationships)
+                rel_type: len([r for r in kg.relationships if r.type == rel_type])
+                for rel_type in set(r.type for r in kg.relationships)
             }
         }
         
@@ -698,11 +707,12 @@ class KnowledgeGraphBuilder:
             # Create document node
             node_id = f"doc_{hashlib.md5(article.encode()).hexdigest()[:8]}"
             node = KGNode(
-                node_id=node_id,
-                node_type="document",
+                id=node_id,
+                type="DOCUMENT",  # RAGAS format
                 properties={
                     'title': article,
-                    'full_text': full_text[:1000],  # Truncate for storage
+                    'page_content': full_text[:1000],  # RAGAS expects 'page_content'
+                    'full_text': full_text[:1000],  # Keep for backwards compatibility
                     'chunk_count': len(doc_data['chunks']),
                     **extracted_info
                 }
@@ -736,12 +746,18 @@ class KnowledgeGraphBuilder:
             # Create chunk node
             node_id = f"chunk_{hashlib.md5(chunk_id.encode()).hexdigest()[:8]}"
             properties = {
+                # RAGAS required fields
+                'page_content': chunk['text'],  # RAGAS expects 'page_content'
+                
+                # Your algorithm required fields (keep all of these)
                 'chunk_id': chunk_id,
-                'text': chunk['text'],
+                'text': chunk['text'],  # Keep for backwards compatibility
                 'source_article': chunk['source_article'],
                 'source_sentences': chunk['source_sentences'],
                 'anchor_sentence_idx': chunk['anchor_sentence_idx'],
                 'window_position': chunk['window_position'],
+                
+                # RAGAS extracted information
                 **extracted_info
             }
             
@@ -752,8 +768,8 @@ class KnowledgeGraphBuilder:
                 properties['embedding_model'] = list(embeddings.keys())[0]  # Use first model as reference
             
             node = KGNode(
-                node_id=node_id,
-                node_type="chunk",
+                id=node_id,
+                type="CHUNK",  # RAGAS format
                 properties=properties
             )
             chunk_nodes.append(node)
