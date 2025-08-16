@@ -26,7 +26,7 @@ from chunking import ChunkEngine
 from models import EmbeddingEngine
 from similarity import SimilarityEngine
 from retrieval import RetrievalEngine
-from questions import QuestionEngine
+from questions import KnowledgeGraphQuestionGenerator
 from knowledge_graph import KnowledgeGraphBuilder, KnowledgeGraph
 
 
@@ -416,25 +416,32 @@ class SemanticRAGPipeline:
             raise
 
     def _phase_6_question_generation(self):
-        """Phase 7: Question Generation using RAGAS"""
-        self.logger.info("📊 Starting Phase 6: Question Generation")
+        """Phase 6: Knowledge Graph Question Generation using Ollama."""
+        self.logger.info("🎯 Starting Phase 6: Knowledge Graph Question Generation")
 
         # Check if we have knowledge graph from Phase 5
         if not hasattr(self, 'knowledge_graph') or not self.knowledge_graph:
             self.logger.warning("No knowledge graph available. Loading from cache...")
-            # Load from cache or run previous phases
-            raise RuntimeError("No knowledge graph available. Please run Phase 5 first.")
+            # Try to load from cache
+            kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
+            if kg_path.exists():
+                from knowledge_graph import KnowledgeGraph
+                self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
+                self.kg_stats = self.knowledge_graph.metadata
+                self.logger.info("📂 Loaded knowledge graph from cache")
+            else:
+                raise RuntimeError("No knowledge graph available. Please run Phase 5 first.")
 
         try:
-            # Initialize QuestionEngine
-            from questions import QuestionEngine
-            question_engine = QuestionEngine(self.config, self.logger)
+            # Initialize KnowledgeGraphQuestionGenerator
+            from questions import KnowledgeGraphQuestionGenerator
+            question_generator = KnowledgeGraphQuestionGenerator(self.config, self.logger)
 
             # Check if we should force recompute
             force_recompute = 'questions' in self.config['execution'].get('force_recompute', [])
 
-            # Generate questions
-            questions = question_engine.generate_questions(
+            # Generate questions using knowledge graph intelligent selection
+            questions = question_generator.generate_questions(
                 self.knowledge_graph,
                 force_recompute=force_recompute
             )
@@ -443,8 +450,8 @@ class SemanticRAGPipeline:
                 raise RuntimeError("No questions were generated")
 
             # Get statistics
-            question_stats = question_engine.get_question_statistics(questions)
-            self.logger.info("📊 Question Generation Statistics:")
+            question_stats = question_generator.get_question_statistics(questions)
+            self.logger.info("📊 Knowledge Graph Question Generation Statistics:")
             self.logger.info(f"   Total questions: {question_stats['total_questions']:,}")
 
             if 'by_question_type' in question_stats:
@@ -456,6 +463,20 @@ class SemanticRAGPipeline:
                 self.logger.info(f"   By expected advantage:")
                 for advantage, count in question_stats['by_expected_advantage'].items():
                     self.logger.info(f"      {advantage}: {count}")
+            
+            if 'by_generation_strategy' in question_stats:
+                self.logger.info(f"   By generation strategy:")
+                for strategy, count in question_stats['by_generation_strategy'].items():
+                    self.logger.info(f"      {strategy}: {count}")
+            
+            if 'ground_truth_coverage' in question_stats:
+                coverage = question_stats['ground_truth_coverage']
+                self.logger.info(f"   Ground truth coverage:")
+                self.logger.info(f"      Mean contexts per question: {coverage['mean_contexts_per_question']:.1f}")
+                self.logger.info(f"      Total unique contexts: {coverage['total_unique_contexts']}")
+            
+            if 'average_generation_time' in question_stats:
+                self.logger.info(f"   Average generation time: {question_stats['average_generation_time']:.3f}s")
 
             # Store questions in pipeline
             self.questions = questions
