@@ -23,6 +23,9 @@ regex>=2022.3.2
 spacy>=3.4.0  # For named entity recognition
 scikit-learn>=1.1.0  # For TF-IDF and additional similarity metrics
 
+# Ollama integration for question generation
+ollama>=0.1.0  # For local LLM-based question generation
+
 # LangChain Wikipedia loader (more reliable than wikipedia library)
 langchain-community>=0.0.10
 langchain-core>=0.1.0
