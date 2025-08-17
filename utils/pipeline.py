@@ -26,7 +26,7 @@ from chunking import ChunkEngine
 from models import EmbeddingEngine
 from similarity import SimilarityEngine
 from retrieval import RetrievalEngine
-from questions import KnowledgeGraphQuestionGenerator
+from questions import QuestionEngine
 from knowledge_graph import KnowledgeGraphBuilder, KnowledgeGraph
 
 
@@ -433,9 +433,8 @@ class SemanticRAGPipeline:
                 raise RuntimeError("No knowledge graph available. Please run Phase 5 first.")
 
         try:
-            # Initialize KnowledgeGraphQuestionGenerator
-            from questions import KnowledgeGraphQuestionGenerator
-            question_generator = KnowledgeGraphQuestionGenerator(self.config, self.logger)
+            # Initialize QuestionEngine
+            question_generator = QuestionEngine(self.config, self.logger)
 
             # Check if we should force recompute
             force_recompute = 'questions' in self.config['execution'].get('force_recompute', [])

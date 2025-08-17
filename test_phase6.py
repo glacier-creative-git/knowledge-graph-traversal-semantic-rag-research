@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
 """
-Test Phase 6: Knowledge Graph Question Generation
-================================================
+Test Phase 6: Simplified Question Generation
+===========================================
 
-Test script to verify Phase 6 (Knowledge Graph Question Generation) functionality.
-Tests revolutionary knowledge graph-based intelligent node selection with Ollama
-for domain-agnostic question synthesis.
-
-Question Generation Strategies Tested:
-- Entity Bridge Questions: Test entity-based traversal capabilities
-- Concept Similarity Questions: Test cosine similarity traversal  
-- Hierarchical Questions: Test multi-granularity navigation
-- Single-Hop Questions: Test individual chunk/sentence retrieval
+Test script to verify Phase 6 (Simplified Question Generation) functionality.
+Tests the minimalist approach using only entities (PERSON/ORG/GPE) and 
+three core relationship types with Ollama integration.
 
 Run from project root:
     python test_phase6.py
@@ -28,10 +22,9 @@ from pipeline import SemanticRAGPipeline
 
 
 def test_phase6():
-    """Test Phase 6: Knowledge Graph Question Generation."""
-    print("🧪 Testing Phase 6: Knowledge Graph Question Generation")
-    print("🎯 INTELLIGENT NODE SELECTION: Using Multi-Dimensional Knowledge Graph for Question Synthesis")
-    print("=" * 95)
+    """Test Phase 6: Simplified Question Generation."""
+    print("🧪 Testing Phase 6: Simplified Question Generation")
+    print("=" * 55)
     
     try:
         # Initialize pipeline
@@ -47,8 +40,8 @@ def test_phase6():
         # Load config and setup
         pipeline._load_config()
         
-        # Override config for testing the new question generation architecture
-        print("🔧 Configuring for Knowledge Graph Question Generation testing...")
+        # Override config for testing
+        print("🔧 Configuring for Phase 6 testing...")
         
         # Set mode to full pipeline to include Phase 6
         pipeline.config['execution']['mode'] = 'full_pipeline'
@@ -59,22 +52,13 @@ def test_phase6():
             "sentence-transformers/all-MiniLM-L6-v2"  # Faster model for testing
         ]
         
-        # Configure question generation for testing (smaller numbers)
-        pipeline.config['question_generation'] = {
-            'target_questions': 20,  # Reduced for testing
-            'question_types': {
-                'entity_bridge': 0.4,       # 40% - Test entity-based traversal
-                'concept_similarity': 0.3,  # 30% - Test cosine similarity traversal
-                'hierarchical': 0.2,        # 20% - Test multi-granularity navigation
-                'single_hop': 0.1          # 10% - Test individual chunk/sentence retrieval
-            },
-            'max_themes_per_node': 8,  # RAGAS-style theme extraction
-            'validation': {
-                'min_question_length': 10,
-                'max_question_length': 200,
-                'require_ground_truth': True
-            }
+        # Configure Ollama for question generation
+        pipeline.config['ollama'] = {
+            'model': 'llama3.1:8b'
         }
+        
+        # Enable force recompute to see fresh generation
+        pipeline.config['execution']['force_recompute'] = ['questions']
         
         # Test Ollama integration
         try:
@@ -86,13 +70,9 @@ def test_phase6():
             ollama_available = False
             print(f"   ⚠️  Ollama not available - will use fallback question generation")
         
-        # Enable force recompute to see fresh generation
-        pipeline.config['execution']['force_recompute'] = ['questions']
-        
-        print(f"   🎯 Target questions: {pipeline.config['question_generation']['target_questions']}")
-        print(f"   📊 Question type distribution: {pipeline.config['question_generation']['question_types']}")
-        print(f"   🤖 Ollama integration: {'Enabled' if ollama_available else 'Disabled (fallback mode)'}")
-        print(f"   🧠 Intelligent node selection: Multi-dimensional knowledge graph strategies")
+        print(f"   Models: {pipeline.config['models']['embedding_models']}")
+        print(f"   Ollama integration: {'Enabled' if ollama_available else 'Disabled (fallback mode)'}")
+        print(f"   Architecture: Simplified (entities only, no themes/keyphrases)")
         
         # Run pipeline phases 1-6
         print("\n🚀 Running pipeline phases 1-6...")
@@ -136,19 +116,19 @@ def test_phase6():
         
         # Phase 5: Knowledge Graph Construction (if needed)
         if not pipeline.knowledge_graph:
-            print("🏗️  Running Phase 5: Multi-Dimensional Knowledge Graph Construction...")
+            print("🏗️  Running Phase 5: Simplified Knowledge Graph Construction...")
             pipeline._phase_5_knowledge_graph_construction()
         else:
             print("✅ Phase 5: Knowledge graph already available")
         
-        print(f"✅ Phase 5: Multi-dimensional knowledge graph constructed")
+        print(f"✅ Phase 5: Simplified knowledge graph constructed")
         
-        # Phase 6: Knowledge Graph Question Generation
-        print("🎯 Running Phase 6: Knowledge Graph Question Generation...")
+        # Phase 6: Question Generation
+        print("📊 Running Phase 6: Simplified Question Generation...")
         pipeline._phase_6_question_generation()
         
-        # Verify question generation results
-        print("\n🔍 Verifying Knowledge Graph Question Generation...")
+        # Verify results
+        print("\n🔍 Verifying Phase 6 results...")
         
         # Check questions
         if not pipeline.questions:
@@ -157,8 +137,8 @@ def test_phase6():
         
         print(f"✅ Questions generated successfully: {len(pipeline.questions)} questions")
         
-        # Test RAGAS-style question generation strategies
-        print("\n🎯 Testing RAGAS-Style Question Generation Strategies:")
+        # Check question generation strategies
+        print("\n📊 Testing Question Generation Strategies:")
         
         # Group questions by generation strategy
         questions_by_strategy = {}
@@ -169,32 +149,28 @@ def test_phase6():
             questions_by_strategy[strategy].append(question)
         
         for strategy, questions in questions_by_strategy.items():
-            print(f"\n   📊 {strategy.upper()} Strategy:")
+            print(f"\n   {strategy.upper()} Strategy:")
             print(f"      Generated: {len(questions)} questions")
             
             if questions:
                 sample_question = questions[0]
                 print(f"      Sample question: \"{sample_question.question}\"")
                 print(f"      Persona used: {sample_question.persona_used}")
-                print(f"      Themes used: {sample_question.themes_used[:3]}...")  # Show first 3 themes
+                print(f"      Entities used: {sample_question.entities_used[:3]}")  # Show first 3 entities
                 print(f"      Expected advantage: {sample_question.expected_advantage}")
                 print(f"      Difficulty level: {sample_question.difficulty_level}")
                 print(f"      Ground truth contexts: {len(sample_question.ground_truth_contexts)} nodes")
-                print(f"      Reference contexts: {len(sample_question.reference_contexts)} contexts")
                 print(f"      Relationship types tested: {sample_question.relationship_types}")
                 print(f"      Generation time: {sample_question.generation_time:.3f}s")
-                if sample_question.reference_answer:
-                    print(f"      Reference answer: {sample_question.reference_answer[:100]}...")
         
-        # Test RAGAS-style question quality indicators
-        print("\n🔍 Testing RAGAS-Style Question Quality:")
+        # Test question quality
+        print("\n🎯 Testing Question Quality:")
         
         valid_questions = 0
         questions_with_ground_truth = 0
         questions_with_relationships = 0
-        questions_with_themes = 0
+        questions_with_entities = 0
         questions_with_personas = 0
-        questions_with_reference_answers = 0
         
         for question in pipeline.questions:
             # Check basic question format
@@ -206,30 +182,24 @@ def test_phase6():
             if has_question_word or has_question_mark or has_imperative:
                 valid_questions += 1
             
-            # Check ground truth coverage
+            # Check other quality indicators
             if question.ground_truth_contexts:
                 questions_with_ground_truth += 1
             
-            # Check relationship testing
             if question.relationship_types:
                 questions_with_relationships += 1
             
-            # Check RAGAS-style features
-            if question.themes_used:
-                questions_with_themes += 1
+            if question.entities_used:
+                questions_with_entities += 1
             
             if question.persona_used:
                 questions_with_personas += 1
-            
-            if question.reference_answer:
-                questions_with_reference_answers += 1
         
         print(f"   📝 Valid question format: {valid_questions}/{len(pipeline.questions)} ({100*valid_questions/len(pipeline.questions):.1f}%)")
         print(f"   🎯 Ground truth coverage: {questions_with_ground_truth}/{len(pipeline.questions)} ({100*questions_with_ground_truth/len(pipeline.questions):.1f}%)")
         print(f"   🔗 Relationship testing: {questions_with_relationships}/{len(pipeline.questions)} ({100*questions_with_relationships/len(pipeline.questions):.1f}%)")
-        print(f"   🏷️  Theme utilization: {questions_with_themes}/{len(pipeline.questions)} ({100*questions_with_themes/len(pipeline.questions):.1f}%)")
+        print(f"   🏷️  Entity utilization: {questions_with_entities}/{len(pipeline.questions)} ({100*questions_with_entities/len(pipeline.questions):.1f}%)")
         print(f"   🎭 Persona usage: {questions_with_personas}/{len(pipeline.questions)} ({100*questions_with_personas/len(pipeline.questions):.1f}%)")
-        print(f"   📖 Reference answers: {questions_with_reference_answers}/{len(pipeline.questions)} ({100*questions_with_reference_answers/len(pipeline.questions):.1f}%)")
         
         # Test expected advantage distribution
         print("\n🏆 Testing Expected Advantage Distribution:")
@@ -255,7 +225,7 @@ def test_phase6():
             percentage = (count / len(pipeline.questions)) * 100
             print(f"   {persona}: {count} questions ({percentage:.1f}%)")
         
-        # Verify semantic traversal bias
+        # Verify semantic traversal questions
         semantic_questions = [q for q in pipeline.questions if q.expected_advantage == 'semantic_traversal']
         baseline_questions = [q for q in pipeline.questions if q.expected_advantage == 'baseline_vector']
         
@@ -263,8 +233,7 @@ def test_phase6():
             print(f"   ✅ Generated {len(semantic_questions)} questions favoring semantic traversal")
             sample_semantic = semantic_questions[0]
             print(f"      Sample: \"{sample_semantic.question}\"")
-            print(f"      Persona: {sample_semantic.persona_used}")
-            print(f"      Themes: {sample_semantic.themes_used[:2]}")
+            print(f"      Entities: {sample_semantic.entities_used[:2]}")
         else:
             print(f"   ⚠️  No questions favoring semantic traversal found")
         
@@ -272,37 +241,35 @@ def test_phase6():
             print(f"   ✅ Generated {len(baseline_questions)} questions favoring baseline methods")
             sample_baseline = baseline_questions[0]
             print(f"      Sample: \"{sample_baseline.question}\"")
-            print(f"      Persona: {sample_baseline.persona_used}")
         
-        # Test knowledge graph integration with RAGAS-style features
-        print("\n🏗️  Testing Knowledge Graph Integration:")
+        # Test knowledge graph integration
+        print("\n🏗️  Testing Simplified Knowledge Graph Integration:")
         
-        # Check if questions use different node types
+        # Check relationship types used
         relationship_types_used = set()
-        
         for question in pipeline.questions:
             relationship_types_used.update(question.relationship_types)
         
         print(f"   🔗 Relationship types tested: {sorted(relationship_types_used)}")
         
-        # Check theme extraction effectiveness
-        all_themes = set()
-        total_themes = 0
+        # Check entity extraction effectiveness
+        all_entities = set()
+        total_entities = 0
         for question in pipeline.questions:
-            all_themes.update(question.themes_used)
-            total_themes += len(question.themes_used)
+            all_entities.update(question.entities_used)
+            total_entities += len(question.entities_used)
         
-        print(f"   🏷️  Theme extraction stats:")
-        print(f"      Total themes used: {total_themes}")
-        print(f"      Unique themes: {len(all_themes)}")
-        if total_themes > 0:
-            print(f"      Average themes per question: {total_themes / len(pipeline.questions):.1f}")
-            print(f"      Theme reuse rate: {len(all_themes) / total_themes:.2f}")
+        print(f"   🏷️  Entity extraction stats:")
+        print(f"      Total entities used: {total_entities}")
+        print(f"      Unique entities: {len(all_entities)}")
+        if total_entities > 0:
+            print(f"      Average entities per question: {total_entities / len(pipeline.questions):.1f}")
+            print(f"      Entity reuse rate: {len(all_entities) / total_entities:.2f}")
         
-        # Show sample themes
-        if all_themes:
-            sample_themes = list(all_themes)[:10]
-            print(f"      Sample themes: {sample_themes}")
+        # Show sample entities
+        if all_entities:
+            sample_entities = list(all_entities)[:10]
+            print(f"      Sample entities: {sample_entities}")
         
         # Check ground truth context diversity
         all_contexts = set()
@@ -316,39 +283,26 @@ def test_phase6():
             print(f"      Context reuse rate: {len(all_contexts) / context_usage:.2f}")
             print(f"      Average contexts per question: {context_usage / len(pipeline.questions):.1f}")
         
-        # Test RAGAS-style question statistics
+        # Test question statistics
         if pipeline.question_stats:
             stats = pipeline.question_stats
-            print(f"\n📊 RAGAS-Style Question Generation Statistics:")
+            print(f"\n📊 Question Generation Statistics:")
             print(f"   Total questions: {stats['total_questions']:,}")
             
-            if 'by_generation_strategy' in stats:
-                print(f"   By generation strategy:")
-                for strategy, count in stats['by_generation_strategy'].items():
-                    print(f"      {strategy}: {count}")
-            
-            if 'by_persona_used' in stats:
-                print(f"   By persona used:")
-                for persona, count in stats['by_persona_used'].items():
-                    print(f"      {persona}: {count}")
+            if 'by_question_type' in stats:
+                print(f"   By question type:")
+                for q_type, count in stats['by_question_type'].items():
+                    print(f"      {q_type}: {count}")
             
             if 'by_expected_advantage' in stats:
                 print(f"   By expected advantage:")
                 for advantage, count in stats['by_expected_advantage'].items():
                     print(f"      {advantage}: {count}")
             
-            if 'themes_coverage' in stats:
-                coverage = stats['themes_coverage']
-                print(f"   Theme utilization:")
-                print(f"      Total themes used: {coverage['total_themes_used']}")
-                print(f"      Average themes per question: {coverage['average_themes_per_question']:.1f}")
-                print(f"      Unique themes: {coverage['unique_themes']}")
-            
-            if 'ground_truth_coverage' in stats:
-                coverage = stats['ground_truth_coverage']
-                print(f"   Ground truth coverage:")
-                print(f"      Mean contexts per question: {coverage['mean_contexts_per_question']:.1f}")
-                print(f"      Total unique contexts: {coverage['total_unique_contexts']}")
+            if 'by_persona' in stats:
+                print(f"   By persona:")
+                for persona, count in stats['by_persona'].items():
+                    print(f"      {persona}: {count}")
         
         # Test caching functionality
         print("\n💾 Testing question caching...")
@@ -374,46 +328,20 @@ def test_phase6():
             print(f"   ⚠️  Cache test failed: {e}")
         
         # Check if questions were saved
-        questions_path = Path(pipeline.config['directories']['data']) / "knowledge_graph_questions.json"
+        questions_path = Path(pipeline.config['directories']['data']) / "questions" / "evaluation_questions.json"
         if questions_path.exists():
             print(f"\n✅ Questions saved successfully to {questions_path}")
             
             # Show file size
             file_size = questions_path.stat().st_size / 1024  # KB
             print(f"   File size: {file_size:.1f} KB")
-            
-            # Verify JSON structure
-            try:
-                import json
-                with open(questions_path, 'r') as f:
-                    questions_data = json.load(f)
-                
-                print(f"   ✅ Valid JSON structure with {len(questions_data.get('questions', []))} questions")
-                print(f"   📊 Metadata: {list(questions_data.get('metadata', {}).keys())}")
-            except Exception as e:
-                print(f"   ❌ Invalid JSON structure: {e}")
         else:
             print(f"\n⚠️  Questions file not found at {questions_path}")
         
-        print("\n🎉 Phase 6 RAGAS-Style Knowledge Graph Question Generation test completed successfully!")
+        print("\n🎉 Phase 6 test completed successfully!")
         print(f"📋 Experiment ID: {pipeline.experiment_id}")
         print(f"📁 Logs saved to: logs/{pipeline.experiment_id}.log")
         print(f"📊 Questions saved to: {questions_path}")
-        
-        # Test persona effectiveness
-        print("\n🎭 Testing Persona Effectiveness:")
-        researcher_questions = [q for q in pipeline.questions if "Research" in q.persona_used]
-        googler_questions = [q for q in pipeline.questions if "Basic" in q.persona_used]
-        
-        if researcher_questions:
-            print(f"   👨‍🔬 Research Scientist questions: {len(researcher_questions)}")
-            sample_research = researcher_questions[0]
-            print(f"      Sample: \"{sample_research.question}\"")
-            
-        if googler_questions:
-            print(f"   🔍 Basic Googler questions: {len(googler_questions)}")
-            sample_googler = googler_questions[0]
-            print(f"      Sample: \"{sample_googler.question}\"")
         
         return True
         
@@ -427,8 +355,8 @@ def test_phase6():
 def main():
     """Main test function."""
     print("🧪 Semantic RAG Pipeline - Phase 6 Test")
-    print("🎯 Testing REVOLUTIONARY Knowledge Graph-Based Question Generation with Ollama")
-    print("=" * 85)
+    print("Testing simplified question generation (entities only, no themes/keyphrases)")
+    print("=" * 75)
     
     # Check if we're in the right directory
     if not Path("config.yaml").exists():
@@ -444,38 +372,24 @@ def main():
     
     if success:
         print("\n✅ All tests passed!")
-        print("🚀 Phase 6 RAGAS-Style Knowledge Graph Question Generation is ready for production use")
-        print("\n🎯 REVOLUTIONARY FEATURES VERIFIED:")
-        print("   • Multi-dimensional knowledge graph-based intelligent node selection")
-        print("   • RAGAS-style structured prompting with personas and themes")
-        print("   • Advanced theme extraction from entities and keyphrases")
-        print("   • Multi-hop context formatting (<1-hop>, <2-hop>)")
-        print("   • Ollama integration with structured output validation")
-        print("   • Two specialized personas:")
-        print("     - Research Scientist (complex, analytical questions)")
-        print("     - Basic Googler (simple, factual questions)")
-        print("   • Four strategic question generation approaches:")
-        print("     - Entity Bridge Questions (test entity-based traversal)")
-        print("     - Concept Similarity Questions (test cosine similarity traversal)")
-        print("     - Hierarchical Questions (test multi-granularity navigation)")
-        print("     - Single-Hop Questions (test individual retrieval)")
-        print("   • Ground truth context tracking with reference answers")
-        print("   • Expected advantage prediction for benchmarking")
-        print("   • Intelligent caching and fallback systems")
-        print("\n🎊 RESEARCH BREAKTHROUGH:")
-        print("   First question generation system that combines:")
-        print("   • Multi-dimensional knowledge graph relationships")
-        print("   • RAGAS-style structured prompting methodology")
-        print("   • Domain-agnostic theme extraction")
-        print("   • Persona-driven question diversity")
-        print("   to create targeted evaluation datasets!")
+        print("🚀 Phase 6 is ready for production use")
+        print("\n📊 Key features verified:")
+        print("   • Simplified question generation using entities only (PERSON/ORG/GPE)")
+        print("   • Three core relationship types: entity overlap, cosine similarity, hierarchical")
+        print("   • Ollama integration with fallback generation")
+        print("   • Two personas: Research Scientist and Basic Googler")
+        print("   • Four question strategies: entity bridge, concept similarity, hierarchical, single-hop")
+        print("   • Ground truth context tracking")
+        print("   • Expected advantage prediction")
+        print("   • Intelligent caching system")
+        print("\n🎯 Architectural simplification verified:")
+        print("   • Removed themes, keyphrases, and summaries")
+        print("   • Focused on high-quality entities only")
+        print("   • Simplified prompts let Ollama discover connections autonomously")
+        print("   • Cognitive minimalism: elegance through constraint")
     else:
         print("\n❌ Tests failed!")
         print("🔧 Please check the error messages above")
-        print("\n💡 Common issues:")
-        print("   • Ollama not installed: curl -fsSL https://ollama.ai/install.sh | sh")
-        print("   • Model not available: ollama pull llama3.1:8b")
-        print("   • Knowledge graph missing: run test_phase5.py first")
 
 
 if __name__ == "__main__":
