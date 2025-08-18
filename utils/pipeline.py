@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Semantic RAG Pipeline
-====================
+Enhanced Multi-Granularity Semantic RAG Pipeline
+===============================================
 
-Main orchestrator for the semantic graph traversal RAG system.
-Handles all phases from data acquisition to evaluation with intelligent caching.
+Main orchestrator for the enhanced semantic graph traversal RAG system.
+Handles multi-granularity embedding generation, similarity computation, and knowledge graph construction.
 """
 
 import os
@@ -20,18 +20,18 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import torch
 
-# Import engines
+# Import engines (updated for multi-granularity)
 from wiki import WikiEngine
 from chunking import ChunkEngine
-from models import EmbeddingEngine
-from similarity import SimilarityEngine
+from models import MultiGranularityEmbeddingEngine
+from similarity import MultiGranularitySimilarityEngine
 from retrieval import RetrievalEngine
 from questions import QuestionEngine
-from knowledge_graph import KnowledgeGraphBuilder, KnowledgeGraph
+from knowledge_graph import MultiGranularityKnowledgeGraphBuilder, MultiGranularityKnowledgeGraph
 
 
 class SemanticRAGPipeline:
-    """Main pipeline orchestrator for semantic RAG system."""
+    """Enhanced main pipeline orchestrator for multi-granularity semantic RAG system."""
 
     def __init__(self, config_path: str = "config.yaml"):
         """Initialize the pipeline with configuration."""
@@ -42,16 +42,22 @@ class SemanticRAGPipeline:
         self.device = None
         self.start_time = None
 
-        # Data storage for pipeline phases
+        # Enhanced data storage for multi-granularity pipeline phases
         self.articles = []
         self.corpus_stats = {}
         self.chunks = []
         self.chunk_stats = {}
-        self.embeddings = {}  # Dict[model_name, List[ChunkEmbedding]]
+        
+        # Multi-granularity embeddings: Dict[model_name, Dict[granularity_type, List[Embedding]]]
+        self.embeddings = {}  
         self.embedding_stats = {}
-        self.similarities = {}  # Dict[model_name, similarity_data]
+        
+        # Multi-granularity similarities: Dict[model_name, similarity_data]
+        self.similarities = {}  
         self.similarity_stats = {}
-        self.knowledge_graph = None  # KnowledgeGraph instance
+        
+        # Enhanced knowledge graph
+        self.knowledge_graph = None  # MultiGranularityKnowledgeGraph instance
         self.kg_stats = {}
         self.retrieval_engine = None  # RetrievalEngine instance
         self.retrieval_stats = {}
@@ -60,7 +66,7 @@ class SemanticRAGPipeline:
 
     def pipe(self) -> Dict[str, Any]:
         """
-        Main pipeline execution function.
+        Enhanced pipeline execution function with multi-granularity support.
 
         Returns:
             Dictionary containing experiment results and metadata
@@ -76,26 +82,26 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 2: Data Acquisition")
 
-            # Phase 3: Embedding Generation
+            # Phase 3: Enhanced Multi-Granularity Embedding Generation
             if self.config['execution']['mode'] in ['full_pipeline', 'embedding_only']:
                 if 'embedding_generation' not in self.config['execution']['skip_phases']:
                     self._phase_3_embedding_generation()
                 else:
-                    self.logger.info("⏭️  Skipping Phase 3: Embedding Generation")
+                    self.logger.info("⏭️  Skipping Phase 3: Multi-Granularity Embedding Generation")
 
-            # Phase 4: Similarity Matrix Construction
+            # Phase 4: Enhanced Multi-Granularity Similarity Matrix Construction
             if self.config['execution']['mode'] in ['full_pipeline']:
                 if 'similarity_matrices' not in self.config['execution']['skip_phases']:
                     self._phase_4_similarity_matrices()
                 else:
-                    self.logger.info("⏭️  Skipping Phase 4: Similarity Matrix Construction")
+                    self.logger.info("⏭️  Skipping Phase 4: Multi-Granularity Similarity Matrix Construction")
 
-            # Phase 5: Knowledge Graph Construction
+            # Phase 5: Enhanced Multi-Granularity Knowledge Graph Construction
             if self.config['execution']['mode'] in ['full_pipeline']:
                 if 'knowledge_graph_construction' not in self.config['execution']['skip_phases']:
                     self._phase_5_knowledge_graph_construction()
                 else:
-                    self.logger.info("⏭️  Skipping Phase 5: Knowledge Graph Construction")
+                    self.logger.info("⏭️  Skipping Phase 5: Multi-Granularity Knowledge Graph Construction")
 
             # Phase 6: Question Generation
             if self.config['execution']['mode'] in ['full_pipeline']:
@@ -108,11 +114,12 @@ class SemanticRAGPipeline:
             # self._phase_7_rag_evaluation()
             # etc.
 
-            self.logger.info("Pipeline completed successfully!")
+            self.logger.info("🎉 Enhanced multi-granularity pipeline completed successfully!")
             return {
                 "experiment_id": self.experiment_id,
                 "status": "completed",
-                "execution_time": datetime.now() - self.start_time
+                "execution_time": datetime.now() - self.start_time,
+                "architecture": "multi_granularity_three_tier"
             }
 
         except Exception as e:
@@ -124,8 +131,9 @@ class SemanticRAGPipeline:
 
     def _phase_1_setup_and_initialization(self):
         """Phase 1: Setup & Initialization"""
-        print("🚀 Starting Semantic RAG Pipeline")
-        print("=" * 50)
+        print("🚀 Starting Enhanced Multi-Granularity Semantic RAG Pipeline")
+        print("🌟 Architecture: Three-Tier Hierarchy (Document → Chunk → Sentence)")
+        print("=" * 70)
 
         # Record start time
         self.start_time = datetime.now()
@@ -151,10 +159,11 @@ class SemanticRAGPipeline:
         # 7. Validate config parameters
         self._validate_config()
 
-        self.logger.info(f"Phase 1 completed - Experiment ID: {self.experiment_id}")
+        self.logger.info(f"🎯 Phase 1 completed - Enhanced Experiment ID: {self.experiment_id}")
+        self.logger.info(f"🏗️  Architecture: {self.config.get('experiment', {}).get('description', 'Multi-granularity system')}")
 
     def _phase_2_data_acquisition(self):
-        """Phase 2: Data Acquisition"""
+        """Phase 2: Data Acquisition (unchanged from original)"""
         self.logger.info("🌐 Starting Phase 2: Data Acquisition")
 
         # Initialize WikiEngine
@@ -202,8 +211,8 @@ class SemanticRAGPipeline:
                 self.config['wikipedia']['use_cached_articles'] = original_use_cached
 
     def _phase_3_embedding_generation(self):
-        """Phase 3: Embedding Generation"""
-        self.logger.info("🧠 Starting Phase 3: Embedding Generation")
+        """Phase 3: Enhanced Multi-Granularity Embedding Generation"""
+        self.logger.info("🧠 Starting Phase 3: Enhanced Multi-Granularity Embedding Generation")
 
         # Check if we have articles from Phase 2
         if not self.articles:
@@ -238,97 +247,107 @@ class SemanticRAGPipeline:
             self.chunks = chunks
             self.chunk_stats = chunk_stats
             
-            # Step 2: Generate embeddings using EmbeddingEngine
-            self.logger.info("✨ Generating embeddings for all models")
-            embedding_engine = EmbeddingEngine(self.config, self.logger)
+            # Step 2: Generate multi-granularity embeddings using enhanced EmbeddingEngine
+            self.logger.info("✨ Generating multi-granularity embeddings for all models")
+            embedding_engine = MultiGranularityEmbeddingEngine(self.config, self.logger)
             
             # Check if we should force recompute embeddings
             force_recompute = 'embeddings' in self.config['execution'].get('force_recompute', [])
             
-            embeddings = embedding_engine.generate_embeddings(chunks, force_recompute=force_recompute)
+            # Generate multi-granularity embeddings (chunks, sentences, doc_summaries)
+            embeddings = embedding_engine.generate_embeddings(
+                chunks, 
+                self.articles,  # Pass articles for sentence and document summary embedding generation
+                force_recompute=force_recompute
+            )
             
             if not embeddings:
-                raise RuntimeError("No embeddings were generated")
+                raise RuntimeError("No multi-granularity embeddings were generated")
             
             # Get and log embedding statistics
             embedding_stats = embedding_engine.get_embedding_statistics(embeddings)
-            self.logger.info("📈 Embedding Statistics:")
+            self.logger.info("📈 Multi-Granularity Embedding Statistics:")
             for model_name, stats in embedding_stats.items():
                 self.logger.info(f"   {model_name}:")
-                self.logger.info(f"      Chunks: {stats['total_chunks']:,}")
-                self.logger.info(f"      Dimensions: {stats['embedding_dimension']}")
-                self.logger.info(f"      Mean norm: {stats['mean_norm']:.3f}")
-                self.logger.info(f"      Std norm: {stats['std_norm']:.3f}")
+                self.logger.info(f"      Total embeddings: {stats['total_embeddings']:,}")
+                for granularity_type, granularity_stats in stats['granularity_types'].items():
+                    self.logger.info(f"      {granularity_type}: {granularity_stats['count']:,} embeddings, {granularity_stats['embedding_dimension']}D")
+                    if 'sample_chunk_lengths' in granularity_stats:
+                        self.logger.info(f"         Sample lengths: {granularity_stats['sample_chunk_lengths']}")
             
             # Store embeddings in pipeline
             self.embeddings = embeddings
             self.embedding_stats = embedding_stats
             
-            self.logger.info("✅ Phase 3 completed successfully")
+            self.logger.info("✅ Phase 3 Multi-Granularity Embedding Generation completed successfully")
             
         except Exception as e:
             self.logger.error(f"❌ Phase 3 failed: {e}")
             raise
 
     def _phase_4_similarity_matrices(self):
-        """Phase 4: Similarity Matrix Construction"""
-        self.logger.info("🕰 Starting Phase 4: Similarity Matrix Construction")
+        """Phase 4: Enhanced Multi-Granularity Similarity Matrix Construction"""
+        self.logger.info("🕰 Starting Phase 4: Enhanced Multi-Granularity Similarity Matrix Construction")
 
-        # Check if we have embeddings from Phase 3
+        # Check if we have multi-granularity embeddings from Phase 3
         if not self.embeddings:
-            self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
+            self.logger.warning("No multi-granularity embeddings available from Phase 3. Loading from cache...")
             # Try to load embeddings from cache
-            embedding_engine = EmbeddingEngine(self.config, self.logger)
+            embedding_engine = MultiGranularityEmbeddingEngine(self.config, self.logger)
             # We'd need to reload chunks and embeddings here
-            raise RuntimeError("No embeddings available and no cache loading implemented yet. Please run Phase 3 first.")
+            raise RuntimeError("No multi-granularity embeddings available. Please run Phase 3 first.")
 
         try:
-            # Initialize SimilarityEngine
-            self.logger.info("🔗 Initializing similarity engine")
-            similarity_engine = SimilarityEngine(self.config, self.logger)
+            # Initialize enhanced SimilarityEngine
+            self.logger.info("🔗 Initializing multi-granularity similarity engine")
+            similarity_engine = MultiGranularitySimilarityEngine(self.config, self.logger)
             
             # Check if we should force recompute similarities
             force_recompute = 'similarities' in self.config['execution'].get('force_recompute', [])
             
-            # Compute similarity matrices
-            self.logger.info(f"🎯 Computing similarity matrices for {len(self.embeddings)} models")
-            similarities = similarity_engine.compute_similarity_matrices(self.embeddings, force_recompute=force_recompute)
+            # Compute multi-granularity similarity matrices
+            self.logger.info(f"🎯 Computing multi-granularity similarity matrices for {len(self.embeddings)} models")
+            similarities = similarity_engine.compute_similarity_matrices(
+                self.embeddings, 
+                force_recompute=force_recompute
+            )
             
             if not similarities:
-                raise RuntimeError("No similarity matrices were computed")
+                raise RuntimeError("No multi-granularity similarity matrices were computed")
             
             # Get and log similarity statistics
             similarity_stats = similarity_engine.get_similarity_statistics(similarities)
-            self.logger.info("📊 Similarity Matrix Statistics:")
+            self.logger.info("📊 Multi-Granularity Similarity Matrix Statistics:")
             for model_name, stats in similarity_stats.items():
                 self.logger.info(f"   {model_name}:")
-                self.logger.info(f"      Total chunks: {stats['total_chunks']:,}")
-                self.logger.info(f"      Intra-document connections: {stats['connections']['intra_document']:,}")
-                self.logger.info(f"      Inter-document connections: {stats['connections']['inter_document']:,}")
-                self.logger.info(f"      Total connections: {stats['connections']['total']:,}")
-                self.logger.info(f"      Sparsity ratio: {stats['sparsity_ratio']:.6f}")
+                self.logger.info(f"      Granularity counts: {stats['granularity_counts']}")
+                self.logger.info(f"      Total connections: {stats['total_connections']:,}")
                 self.logger.info(f"      Memory usage: {stats['memory_usage_mb']:.1f} MB")
                 self.logger.info(f"      Computation time: {stats['computation_time']:.2f}s")
                 
-                if 'matrix_stats' in stats:
-                    matrix_stats = stats['matrix_stats']
-                    self.logger.info(f"      Matrix shape: {matrix_stats['shape']}")
-                    self.logger.info(f"      Non-zero entries: {matrix_stats['nnz']:,}")
-                    self.logger.info(f"      Matrix density: {matrix_stats['density']:.8f}")
+                if 'connections_by_granularity' in stats:
+                    self.logger.info(f"      Connections by granularity:")
+                    for granularity_type, count in stats['connections_by_granularity'].items():
+                        self.logger.info(f"         {granularity_type}: {count:,}")
+                
+                if 'sparsity_statistics' in stats:
+                    self.logger.info(f"      Sparsity statistics:")
+                    for matrix_name, sparsity_info in stats['sparsity_statistics'].items():
+                        self.logger.info(f"         {matrix_name}: {sparsity_info['stored_connections']:,} connections, sparsity={sparsity_info['sparsity_ratio']:.6f}")
             
             # Store similarities in pipeline
             self.similarities = similarities
             self.similarity_stats = similarity_stats
             
-            self.logger.info("✅ Phase 4 completed successfully")
+            self.logger.info("✅ Phase 4 Multi-Granularity Similarity Matrix Construction completed successfully")
             
         except Exception as e:
             self.logger.error(f"❌ Phase 4 failed: {e}")
             raise
 
     def _phase_5_knowledge_graph_construction(self):
-        """Phase 5: Knowledge Graph Construction"""
-        self.logger.info("🏗️  Starting Phase 5: Knowledge Graph Construction")
+        """Phase 5: Enhanced Multi-Granularity Knowledge Graph Construction"""
+        self.logger.info("🏗️  Starting Phase 5: Enhanced Multi-Granularity Knowledge Graph Construction")
 
         # Check if we have required data from previous phases
         if not self.chunks:
@@ -336,12 +355,12 @@ class SemanticRAGPipeline:
             raise RuntimeError("No chunks available. Please run Phase 3 first.")
         
         if not self.embeddings:
-            self.logger.warning("No embeddings available from Phase 3. Loading from cache...")
-            raise RuntimeError("No embeddings available. Please run Phase 3 first.")
+            self.logger.warning("No multi-granularity embeddings available from Phase 3. Loading from cache...")
+            raise RuntimeError("No multi-granularity embeddings available. Please run Phase 3 first.")
         
         if not self.similarities:
-            self.logger.warning("No similarity matrices available from Phase 4. Loading from cache...")
-            raise RuntimeError("No similarity matrices available. Please run Phase 4 first.")
+            self.logger.warning("No multi-granularity similarity matrices available from Phase 4. Loading from cache...")
+            raise RuntimeError("No multi-granularity similarity matrices available. Please run Phase 4 first.")
 
         try:
             # Check if we should force recompute
@@ -350,13 +369,13 @@ class SemanticRAGPipeline:
             # Check cache
             kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
             if not force_recompute and kg_path.exists():
-                self.logger.info("📂 Loading cached knowledge graph")
-                self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
+                self.logger.info("📂 Loading cached multi-granularity knowledge graph")
+                self.knowledge_graph = MultiGranularityKnowledgeGraph.load(str(kg_path))
                 self.kg_stats = self.knowledge_graph.metadata
             else:
-                # Build fresh knowledge graph
-                self.logger.info("🔨 Building fresh knowledge graph")
-                kg_builder = KnowledgeGraphBuilder(self.config, self.logger)
+                # Build fresh multi-granularity knowledge graph
+                self.logger.info("🔨 Building fresh multi-granularity knowledge graph")
+                kg_builder = MultiGranularityKnowledgeGraphBuilder(self.config, self.logger)
                 
                 self.knowledge_graph = kg_builder.build_knowledge_graph(
                     self.chunks, 
@@ -365,27 +384,40 @@ class SemanticRAGPipeline:
                 )
                 
                 # Save knowledge graph
-                self.logger.info(f"💾 Saving knowledge graph to {kg_path}")
+                self.logger.info(f"💾 Saving multi-granularity knowledge graph to {kg_path}")
                 self.knowledge_graph.save(str(kg_path))
                 
                 self.kg_stats = self.knowledge_graph.metadata
             
             # Log knowledge graph statistics
-            self.logger.info("📊 Knowledge Graph Statistics:")
+            self.logger.info("📊 Multi-Granularity Knowledge Graph Statistics:")
+            self.logger.info(f"   Architecture: {self.kg_stats.get('architecture', 'multi_granularity_three_tier')}")
             self.logger.info(f"   Total nodes: {self.kg_stats['total_nodes']:,}")
             self.logger.info(f"   Total relationships: {self.kg_stats['total_relationships']:,}")
-            self.logger.info(f"   Node types: {self.kg_stats['node_types']}")
-            self.logger.info(f"   Relationship types: {self.kg_stats['relationship_types']}")
+            
+            if 'granularity_counts' in self.kg_stats:
+                granularity_counts = self.kg_stats['granularity_counts']
+                self.logger.info(f"   Granularity breakdown:")
+                self.logger.info(f"      Documents (L0): {granularity_counts.get('documents', 0):,}")
+                self.logger.info(f"      Chunks (L1): {granularity_counts.get('chunks', 0):,}")
+                self.logger.info(f"      Sentences (L2): {granularity_counts.get('sentences', 0):,}")
+            
+            if 'relationship_types' in self.kg_stats:
+                self.logger.info(f"   Relationship types: {self.kg_stats['relationship_types']}")
+            
+            if 'granularity_relationship_types' in self.kg_stats:
+                self.logger.info(f"   Granularity relationship types: {self.kg_stats['granularity_relationship_types']}")
+            
             self.logger.info(f"   Build time: {self.kg_stats.get('build_time', 0):.2f}s")
             
-            # Initialize enhanced retrieval engine with knowledge graph
-            self.logger.info("🎯 Initializing enhanced retrieval engine with knowledge graph")
+            # Initialize enhanced retrieval engine with multi-granularity knowledge graph
+            self.logger.info("🎯 Initializing enhanced retrieval engine with multi-granularity knowledge graph")
             retrieval_engine = RetrievalEngine(
                 self.config, 
                 self.embeddings, 
                 self.similarities, 
                 self.logger,
-                knowledge_graph=self.knowledge_graph  # Pass KG to retrieval engine
+                knowledge_graph=self.knowledge_graph  # Pass multi-granularity KG to retrieval engine
             )
             
             # Get retrieval statistics
@@ -393,7 +425,7 @@ class SemanticRAGPipeline:
             self.logger.info("📊 Enhanced Retrieval Engine Statistics:")
             self.logger.info(f"   Algorithm: {retrieval_stats['algorithm']}")
             self.logger.info(f"   Models available: {retrieval_stats['models_available']}")
-            self.logger.info(f"   Knowledge graph enabled: {self.knowledge_graph is not None}")
+            self.logger.info(f"   Multi-granularity KG enabled: {self.knowledge_graph is not None}")
             for model, count in retrieval_stats['total_chunks_per_model'].items():
                 self.logger.info(f"   {model}: {count:,} chunks")
             
@@ -409,7 +441,7 @@ class SemanticRAGPipeline:
             self.retrieval_engine = retrieval_engine
             self.retrieval_stats = retrieval_stats
             
-            self.logger.info("✅ Phase 5 completed successfully")
+            self.logger.info("✅ Phase 5 Multi-Granularity Knowledge Graph Construction completed successfully")
             
         except Exception as e:
             self.logger.error(f"❌ Phase 5 failed: {e}")
@@ -425,10 +457,9 @@ class SemanticRAGPipeline:
             # Try to load from cache
             kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
             if kg_path.exists():
-                from knowledge_graph import KnowledgeGraph
-                self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
+                self.knowledge_graph = MultiGranularityKnowledgeGraph.load(str(kg_path))
                 self.kg_stats = self.knowledge_graph.metadata
-                self.logger.info("📂 Loaded knowledge graph from cache")
+                self.logger.info("📂 Loaded multi-granularity knowledge graph from cache")
             else:
                 raise RuntimeError("No knowledge graph available. Please run Phase 5 first.")
 
@@ -468,6 +499,11 @@ class SemanticRAGPipeline:
                 for strategy, count in question_stats['by_generation_strategy'].items():
                     self.logger.info(f"      {strategy}: {count}")
             
+            if 'by_persona' in question_stats:
+                self.logger.info(f"   By persona:")
+                for persona, count in question_stats['by_persona'].items():
+                    self.logger.info(f"      {persona}: {count}")
+            
             if 'ground_truth_coverage' in question_stats:
                 coverage = question_stats['ground_truth_coverage']
                 self.logger.info(f"   Ground truth coverage:")
@@ -497,7 +533,7 @@ class SemanticRAGPipeline:
             with open(config_path, 'r') as f:
                 self.config = yaml.safe_load(f)
 
-            print(f"✅ Config loaded from {config_path}")
+            print(f"✅ Enhanced Config loaded from {config_path}")
 
         except Exception as e:
             print(f"❌ Failed to load config: {e}")
@@ -510,7 +546,7 @@ class SemanticRAGPipeline:
         short_uuid = str(uuid.uuid4())[:8]
         self.experiment_id = f"{self.config['experiment']['name']}_{timestamp}_{short_uuid}"
 
-        print(f"🔬 Experiment ID: {self.experiment_id}")
+        print(f"🔬 Enhanced Experiment ID: {self.experiment_id}")
 
     def _create_output_directories(self):
         """Create all necessary output directories."""
@@ -523,14 +559,15 @@ class SemanticRAGPipeline:
             directories['logs']
         ]
 
-        # Create subdirectories
+        # Create subdirectories (enhanced for multi-granularity)
         subdirs = [
             f"{directories['embeddings']}/raw",
             f"{directories['embeddings']}/similarities",
             f"{directories['embeddings']}/cross_document",
             f"{directories['visualizations']}/experiments",
             f"{directories['data']}/datasets",
-            f"{directories['data']}/experiments"
+            f"{directories['data']}/experiments",
+            f"{directories['data']}/questions"  # Added for question generation
         ]
 
         all_dirs = base_dirs + subdirs
@@ -545,7 +582,7 @@ class SemanticRAGPipeline:
         exp_viz_dir.mkdir(parents=True, exist_ok=True)
         exp_data_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"📁 Created directory structure")
+        print(f"📁 Created enhanced directory structure")
 
     def _initialize_logging(self):
         """Initialize logging configuration."""
@@ -577,10 +614,10 @@ class SemanticRAGPipeline:
             self.logger.addHandler(file_handler)
 
         # Log initial info
-        self.logger.info(f"Logging initialized for experiment: {self.experiment_id}")
+        self.logger.info(f"Enhanced multi-granularity logging initialized for experiment: {self.experiment_id}")
         self.logger.info(f"Config: {self.config['experiment']}")
 
-        print(f"📝 Logging initialized")
+        print(f"📝 Enhanced logging initialized")
 
     def _check_system_resources(self):
         """Check system resources and warn if insufficient."""
@@ -681,9 +718,16 @@ class SemanticRAGPipeline:
             if self.config['execution']['mode'] not in valid_modes:
                 raise ValueError(f"Invalid execution mode. Must be one of: {valid_modes}")
 
-            print(f"✅ Configuration validated")
+            # Validate multi-granularity configuration
+            if 'granularity_types' in self.config['models']:
+                granularity_config = self.config['models']['granularity_types']
+                for granularity_type, enabled in granularity_config.items():
+                    if not isinstance(enabled, dict):
+                        raise ValueError(f"Invalid granularity configuration for {granularity_type}")
+
+            print(f"✅ Enhanced configuration validated")
             if self.logger:
-                self.logger.info("Configuration validation passed")
+                self.logger.info("Enhanced configuration validation passed")
 
         except Exception as e:
             error_msg = f"Configuration validation failed: {e}"
@@ -694,19 +738,21 @@ class SemanticRAGPipeline:
 
 
 def main():
-    """Main entry point for the pipeline."""
+    """Main entry point for the enhanced pipeline."""
     try:
-        # Initialize and run pipeline
+        # Initialize and run enhanced pipeline
         pipeline = SemanticRAGPipeline()
         results = pipeline.pipe()
 
-        print("\n" + "=" * 50)
-        print("🎉 Pipeline completed successfully!")
+        print("\n" + "=" * 70)
+        print("🎉 Enhanced Multi-Granularity Pipeline completed successfully!")
+        print(f"🌟 Architecture: {results.get('architecture', 'multi_granularity_three_tier')}")
         print(f"📋 Experiment ID: {results['experiment_id']}")
         print(f"⏱️  Execution time: {results['execution_time']}")
+        print(f"📁 Results saved in experiments directory")
 
     except Exception as e:
-        print(f"\n❌ Pipeline failed: {e}")
+        print(f"\n❌ Enhanced pipeline failed: {e}")
         sys.exit(1)
 
 
