@@ -156,6 +156,32 @@ similarities:
         enabled: true
         description: "Chunk to parent document summary similarity"
 
+# Phase 5: Entity/Theme Extraction Configuration
+entity_theme_extraction:
+  use_cached: true
+
+  # Entity extraction settings
+  entity_extraction:
+    entity_types: ["PERSON", "ORG", "GPE"]  # High-quality entity types only
+    spacy_model: "en_core_web_sm"           # spaCy model for NER
+    min_entity_length: 2                    # Minimum entity character length
+
+  # Theme extraction settings
+  theme_extraction:
+    num_themes: 5                           # Number of themes to extract per document
+    method: "ollama"                        # "ollama" or "fallback"
+    fallback_method: "keyword_patterns"     # Fallback when Ollama unavailable
+
+    # Ollama-specific settings (inherits from main ollama config)
+    prompt_template: "structured_json"      # Template style for theme extraction
+    max_theme_length: 50                    # Maximum characters per theme name
+
+  # Quality filters
+  quality_filters:
+    min_entities_per_item: 0               # Minimum entities required (0 = no filter)
+    min_themes_per_document: 1             # Minimum themes required per document
+    filter_common_words: true              # Filter out common words from entities
+
 # Simplified Knowledge Graph Configuration
 knowledge_graph:
   use_cached: true

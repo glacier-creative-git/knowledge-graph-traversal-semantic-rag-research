@@ -28,7 +28,7 @@ from similarity import MultiGranularitySimilarityEngine
 from retrieval import RetrievalEngine
 from questions import QuestionEngine
 from knowledge_graph import MultiGranularityKnowledgeGraphBuilder, MultiGranularityKnowledgeGraph
-
+from extraction import EntityThemeExtractionEngine
 
 class SemanticRAGPipeline:
     """Enhanced main pipeline orchestrator for multi-granularity semantic RAG system."""
@@ -64,13 +64,13 @@ class SemanticRAGPipeline:
         self.questions = []  # List[EvaluationQuestion] from QuestionEngine
         self.question_stats = {}
 
-    def pipe(self) -> Dict[str, Any]:
-        """
-        Enhanced pipeline execution function with multi-granularity support.
+        # Phase 5: Entity/Theme extraction storage
+        self.entity_theme_data = {}
+        self.entity_theme_stats = {}
 
-        Returns:
-            Dictionary containing experiment results and metadata
-        """
+    # Update the main pipe() method to include Phase 5
+    def pipe(self) -> Dict[str, Any]:
+        """Enhanced pipeline execution function with entity/theme extraction."""
         try:
             # Phase 1: Setup & Initialization
             self._phase_1_setup_and_initialization()
@@ -82,44 +82,47 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 2: Data Acquisition")
 
-            # Phase 3: Enhanced Multi-Granularity Embedding Generation
+            # Phase 3: Multi-Granularity Embedding Generation
             if self.config['execution']['mode'] in ['full_pipeline', 'embedding_only']:
                 if 'embedding_generation' not in self.config['execution']['skip_phases']:
                     self._phase_3_embedding_generation()
                 else:
                     self.logger.info("⏭️  Skipping Phase 3: Multi-Granularity Embedding Generation")
 
-            # Phase 4: Enhanced Multi-Granularity Similarity Matrix Construction
+            # Phase 4: Multi-Granularity Similarity Matrix Construction
             if self.config['execution']['mode'] in ['full_pipeline']:
                 if 'similarity_matrices' not in self.config['execution']['skip_phases']:
                     self._phase_4_similarity_matrices()
                 else:
                     self.logger.info("⏭️  Skipping Phase 4: Multi-Granularity Similarity Matrix Construction")
 
-            # Phase 5: Enhanced Multi-Granularity Knowledge Graph Construction
+            # Phase 5: Entity/Theme Extraction (NEW PHASE)
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'entity_theme_extraction' not in self.config['execution']['skip_phases']:
+                    self._phase_5_entity_theme_extraction()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 5: Entity/Theme Extraction")
+
+            # Phase 6: Knowledge Graph Construction will be updated to use Phase 4 + Phase 5 data
             if self.config['execution']['mode'] in ['full_pipeline']:
                 if 'knowledge_graph_construction' not in self.config['execution']['skip_phases']:
-                    self._phase_5_knowledge_graph_construction()
+                    self._phase_6_knowledge_graph_construction()  # This will be renamed/updated
                 else:
-                    self.logger.info("⏭️  Skipping Phase 5: Multi-Granularity Knowledge Graph Construction")
+                    self.logger.info("⏭️  Skipping Phase 6: Knowledge Graph Construction")
 
-            # Phase 6: Question Generation
+            # Phase 7: Question Generation (renamed from old Phase 6)
             if self.config['execution']['mode'] in ['full_pipeline']:
                 if 'question_generation' not in self.config['execution']['skip_phases']:
-                    self._phase_6_question_generation()
+                    self._phase_7_question_generation()  # This will be renamed
                 else:
-                    self.logger.info("⏭️  Skipping Phase 6: Question Generation")
+                    self.logger.info("⏭️  Skipping Phase 7: Question Generation")
 
-            # TODO: Add remaining phases
-            # self._phase_7_rag_evaluation()
-            # etc.
-
-            self.logger.info("🎉 Enhanced multi-granularity pipeline completed successfully!")
+            self.logger.info("🎉 Enhanced pipeline with entity/theme extraction completed successfully!")
             return {
                 "experiment_id": self.experiment_id,
                 "status": "completed",
                 "execution_time": datetime.now() - self.start_time,
-                "architecture": "multi_granularity_three_tier"
+                "architecture": "multi_granularity_entity_theme_extraction"
             }
 
         except Exception as e:
@@ -343,6 +346,79 @@ class SemanticRAGPipeline:
             
         except Exception as e:
             self.logger.error(f"❌ Phase 4 failed: {e}")
+            raise
+
+    # Add this new phase method to the SemanticRAGPipeline class
+    def _phase_5_entity_theme_extraction(self):
+        """Phase 5: Entity/Theme Extraction (NEW PHASE)"""
+        self.logger.info("🏷️  Starting Phase 5: Entity/Theme Extraction")
+
+        # Check if we have required data from previous phases
+        if not self.chunks:
+            self.logger.warning("No chunks available from Phase 3. Loading from cache...")
+            raise RuntimeError("No chunks available. Please run Phase 3 first.")
+
+        if not self.embeddings:
+            self.logger.warning("No multi-granularity embeddings available from Phase 3. Loading from cache...")
+            raise RuntimeError("No multi-granularity embeddings available. Please run Phase 3 first.")
+
+        if not self.articles:
+            self.logger.warning("No articles available from Phase 2. Loading from cache...")
+            # Try to load articles from cache
+            wiki_engine = WikiEngine(self.config, self.logger)
+            wiki_path = Path(self.config['directories']['data']) / "wiki.json"
+            if wiki_path.exists():
+                self.articles = wiki_engine._load_cached_articles(wiki_path)
+            else:
+                raise RuntimeError("No articles available. Please run Phase 2 first.")
+
+        try:
+            # Initialize EntityThemeExtractionEngine
+            self.logger.info("🔍 Initializing entity/theme extraction engine")
+            extraction_engine = EntityThemeExtractionEngine(self.config, self.logger)
+
+            # Check if we should force recompute
+            force_recompute = 'entity_theme' in self.config['execution'].get('force_recompute', [])
+
+            # Extract entities and themes across all granularity levels
+            self.logger.info(f"⚡ Extracting entities and themes with force_recompute={force_recompute}")
+            entity_theme_data = extraction_engine.extract_entities_and_themes(
+                chunks=self.chunks,
+                multi_granularity_embeddings=self.embeddings,
+                articles=self.articles,
+                force_recompute=force_recompute
+            )
+
+            if not entity_theme_data:
+                raise RuntimeError("No entity/theme data was extracted")
+
+            # Get extraction statistics
+            entity_theme_stats = extraction_engine.get_extraction_statistics(entity_theme_data)
+
+            # Log results
+            metadata = entity_theme_data['metadata']
+            self.logger.info("📊 Entity/Theme Extraction Statistics:")
+            self.logger.info(f"   Total entities: {metadata.total_entities_extracted:,}")
+            self.logger.info(f"   Total themes: {metadata.total_themes_extracted:,}")
+            self.logger.info(f"   Processing time: {metadata.processing_time:.2f}s")
+
+            # Log granularity breakdown
+            for granularity_level, count in metadata.granularity_counts.items():
+                self.logger.info(f"   {granularity_level}: {count:,} items")
+
+            # Log extraction methods used
+            method_status = "✅ spaCy + Ollama" if (
+                        metadata.spacy_model_available and metadata.ollama_available) else "⚠️  Fallback methods"
+            self.logger.info(f"   Extraction methods: {method_status}")
+
+            # Store results in pipeline
+            self.entity_theme_data = entity_theme_data
+            self.entity_theme_stats = entity_theme_stats
+
+            self.logger.info("✅ Phase 5 Entity/Theme Extraction completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"❌ Phase 5 failed: {e}")
             raise
 
     def _phase_5_knowledge_graph_construction(self):
