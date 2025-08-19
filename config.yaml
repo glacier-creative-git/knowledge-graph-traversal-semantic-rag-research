@@ -56,7 +56,7 @@ models:
       enabled: true
       description: "Document-level summaries for high-level navigation"
       method: "extractive"  # extractive, ollama
-      max_sentences: 3
+      max_sentences: 5
 
 # Wikipedia Configuration (unchanged)
 wikipedia:
