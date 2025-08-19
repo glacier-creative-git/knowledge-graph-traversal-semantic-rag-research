@@ -421,106 +421,96 @@ class SemanticRAGPipeline:
             self.logger.error(f"❌ Phase 5 failed: {e}")
             raise
 
-    def _phase_5_knowledge_graph_construction(self):
-        """Phase 5: Enhanced Multi-Granularity Knowledge Graph Construction"""
-        self.logger.info("🏗️  Starting Phase 5: Enhanced Multi-Granularity Knowledge Graph Construction")
+    def _phase_6_knowledge_graph_construction(self):
+        """Phase 6: Knowledge Graph Assembly using pre-computed data from Phases 4 & 5."""
+        self.logger.info("🏗️  Starting Phase 6: Knowledge Graph Assembly")
 
         # Check if we have required data from previous phases
-        if not self.chunks:
-            self.logger.warning("No chunks available from Phase 3. Loading from cache...")
-            raise RuntimeError("No chunks available. Please run Phase 3 first.")
-        
-        if not self.embeddings:
-            self.logger.warning("No multi-granularity embeddings available from Phase 3. Loading from cache...")
-            raise RuntimeError("No multi-granularity embeddings available. Please run Phase 3 first.")
-        
-        if not self.similarities:
-            self.logger.warning("No multi-granularity similarity matrices available from Phase 4. Loading from cache...")
-            raise RuntimeError("No multi-granularity similarity matrices available. Please run Phase 4 first.")
+        required_data = [
+            (self.chunks, "chunks", "Phase 3"),
+            (self.embeddings, "multi-granularity embeddings", "Phase 3"),
+            (self.similarities, "similarity matrices", "Phase 4"),
+            (self.entity_theme_data, "entity/theme data", "Phase 5")
+        ]
+
+        for data, name, phase in required_data:
+            if not data:
+                self.logger.warning(f"No {name} available from {phase}. Loading from cache...")
+                raise RuntimeError(f"No {name} available. Please run {phase} first.")
 
         try:
             # Check if we should force recompute
             force_recompute = 'knowledge_graph' in self.config['execution'].get('force_recompute', [])
-            
+
             # Check cache
             kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
             if not force_recompute and kg_path.exists():
-                self.logger.info("📂 Loading cached multi-granularity knowledge graph")
+                self.logger.info("📂 Loading cached knowledge graph")
                 self.knowledge_graph = MultiGranularityKnowledgeGraph.load(str(kg_path))
                 self.kg_stats = self.knowledge_graph.metadata
             else:
-                # Build fresh multi-granularity knowledge graph
-                self.logger.info("🔨 Building fresh multi-granularity knowledge graph")
+                # Build fresh knowledge graph using assembly approach
+                self.logger.info("🔨 Assembling fresh knowledge graph from pre-computed data")
                 kg_builder = MultiGranularityKnowledgeGraphBuilder(self.config, self.logger)
-                
+
                 self.knowledge_graph = kg_builder.build_knowledge_graph(
-                    self.chunks, 
-                    self.embeddings, 
-                    self.similarities
+                    chunks=self.chunks,
+                    multi_granularity_embeddings=self.embeddings,
+                    multi_granularity_similarities=self.similarities,
+                    entity_theme_data=self.entity_theme_data  # NEW: Phase 5 data
                 )
-                
+
                 # Save knowledge graph
-                self.logger.info(f"💾 Saving multi-granularity knowledge graph to {kg_path}")
+                self.logger.info(f"💾 Saving assembled knowledge graph to {kg_path}")
                 self.knowledge_graph.save(str(kg_path))
-                
+
                 self.kg_stats = self.knowledge_graph.metadata
-            
+
             # Log knowledge graph statistics
-            self.logger.info("📊 Multi-Granularity Knowledge Graph Statistics:")
-            self.logger.info(f"   Architecture: {self.kg_stats.get('architecture', 'multi_granularity_three_tier')}")
+            self.logger.info("📊 Knowledge Graph Assembly Statistics:")
+            self.logger.info(f"   Architecture: {self.kg_stats.get('architecture', 'phase6_assembly')}")
             self.logger.info(f"   Total nodes: {self.kg_stats['total_nodes']:,}")
             self.logger.info(f"   Total relationships: {self.kg_stats['total_relationships']:,}")
-            
-            if 'granularity_counts' in self.kg_stats:
-                granularity_counts = self.kg_stats['granularity_counts']
-                self.logger.info(f"   Granularity breakdown:")
-                self.logger.info(f"      Documents (L0): {granularity_counts.get('documents', 0):,}")
-                self.logger.info(f"      Chunks (L1): {granularity_counts.get('chunks', 0):,}")
-                self.logger.info(f"      Sentences (L2): {granularity_counts.get('sentences', 0):,}")
-            
-            if 'relationship_types' in self.kg_stats:
-                self.logger.info(f"   Relationship types: {self.kg_stats['relationship_types']}")
-            
-            if 'granularity_relationship_types' in self.kg_stats:
-                self.logger.info(f"   Granularity relationship types: {self.kg_stats['granularity_relationship_types']}")
-            
+
+            if 'theme_bridge_stats' in self.kg_stats:
+                bridge_stats = self.kg_stats['theme_bridge_stats']
+                self.logger.info(f"   Theme bridges:")
+                self.logger.info(f"      Unique themes: {bridge_stats['total_unique_themes']}")
+                self.logger.info(f"      Themes with bridges: {bridge_stats['themes_with_bridges']}")
+                self.logger.info(f"      Total bridges: {bridge_stats['total_bridges']}")
+
             self.logger.info(f"   Build time: {self.kg_stats.get('build_time', 0):.2f}s")
-            
-            # Initialize enhanced retrieval engine with multi-granularity knowledge graph
-            self.logger.info("🎯 Initializing enhanced retrieval engine with multi-granularity knowledge graph")
+
+            # Extract chunk embeddings for retrieval engine (FIX: Convert multi-granularity to chunk-only format)
+            chunk_only_embeddings = {}
+            for model_name, granularity_embeddings in self.embeddings.items():
+                chunk_embeddings = granularity_embeddings.get('chunks', [])
+                chunk_only_embeddings[model_name] = chunk_embeddings
+
+            # Initialize retrieval engine with assembled knowledge graph
+            self.logger.info("🎯 Initializing retrieval engine with assembled knowledge graph")
             retrieval_engine = RetrievalEngine(
-                self.config, 
-                self.embeddings, 
-                self.similarities, 
+                self.config,
+                chunk_only_embeddings,  # FIX: Pass chunk-only embeddings instead of multi-granularity
+                self.similarities,
                 self.logger,
-                knowledge_graph=self.knowledge_graph  # Pass multi-granularity KG to retrieval engine
+                knowledge_graph=self.knowledge_graph
             )
-            
-            # Get retrieval statistics
+
             retrieval_stats = retrieval_engine.get_retrieval_statistics()
             self.logger.info("📊 Enhanced Retrieval Engine Statistics:")
             self.logger.info(f"   Algorithm: {retrieval_stats['algorithm']}")
             self.logger.info(f"   Models available: {retrieval_stats['models_available']}")
-            self.logger.info(f"   Multi-granularity KG enabled: {self.knowledge_graph is not None}")
-            for model, count in retrieval_stats['total_chunks_per_model'].items():
-                self.logger.info(f"   {model}: {count:,} chunks")
-            
-            if 'semantic_traversal_config' in retrieval_stats:
-                config = retrieval_stats['semantic_traversal_config']
-                self.logger.info(f"   Traversal config:")
-                self.logger.info(f"      Max hops: {config['max_hops']}")
-                self.logger.info(f"      Num anchors: {config['num_anchors']}")
-                self.logger.info(f"      Similarity threshold: {config['similarity_threshold']}")
-                self.logger.info(f"      Max results: {config['max_results']}")
-            
-            # Store retrieval engine in pipeline
+            self.logger.info(f"   Knowledge graph enabled: True")
+
+            # Store results
             self.retrieval_engine = retrieval_engine
             self.retrieval_stats = retrieval_stats
-            
-            self.logger.info("✅ Phase 5 Multi-Granularity Knowledge Graph Construction completed successfully")
-            
+
+            self.logger.info("✅ Phase 6 Knowledge Graph Assembly completed successfully")
+
         except Exception as e:
-            self.logger.error(f"❌ Phase 5 failed: {e}")
+            self.logger.error(f"❌ Phase 6 failed: {e}")
             raise
 
     def _phase_6_question_generation(self):

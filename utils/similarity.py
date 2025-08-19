@@ -916,14 +916,14 @@ class MultiGranularitySimilarityEngine:
         except Exception as e:
             self.logger.warning(f"Failed to validate multi-granularity similarity cache: {e}")
             return False
-    
+
     def _cache_similarities(self, cache_path: Path, similarity_data: Dict[str, Any]):
         """Cache multi-granularity similarity data to disk."""
         try:
             # Save sparse matrices as .npz with proper sparse matrix components
             matrices = similarity_data['matrices']
             matrix_data = {}
-            
+
             for name, matrix in matrices.items():
                 # Convert to CSR format if not already
                 csr_matrix = matrix.tocsr()
@@ -932,33 +932,37 @@ class MultiGranularitySimilarityEngine:
                 matrix_data[f"{name}_indices"] = csr_matrix.indices
                 matrix_data[f"{name}_indptr"] = csr_matrix.indptr
                 matrix_data[f"{name}_shape"] = np.array(csr_matrix.shape)
-            
+
             np.savez_compressed(cache_path, **matrix_data)
-            
-            # Save metadata and other data as JSON
+
+            # Save metadata, connections, and other data as JSON
             metadata_path = cache_path.with_suffix('.json')
             cache_data = {
                 'metadata': asdict(similarity_data['metadata']),
                 'index_maps': similarity_data['index_maps'],
-                'connection_summary': {
-                    'total_connections': len(similarity_data['connections']),
-                    'by_granularity_type': {
-                        granularity_type: len([c for c in similarity_data['connections'] if c.granularity_type == granularity_type])
-                        for granularity_type in set(c.granularity_type for c in similarity_data['connections'])
-                    }
-                },
+                'connections': [  # Convert numpy types to native Python types for JSON serialization
+                    {
+                        'source_idx': int(conn.source_idx),  # Convert numpy int to Python int
+                        'target_idx': int(conn.target_idx),  # Convert numpy int to Python int
+                        'similarity_score': float(conn.similarity_score),  # Convert numpy float to Python float
+                        'connection_type': str(conn.connection_type),  # Ensure string type
+                        'source_id': str(conn.source_id),  # Ensure string type
+                        'target_id': str(conn.target_id),  # Ensure string type
+                        'granularity_type': str(conn.granularity_type)  # Ensure string type
+                    } for conn in similarity_data['connections']
+                ],
                 'matrix_names': list(matrices.keys())  # Store matrix names for loading
             }
-            
+
             with open(metadata_path, 'w', encoding='utf-8') as f:
                 json.dump(cache_data, f, indent=2, ensure_ascii=False)
-            
+
             self.logger.info(f"💾 Cached multi-granularity similarities to {cache_path}")
-            
+
         except Exception as e:
             self.logger.error(f"Failed to cache multi-granularity similarities: {e}")
             raise
-    
+
     def _load_cached_similarities(self, cache_path: Path) -> Dict[str, Any]:
         """Load cached multi-granularity similarity data from disk."""
         try:
@@ -966,16 +970,16 @@ class MultiGranularitySimilarityEngine:
             metadata_path = cache_path.with_suffix('.json')
             with open(metadata_path, 'r', encoding='utf-8') as f:
                 cache_data = json.load(f)
-            
+
             # Check if this is the new multi-granularity format
             if 'matrix_names' not in cache_data:
                 self.logger.warning("Cache file uses old format, cannot load")
                 raise ValueError("Cache file uses old format")
-            
+
             # Load sparse matrix components
             matrices_data = np.load(cache_path, allow_pickle=True)
             matrices = {}
-            
+
             # Reconstruct sparse matrices from saved components
             matrix_names = cache_data['matrix_names']
             for name in matrix_names:
@@ -985,7 +989,7 @@ class MultiGranularitySimilarityEngine:
                     indices = matrices_data[f"{name}_indices"]
                     indptr = matrices_data[f"{name}_indptr"]
                     shape = tuple(matrices_data[f"{name}_shape"])
-                    
+
                     # Reconstruct the CSR matrix
                     matrices[name] = sp.csr_matrix((data, indices, indptr), shape=shape)
                     self.logger.debug(f"Loaded matrix '{name}' with shape {shape}")
@@ -995,21 +999,37 @@ class MultiGranularitySimilarityEngine:
                 except Exception as e:
                     self.logger.warning(f"Failed to reconstruct matrix '{name}': {e}")
                     continue
-            
+
             if not matrices:
                 raise ValueError("No matrices could be loaded from cache")
-            
+
+            # Reconstruct connections from JSON data
+            connections = []
+            if 'connections' in cache_data:
+                for conn_data in cache_data['connections']:
+                    connection = SimilarityConnection(
+                        source_idx=conn_data['source_idx'],
+                        target_idx=conn_data['target_idx'],
+                        similarity_score=conn_data['similarity_score'],
+                        connection_type=conn_data['connection_type'],
+                        source_id=conn_data['source_id'],
+                        target_id=conn_data['target_id'],
+                        granularity_type=conn_data['granularity_type']
+                    )
+                    connections.append(connection)
+
             metadata = MultiGranularitySimilarityMetadata(**cache_data['metadata'])
-            
-            self.logger.info(f"📂 Successfully loaded {len(matrices)} multi-granularity similarity matrices from cache")
-            
+
+            self.logger.info(
+                f"📂 Successfully loaded {len(matrices)} multi-granularity similarity matrices and {len(connections)} connections from cache")
+
             return {
                 'metadata': metadata,
                 'matrices': matrices,
-                'index_maps': cache_data['index_maps'],
-                'connection_summary': cache_data['connection_summary']
+                'connections': connections,  # FIX: Include the loaded connections
+                'index_maps': cache_data['index_maps']
             }
-            
+
         except Exception as e:
             self.logger.error(f"Failed to load cached multi-granularity similarities: {e}")
             raise

@@ -182,6 +182,24 @@ entity_theme_extraction:
     min_themes_per_document: 1             # Minimum themes required per document
     filter_common_words: true              # Filter out common words from entities
 
+# Phase 6: Knowledge Graph Assembly Configuration
+knowledge_graph_assembly:
+  use_cached: true
+
+  # Theme bridging configuration (NEW)
+  theme_bridging:
+    enabled: true
+    top_k_bridges: 3                    # Number of cross-document theme connections per theme
+    min_bridge_similarity: 0.2          # Minimum similarity for theme bridges
+    exclude_intra_document: true        # Only create cross-document bridges
+
+  # Entity relationship configuration
+  entity_relationships:
+    enabled: true
+    high_confidence_only: true          # Only use high-confidence entity overlaps
+    min_entity_overlap: 2               # Minimum shared entities for relationship
+    min_jaccard_similarity: 0.3         # Minimum Jaccard similarity for entity relationships
+
 # Simplified Knowledge Graph Configuration
 knowledge_graph:
   use_cached: true
