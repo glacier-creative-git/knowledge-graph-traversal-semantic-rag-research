@@ -97,9 +97,15 @@ class MultiGranularitySimilarityEngine:
                     raise ValueError("chunk_to_chunk intra_document top_k must be positive")
                 if config['inter_document']['enabled'] and config['inter_document']['top_x'] <= 0:
                     raise ValueError("chunk_to_chunk inter_document top_x must be positive")
-            elif granularity_type in ['doc_to_doc', 'sentence_to_sentence']:
+            elif granularity_type == 'doc_to_doc':
                 if config.get('top_k', 0) <= 0:
                     raise ValueError(f"{granularity_type} top_k must be positive")
+            elif granularity_type == 'sentence_to_sentence':
+                # sentence_to_sentence has nested structure: semantic.top_k and sequential.enabled
+                if config.get('semantic', {}).get('enabled', False):
+                    if config['semantic'].get('top_k', 0) <= 0:
+                        raise ValueError("sentence_to_sentence semantic top_k must be positive")
+                # sequential doesn't need top_k validation (uses adjacency)
             elif granularity_type == 'cross_granularity':
                 if config['sentence_to_chunk']['enabled'] and config['sentence_to_chunk']['top_k'] <= 0:
                     raise ValueError("cross_granularity sentence_to_chunk top_k must be positive")
