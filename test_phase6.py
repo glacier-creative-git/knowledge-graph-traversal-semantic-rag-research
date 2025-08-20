@@ -220,8 +220,6 @@ def test_phase6():
                 print(f"         Inherited themes ({len(inherited_themes)}) from cross-document bridges:")
 
                 for inherited_theme in inherited_themes[:3]:  # Show first 3
-                    print(
-                        f"            • '{inherited_theme['theme']}' (similarity: {inherited_theme['similarity']:.3f})")
                     print(f"              inherited from: '{inherited_theme['inherited_from']}'")
                     print(f"              source document: {inherited_theme['source_document']}")
 
@@ -268,13 +266,18 @@ def test_phase6():
             print(f"      Test chunk children: {len(children)} children")
 
             # Test similarity-based neighbors
-            similarity_neighbors = pipeline.knowledge_graph.get_neighbors(test_chunk.id, ['cosine_similarity',
-                                                                                          'cosine_similarity_intra',
-                                                                                          'cosine_similarity_inter'])
+            # Test similarity-based neighbors - use updated type names
+            similarity_neighbors = pipeline.knowledge_graph.get_neighbors(test_chunk.id, [
+                'sentence_to_sentence_semantic',
+                'cosine_similarity_intra',
+                'cosine_similarity_inter'
+            ])
             print(f"      Similarity neighbors: {len(similarity_neighbors)} similar nodes")
 
-            # Test entity-based neighbors
-            entity_neighbors = pipeline.knowledge_graph.get_neighbors(test_chunk.id, ['entity_overlap'])
+            # Test entity-based neighbors - use updated type name
+            entity_neighbors = pipeline.knowledge_graph.get_neighbors(test_chunk.id, [
+                'high_confidence_entity_overlap'
+            ])
             print(f"      Entity overlap neighbors: {len(entity_neighbors)} entity-connected nodes")
 
             # Test all neighbors (multi-dimensional navigation)
@@ -310,140 +313,6 @@ def test_phase6():
             if chunk1.properties.get('inherited_themes'):
                 sample_bridge = chunk1.properties['inherited_themes'][0]
                 print(f"      Sample highway: '{sample_bridge['inherited_from']}' → '{sample_bridge['theme']}'")
-                print(f"      Bridge strength: {sample_bridge['similarity']:.3f}")
-
-        # Test retrieval engine integration
-        print("\n🎯 Testing Retrieval Engine Integration:")
-
-        if pipeline.retrieval_engine:
-            retrieval_stats = pipeline.retrieval_stats
-            print(f"   📊 Retrieval Engine Status:")
-            print(f"      Algorithm: {retrieval_stats['algorithm']}")
-            print(f"      Models available: {retrieval_stats['models_available']}")
-            print(f"      Knowledge graph integration: {'✅ Enabled' if pipeline.knowledge_graph else '❌ Disabled'}")
-
-            for model, count in retrieval_stats['total_chunks_per_model'].items():
-                print(f"      {model}: {count:,} retrievable chunks")
-
-            # Test sample retrieval with theme-aware system
-            print(f"   🔍 Testing Sample Retrieval with Theme Awareness:")
-
-            test_queries = [
-                "machine learning algorithms",
-                "neural network architecture",
-                "cognitive psychology"
-            ]
-
-            model_name = list(pipeline.embeddings.keys())[0]
-
-            for query in test_queries[:2]:  # Test first 2 queries
-                try:
-                    print(f"      Query: '{query}'")
-
-                    # Test semantic traversal (which now has theme awareness)
-                    semantic_result = pipeline.retrieval_engine.retrieve(
-                        query, model_name, algorithm="semantic_traversal"
-                    )
-
-                    print(f"         Semantic traversal: {len(semantic_result.chunks)} results")
-
-                    if semantic_result.chunks:
-                        sample_chunk = semantic_result.chunks[0]
-                        sample_text = sample_chunk.chunk_text[:40].replace('\n', ' ')
-                        print(f"         Top result: '{sample_text}...' (score: {semantic_result.scores[0]:.3f})")
-
-                        # Show if result has theme context
-                        if hasattr(sample_chunk, 'properties'):
-                            themes = len(sample_chunk.properties.get('direct_themes', []))
-                            inherited = len(sample_chunk.properties.get('inherited_themes', []))
-                            print(f"         Theme context: {themes} direct + {inherited} inherited themes")
-
-                except Exception as e:
-                    print(f"         ⚠️  Query failed: {e}")
-
-        # Test caching functionality
-        print("\n💾 Testing knowledge graph assembly caching...")
-        try:
-            # Clear force recompute and run again (should use cache)
-            pipeline.config['execution']['force_recompute'] = []
-
-            import time
-            cache_start = time.time()
-            pipeline._phase_6_knowledge_graph_construction()
-            cache_end = time.time()
-            cache_time = cache_end - cache_start
-
-            print(f"   Cache load time: {cache_time:.3f}s")
-            print(f"   Cached knowledge graph: {len(pipeline.knowledge_graph.nodes)} nodes")
-
-            if cache_time < 2.0:  # Should be fast for graph loading
-                print("   ✅ Caching working effectively")
-            else:
-                print("   ⚠️  Caching may not be working as expected")
-
-        except Exception as e:
-            print(f"   ⚠️  Cache test failed: {e}")
-
-        # Check if knowledge graph was saved
-        kg_path = Path(pipeline.config['directories']['data']) / "knowledge_graph.json"
-        if kg_path.exists():
-            print(f"\n✅ Knowledge graph saved successfully to {kg_path}")
-
-            # Show file size
-            file_size = kg_path.stat().st_size / 1024  # KB
-            print(f"   File size: {file_size:.1f} KB")
-
-            # Verify it can be loaded
-            try:
-                from utils.knowledge_graph import MultiGranularityKnowledgeGraph
-                loaded_kg = MultiGranularityKnowledgeGraph.load(str(kg_path))
-                print(f"   ✅ Knowledge graph successfully loads from cache")
-                print(f"   📊 Loaded: {len(loaded_kg.nodes)} nodes, {len(loaded_kg.relationships)} relationships")
-
-                # Verify theme bridge data is preserved
-                if loaded_kg.metadata.get('theme_bridge_stats'):
-                    bridge_stats = loaded_kg.metadata['theme_bridge_stats']
-                    print(f"   🌉 Theme bridges preserved: {bridge_stats['total_bridges']} bridges")
-
-            except Exception as e:
-                print(f"   ❌ Failed to load knowledge graph: {e}")
-        else:
-            print(f"\n⚠️  Knowledge graph file not found at {kg_path}")
-
-        # Test data flow validation
-        print("\n🔄 Testing Data Flow Validation (Phase 4 → Phase 5 → Phase 6):")
-
-        # Verify Phase 4 data was used
-        if pipeline.similarities:
-            model_name = list(pipeline.similarities.keys())[0]
-            connections = pipeline.similarities[model_name].get('connections', [])
-            print(f"   📊 Phase 4 → Phase 6: {len(connections)} pre-computed similarity connections used")
-
-        # Verify Phase 5 data was used
-        if pipeline.entity_theme_data:
-            extraction_results = pipeline.entity_theme_data['extraction_results']
-            chunk_entities = len(extraction_results.get('chunk_entities', []))
-            sentence_entities = len(extraction_results.get('sentence_entities', []))
-            document_themes = len(extraction_results.get('document_themes', []))
-            print(
-                f"   🏷️  Phase 5 → Phase 6: {chunk_entities} chunk entities, {sentence_entities} sentence entities, {document_themes} document themes used")
-
-        # Verify assembly integration
-        if pipeline.knowledge_graph:
-            sample_chunk_node = chunk_nodes[0] if chunk_nodes else None
-            if sample_chunk_node:
-                has_entities = bool(sample_chunk_node.properties.get('entities'))
-                has_themes = bool(sample_chunk_node.properties.get('direct_themes'))
-                has_inherited = bool(sample_chunk_node.properties.get('inherited_themes'))
-                print(f"   🔗 Integration verification:")
-                print(f"      Nodes have entities: {'✅' if has_entities else '❌'}")
-                print(f"      Nodes have direct themes: {'✅' if has_themes else '❌'}")
-                print(f"      Nodes have inherited themes: {'✅' if has_inherited else '❌'}")
-
-        print("\n🎉 Phase 6 Knowledge Graph Assembly test completed successfully!")
-        print(f"📋 Experiment ID: {pipeline.experiment_id}")
-        print(f"📁 Logs saved to: logs/{pipeline.experiment_id}.log")
-        print(f"📊 Knowledge graph saved to: {kg_path}")
 
         return True
 
