@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """
-Phase 5: Entity/Theme Extraction Engine
-======================================
+Phase 5: Theme Extraction Engine
+===============================
 
-Dedicated phase for extracting entities and themes across all granularity levels.
+Dedicated phase for extracting themes at document level.
 This phase runs after Phase 4 (similarity computation) and before Phase 6 (knowledge graph assembly).
 
 Architecture:
-- Chunk-level entities: PERSON/ORG/GPE extraction using spaCy
-- Sentence-level entities: Same entity types for fine-grained relationships
-- Document-level themes: Ollama-based conceptual theme extraction
-- Caching: Independent cache for entity/theme data
+- Document-level themes: Ollama-based conceptual theme extraction with fallback
+- Caching: Independent cache for theme data
+- Entity extraction removed: was creating spurious relationships, themes work excellently
 """
 
 import json
@@ -23,8 +22,6 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 
-import spacy
-
 try:
     import ollama
 
@@ -34,21 +31,6 @@ except ImportError:
 
 from wiki import WikipediaArticle
 from models import ChunkEmbedding, SentenceEmbedding, DocumentSummaryEmbedding
-
-
-@dataclass
-class EntityExtractionResult:
-    """Container for entity extraction results at any granularity level."""
-    granularity_level: str  # 'chunk', 'sentence', 'document'
-    source_id: str  # chunk_id, sentence_id, or doc_id
-    source_text: str  # The text that entities were extracted from
-    entities: Dict[str, List[str]]  # {'PERSON': [...], 'ORG': [...], 'GPE': [...]}
-    extraction_method: str  # 'spacy', 'patterns'
-    extraction_time: float
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
-        return asdict(self)
 
 
 @dataclass
@@ -68,118 +50,16 @@ class ThemeExtractionResult:
 
 
 @dataclass
-class EntityThemeExtractionMetadata:
-    """Metadata for cached entity/theme extraction results."""
+class ThemeExtractionMetadata:
+    """Metadata for cached theme extraction results."""
     created_at: str
-    granularity_counts: Dict[str, int]  # chunks: 100, sentences: 300, documents: 10
-    entity_extraction_config: Dict[str, Any]
+    document_count: int  # Number of documents processed
     theme_extraction_config: Dict[str, Any]
-    total_entities_extracted: int
     total_themes_extracted: int
     processing_time: float
     config_hash: str
     ollama_available: bool
-    spacy_model_available: bool
 
-
-class SpacyEntityExtractor:
-    """High-quality entity extraction using spaCy NER."""
-
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        """Initialize spaCy entity extractor."""
-        self.logger = logger or logging.getLogger(__name__)
-        self.entity_types = ['PERSON', 'ORG', 'GPE']  # High-quality entity types only
-        self.nlp = None
-        self.available = False
-
-        self._load_spacy_model()
-
-    def _load_spacy_model(self):
-        """Load spaCy model with fallback handling."""
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-            self.available = True
-            self.logger.info("✅ spaCy model loaded successfully")
-        except OSError:
-            self.logger.warning("⚠️  spaCy model 'en_core_web_sm' not found, will use pattern-based fallback")
-            self.available = False
-
-    def extract_entities(self, text: str, source_id: str, granularity_level: str) -> EntityExtractionResult:
-        """Extract entities from text using spaCy or pattern-based fallback."""
-        start_time = time.time()
-
-        if self.available:
-            entities, method = self._extract_with_spacy(text)
-        else:
-            entities, method = self._extract_with_patterns(text)
-
-        extraction_time = time.time() - start_time
-
-        return EntityExtractionResult(
-            granularity_level=granularity_level,
-            source_id=source_id,
-            source_text=text[:200] + "..." if len(text) > 200 else text,  # Store truncated text for reference
-            entities=entities,
-            extraction_method=method,
-            extraction_time=extraction_time
-        )
-
-    def _extract_with_spacy(self, text: str) -> Tuple[Dict[str, List[str]], str]:
-        """Extract entities using spaCy NER."""
-        doc = self.nlp(text)
-        entities = {entity_type: [] for entity_type in self.entity_types}
-
-        for ent in doc.ents:
-            entity_text = ent.text.strip()
-
-            # Quality filtering
-            if len(entity_text) < 2:  # Skip very short entities
-                continue
-            if entity_text.lower() in ['the', 'and', 'or', 'but']:  # Skip common words
-                continue
-
-            if ent.label_ in self.entity_types:
-                entities[ent.label_].append(entity_text)
-
-        # Remove duplicates while preserving order
-        for entity_type in entities:
-            entities[entity_type] = list(dict.fromkeys(entities[entity_type]))
-
-        return entities, 'spacy'
-
-    def _extract_with_patterns(self, text: str) -> Tuple[Dict[str, List[str]], str]:
-        """Fallback entity extraction using basic patterns."""
-        entities = {entity_type: [] for entity_type in self.entity_types}
-
-        # Extract capitalized words/phrases (potential proper nouns)
-        capitalized_patterns = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
-
-        for phrase in capitalized_patterns:
-            phrase = phrase.strip()
-            if len(phrase) < 3:
-                continue
-
-            # Basic heuristics for classification
-            phrase_lower = phrase.lower()
-            if any(word in phrase_lower for word in
-                   ['university', 'company', 'corporation', 'inc', 'ltd', 'institute']):
-                entities['ORG'].append(phrase)
-            elif any(word in phrase_lower for word in ['dr', 'professor', 'mr', 'ms', 'mrs']):
-                entities['PERSON'].append(phrase)
-            elif any(word in phrase_lower for word in ['united states', 'america', 'canada', 'europe', 'asia']):
-                entities['GPE'].append(phrase)
-            else:
-                # Default classification based on context
-                if len(phrase.split()) >= 2:  # Multi-word phrases often organizations
-                    entities['ORG'].append(phrase)
-                else:  # Single words often places or people
-                    entities['GPE'].append(phrase)
-
-        # Remove duplicates while preserving order
-        for entity_type in entities:
-            entities[entity_type] = list(dict.fromkeys(entities[entity_type]))
-
-        return entities, 'patterns'
 
 
 class OllamaThemeExtractor:
@@ -354,77 +234,65 @@ JSON Array:"""
         return detected_themes[:self.num_themes], 'fallback'
 
 
-class EntityThemeExtractionEngine:
-    """Main engine for Phase 5: Entity/Theme Extraction."""
+class ThemeExtractionEngine:
+    """Main engine for Phase 5: Theme Extraction."""
 
     def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        """Initialize the entity/theme extraction engine."""
+        """Initialize the theme extraction engine."""
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.data_dir = Path(config['directories']['data'])
 
-        # Initialize extractors
-        self.entity_extractor = SpacyEntityExtractor(self.logger)
+        # Initialize theme extractor only
         self.theme_extractor = OllamaThemeExtractor(config, self.logger)
 
-        # Create entity/theme data directory
-        self.entity_theme_dir = self.data_dir / "entity_theme"
-        self.entity_theme_dir.mkdir(parents=True, exist_ok=True)
+        # Create theme data directory
+        self.theme_dir = self.data_dir / "themes"
+        self.theme_dir.mkdir(parents=True, exist_ok=True)
 
-        self.logger.info("🏷️  Phase 5: Entity/Theme Extraction Engine initialized")
+        self.logger.info("🎨 Phase 5: Theme Extraction Engine initialized")
         self._log_extractor_status()
 
     def _log_extractor_status(self):
         """Log the status of available extractors."""
         self.logger.info(
-            f"   Entity extraction (spaCy): {'✅ Available' if self.entity_extractor.available else '⚠️  Fallback mode'}")
-        self.logger.info(
             f"   Theme extraction (Ollama): {'✅ Available' if self.theme_extractor.available else '⚠️  Fallback mode'}")
 
-    def extract_entities_and_themes(self, chunks: List[Dict[str, Any]],
-                                    multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
-                                    articles: List[WikipediaArticle],
-                                    force_recompute: bool = False) -> Dict[str, Any]:
+    def extract_themes(self, multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
+                      articles: List[WikipediaArticle],
+                      force_recompute: bool = False) -> Dict[str, Any]:
         """
-        Main extraction method for entities and themes across all granularity levels.
+        Main extraction method for themes at document level.
 
         Args:
-            chunks: Chunk data from Phase 3
             multi_granularity_embeddings: Embedding data from Phase 3
             articles: Original Wikipedia articles
             force_recompute: Whether to force recomputation even if cached
 
         Returns:
-            Dictionary containing all extracted entity/theme data
+            Dictionary containing extracted theme data
         """
         start_time = time.time()
-        self.logger.info("🔍 Starting Phase 5: Entity/Theme Extraction")
+        self.logger.info("🎨 Starting Phase 5: Theme Extraction")
 
         # Generate config hash for cache validation
-        config_hash = self._generate_config_hash(chunks, multi_granularity_embeddings, articles)
+        config_hash = self._generate_config_hash(multi_granularity_embeddings, articles)
 
         # Check cache
         cache_path = self._get_cache_path()
         if not force_recompute and self._is_cache_valid(cache_path, config_hash):
-            self.logger.info("📂 Loading cached entity/theme data")
+            self.logger.info("📂 Loading cached theme data")
             return self._load_cached_data(cache_path)
 
-        self.logger.info("⚡ Extracting fresh entity/theme data")
+        self.logger.info("⚡ Extracting fresh theme data")
 
-        # Extract data at each granularity level
-        extraction_results = {}
-
-        # 1. Extract chunk-level entities
-        chunk_entities = self._extract_chunk_entities(chunks)
-        extraction_results['chunk_entities'] = chunk_entities
-
-        # 2. Extract sentence-level entities
-        sentence_entities = self._extract_sentence_entities(multi_granularity_embeddings)
-        extraction_results['sentence_entities'] = sentence_entities
-
-        # 3. Extract document-level themes
+        # Extract document-level themes (UNCHANGED - this works excellently)
         document_themes = self._extract_document_themes(multi_granularity_embeddings, articles)
-        extraction_results['document_themes'] = document_themes
+        
+        # Package results (simplified structure)
+        extraction_results = {
+            'document_themes': document_themes
+        }
 
         processing_time = time.time() - start_time
 
@@ -432,59 +300,20 @@ class EntityThemeExtractionEngine:
         metadata = self._create_metadata(extraction_results, config_hash, processing_time)
 
         # Package final results
-        entity_theme_data = {
+        theme_data = {
             'metadata': metadata,
             'extraction_results': extraction_results
         }
 
         # Cache results
-        self._cache_data(cache_path, entity_theme_data)
+        self._cache_data(cache_path, theme_data)
 
         # Log comprehensive results
         self._log_extraction_results(metadata)
 
-        return entity_theme_data
+        return theme_data
 
-    def _extract_chunk_entities(self, chunks: List[Dict[str, Any]]) -> List[EntityExtractionResult]:
-        """Extract entities from all chunks."""
-        self.logger.info(f"🔨 Extracting entities from {len(chunks)} chunks...")
 
-        chunk_entities = []
-        for chunk in chunks:
-            result = self.entity_extractor.extract_entities(
-                text=chunk['text'],
-                source_id=chunk['chunk_id'],
-                granularity_level='chunk'
-            )
-            chunk_entities.append(result)
-
-        total_entities = sum(len(entities) for result in chunk_entities for entities in result.entities.values())
-        self.logger.info(f"   ✅ Extracted {total_entities} entities from chunks")
-
-        return chunk_entities
-
-    def _extract_sentence_entities(self, multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]]) -> List[
-        EntityExtractionResult]:
-        """Extract entities from all sentences."""
-        # Get sentence embeddings from first model
-        model_name = list(multi_granularity_embeddings.keys())[0]
-        sentence_embeddings = multi_granularity_embeddings[model_name].get('sentences', [])
-
-        self.logger.info(f"📝 Extracting entities from {len(sentence_embeddings)} sentences...")
-
-        sentence_entities = []
-        for sentence_emb in sentence_embeddings:
-            result = self.entity_extractor.extract_entities(
-                text=sentence_emb.sentence_text,
-                source_id=sentence_emb.sentence_id,
-                granularity_level='sentence'
-            )
-            sentence_entities.append(result)
-
-        total_entities = sum(len(entities) for result in sentence_entities for entities in result.entities.values())
-        self.logger.info(f"   ✅ Extracted {total_entities} entities from sentences")
-
-        return sentence_entities
 
     def _extract_document_themes(self, multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
                                  articles: List[WikipediaArticle]) -> List[ThemeExtractionResult]:
@@ -510,62 +339,41 @@ class EntityThemeExtractionEngine:
         return document_themes
 
     def _create_metadata(self, extraction_results: Dict[str, List], config_hash: str,
-                         processing_time: float) -> EntityThemeExtractionMetadata:
+                         processing_time: float) -> ThemeExtractionMetadata:
         """Create metadata for the extraction results."""
-        granularity_counts = {
-            'chunks': len(extraction_results.get('chunk_entities', [])),
-            'sentences': len(extraction_results.get('sentence_entities', [])),
-            'documents': len(extraction_results.get('document_themes', []))
-        }
-
-        total_entities = sum(
-            len(entities) for result_list in
-            [extraction_results.get('chunk_entities', []), extraction_results.get('sentence_entities', [])]
-            for result in result_list for entities in result.entities.values()
-        )
-
+        document_count = len(extraction_results.get('document_themes', []))
         total_themes = sum(len(result.themes) for result in extraction_results.get('document_themes', []))
 
-        return EntityThemeExtractionMetadata(
+        return ThemeExtractionMetadata(
             created_at=datetime.now().isoformat(),
-            granularity_counts=granularity_counts,
-            entity_extraction_config={'entity_types': self.entity_extractor.entity_types},
+            document_count=document_count,
             theme_extraction_config={'num_themes': self.theme_extractor.num_themes,
                                      'model': self.theme_extractor.model},
-            total_entities_extracted=total_entities,
             total_themes_extracted=total_themes,
             processing_time=processing_time,
             config_hash=config_hash,
-            ollama_available=self.theme_extractor.available,
-            spacy_model_available=self.entity_extractor.available
+            ollama_available=self.theme_extractor.available
         )
 
-    def _generate_config_hash(self, chunks: List[Dict[str, Any]],
-                              multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
+    def _generate_config_hash(self, multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
                               articles: List[WikipediaArticle]) -> str:
         """Generate hash of configuration and input data for cache validation."""
         config_str = json.dumps({
-            'entity_types': self.entity_extractor.entity_types,
             'num_themes': self.theme_extractor.num_themes,
             'ollama_model': self.theme_extractor.model,
-            'chunk_count': len(chunks),
-            'granularity_counts': {
-                model: {granularity: len(embeddings) for granularity, embeddings in granularity_embeddings.items()}
-                for model, granularity_embeddings in multi_granularity_embeddings.items()
-            },
+            'doc_summary_count': len(multi_granularity_embeddings.get(list(multi_granularity_embeddings.keys())[0], {}).get('doc_summaries', [])) if multi_granularity_embeddings else 0,
             'article_count': len(articles),
-            'first_chunk_id': chunks[0]['chunk_id'] if chunks else "",
             'first_article_title': articles[0].title if articles else ""
         }, sort_keys=True)
 
         return hashlib.md5(config_str.encode()).hexdigest()
 
     def _get_cache_path(self) -> Path:
-        """Get cache path for entity/theme data."""
-        return self.entity_theme_dir / "entity_theme_extraction.json"
+        """Get cache path for theme data."""
+        return self.theme_dir / "theme_extraction.json"
 
     def _is_cache_valid(self, cache_path: Path, expected_hash: str) -> bool:
-        """Check if cached entity/theme data is valid."""
+        """Check if cached theme data is valid."""
         if not cache_path.exists():
             return False
 
@@ -579,19 +387,19 @@ class EntityThemeExtractionEngine:
             return cached_hash == expected_hash
 
         except Exception as e:
-            self.logger.warning(f"Failed to validate entity/theme cache: {e}")
+            self.logger.warning(f"Failed to validate theme cache: {e}")
             return False
 
-    def _cache_data(self, cache_path: Path, entity_theme_data: Dict[str, Any]):
-        """Cache entity/theme data to disk."""
+    def _cache_data(self, cache_path: Path, theme_data: Dict[str, Any]):
+        """Cache theme data to disk."""
         try:
             # Convert all results to dictionaries for JSON serialization
             serializable_data = {
-                'metadata': asdict(entity_theme_data['metadata']),
+                'metadata': asdict(theme_data['metadata']),
                 'extraction_results': {}
             }
 
-            for result_type, results in entity_theme_data['extraction_results'].items():
+            for result_type, results in theme_data['extraction_results'].items():
                 serializable_data['extraction_results'][result_type] = [
                     result.to_dict() for result in results
                 ]
@@ -599,20 +407,20 @@ class EntityThemeExtractionEngine:
             with open(cache_path, 'w', encoding='utf-8') as f:
                 json.dump(serializable_data, f, indent=2, ensure_ascii=False)
 
-            self.logger.info(f"💾 Cached entity/theme data to {cache_path}")
+            self.logger.info(f"💾 Cached theme data to {cache_path}")
 
         except Exception as e:
-            self.logger.error(f"Failed to cache entity/theme data: {e}")
+            self.logger.error(f"Failed to cache theme data: {e}")
             raise
 
     def _load_cached_data(self, cache_path: Path) -> Dict[str, Any]:
-        """Load cached entity/theme data from disk."""
+        """Load cached theme data from disk."""
         try:
             with open(cache_path, 'r', encoding='utf-8') as f:
                 cache_data = json.load(f)
 
             # Reconstruct objects from dictionaries
-            metadata = EntityThemeExtractionMetadata(**cache_data['metadata'])
+            metadata = ThemeExtractionMetadata(**cache_data['metadata'])
 
             extraction_results = {}
             for result_type, result_data_list in cache_data['extraction_results'].items():
@@ -620,10 +428,7 @@ class EntityThemeExtractionEngine:
                     extraction_results[result_type] = [
                         ThemeExtractionResult(**result_data) for result_data in result_data_list
                     ]
-                else:  # chunk_entities and sentence_entities
-                    extraction_results[result_type] = [
-                        EntityExtractionResult(**result_data) for result_data in result_data_list
-                    ]
+                # No entity data to handle anymore
 
             return {
                 'metadata': metadata,
@@ -631,51 +436,33 @@ class EntityThemeExtractionEngine:
             }
 
         except Exception as e:
-            self.logger.error(f"Failed to load cached entity/theme data: {e}")
+            self.logger.error(f"Failed to load cached theme data: {e}")
             raise
 
-    def _log_extraction_results(self, metadata: EntityThemeExtractionMetadata):
+    def _log_extraction_results(self, metadata: ThemeExtractionMetadata):
         """Log comprehensive extraction results."""
-        self.logger.info("📊 Phase 5 Entity/Theme Extraction Results:")
-        self.logger.info(f"   Total entities extracted: {metadata.total_entities_extracted:,}")
+        self.logger.info("📊 Phase 5 Theme Extraction Results:")
         self.logger.info(f"   Total themes extracted: {metadata.total_themes_extracted:,}")
+        self.logger.info(f"   Documents processed: {metadata.document_count:,}")
         self.logger.info(f"   Processing time: {metadata.processing_time:.2f}s")
+        self.logger.info(f"   Average themes per document: {metadata.total_themes_extracted / metadata.document_count:.1f}" if metadata.document_count > 0 else "   No documents processed")
 
-        self.logger.info(f"   Granularity breakdown:")
-        for granularity_level, count in metadata.granularity_counts.items():
-            self.logger.info(f"      {granularity_level}: {count:,} items processed")
-
-        self.logger.info(f"   Extraction methods:")
-        self.logger.info(
-            f"      Entity extraction: {'spaCy' if metadata.spacy_model_available else 'Pattern-based fallback'}")
+        self.logger.info(f"   Extraction method:")
         self.logger.info(
             f"      Theme extraction: {'Ollama' if metadata.ollama_available else 'Keyword-based fallback'}")
 
-    def get_extraction_statistics(self, entity_theme_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Get statistics about the extraction results."""
-        metadata = entity_theme_data['metadata']
-        extraction_results = entity_theme_data['extraction_results']
+    def get_extraction_statistics(self, theme_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Get statistics about the theme extraction results."""
+        metadata = theme_data['metadata']
+        extraction_results = theme_data['extraction_results']
 
-        # Calculate detailed statistics
+        # Calculate theme-focused statistics
         stats = {
-            'total_entities': metadata.total_entities_extracted,
             'total_themes': metadata.total_themes_extracted,
+            'document_count': metadata.document_count,
             'processing_time': metadata.processing_time,
-            'granularity_counts': metadata.granularity_counts,
-            'extraction_methods': {
-                'entity': 'spacy' if metadata.spacy_model_available else 'patterns',
-                'theme': 'ollama' if metadata.ollama_available else 'fallback'
-            }
+            'extraction_method': 'ollama' if metadata.ollama_available else 'fallback'
         }
-
-        # Entity type breakdown
-        entity_type_counts = {'PERSON': 0, 'ORG': 0, 'GPE': 0}
-        for result_type in ['chunk_entities', 'sentence_entities']:
-            for result in extraction_results.get(result_type, []):
-                for entity_type, entity_list in result.entities.items():
-                    entity_type_counts[entity_type] += len(entity_list)
-
-        stats['entity_type_breakdown'] = entity_type_counts
 
         # Theme statistics
         if extraction_results.get('document_themes'):
@@ -683,7 +470,8 @@ class EntityThemeExtractionEngine:
             stats['theme_statistics'] = {
                 'avg_themes_per_document': sum(theme_lengths) / len(theme_lengths) if theme_lengths else 0,
                 'max_themes_per_document': max(theme_lengths) if theme_lengths else 0,
-                'min_themes_per_document': min(theme_lengths) if theme_lengths else 0
+                'min_themes_per_document': min(theme_lengths) if theme_lengths else 0,
+                'total_unique_themes': len(set(theme for result in extraction_results['document_themes'] for theme in result.themes))
             }
 
         return stats

@@ -73,10 +73,10 @@ class KGRelationship:
 class ThemeBridgeBuilder:
     """Builds cross-document theme similarity bridges for semantic highways."""
 
-    def __init__(self, entity_theme_data: Dict[str, Any], embedding_model,
+    def __init__(self, theme_data: Dict[str, Any], embedding_model,
                  config: Dict[str, Any], logger: Optional[logging.Logger] = None):
         """Initialize theme bridge builder."""
-        self.entity_theme_data = entity_theme_data
+        self.theme_data = theme_data
         self.embedding_model = embedding_model
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
@@ -93,7 +93,7 @@ class ThemeBridgeBuilder:
         """Organize themes by their source documents (universal data access)."""
         themes_by_doc = {}
 
-        document_themes = self.entity_theme_data['extraction_results'].get('document_themes', [])
+        document_themes = self.theme_data['extraction_results'].get('document_themes', [])
 
         for theme_result in document_themes:
             try:
@@ -231,82 +231,7 @@ class ThemeBridgeBuilder:
             'total_themes': len(direct_themes) + len(inherited_themes)
         }
 
-class SimplifiedNERExtractor:
-    """Extract only PERSON, ORG, and GPE entities - no domain bias."""
-    
-    def __init__(self):
-        """Initialize simplified NER extractor."""
-        try:
-            self.nlp = spacy.load("en_core_web_sm")
-            self.available = True
-        except OSError:
-            self.nlp = None
-            self.available = False
-    
-    def extract(self, text: str) -> Dict[str, Any]:
-        """Extract only high-quality entity types."""
-        if self.available:
-            return self._extract_with_spacy(text)
-        else:
-            return self._extract_with_patterns(text)
-    
-    def _extract_with_spacy(self, text: str) -> Dict[str, Any]:
-        """Extract entities using spaCy - PERSON/ORG/GPE only."""
-        doc = self.nlp(text)
-        entities = {
-            'PERSON': [],
-            'ORG': [],
-            'GPE': []
-        }
-        
-        for ent in doc.ents:
-            entity_text = ent.text.strip()
-            if len(entity_text) < 2:  # Skip very short entities
-                continue
-                
-            if ent.label_ == 'PERSON':
-                entities['PERSON'].append(entity_text)
-            elif ent.label_ == 'ORG':
-                entities['ORG'].append(entity_text)
-            elif ent.label_ == 'GPE':
-                entities['GPE'].append(entity_text)
-        
-        # Remove duplicates
-        for key in entities:
-            entities[key] = list(set(entities[key]))
-            
-        return {'entities': entities}
-    
-    def _extract_with_patterns(self, text: str) -> Dict[str, Any]:
-        """Fallback extraction using basic patterns."""
-        entities = {
-            'PERSON': [],
-            'ORG': [],
-            'GPE': []
-        }
-        
-        # Extract capitalized words/phrases (potential proper nouns)
-        capitalized_patterns = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', text)
-        
-        for phrase in capitalized_patterns:
-            phrase = phrase.strip()
-            if len(phrase) < 3:
-                continue
-                
-            # Basic heuristics
-            if any(word in phrase.lower() for word in ['university', 'company', 'corporation', 'inc', 'ltd']):
-                entities['ORG'].append(phrase)
-            elif any(word in phrase.lower() for word in ['dr', 'professor', 'mr', 'ms', 'mrs']):
-                entities['PERSON'].append(phrase)
-            else:
-                # Default to ORG for capitalized phrases
-                entities['ORG'].append(phrase)
-        
-        # Remove duplicates
-        for key in entities:
-            entities[key] = list(set(entities[key]))
-            
-        return {'entities': entities}
+# SimplifiedNERExtractor removed for entity removal (was creating spurious relationships)
 
 
 class BaseRelationshipBuilder(ABC):
@@ -669,100 +594,7 @@ class PreComputedSimilarityRelationshipBuilder(BaseRelationshipBuilder):
         return relationships
 
 
-class EntityOverlapRelationshipBuilder(BaseRelationshipBuilder):
-    """Build relationships based on PERSON/ORG/GPE entity overlap only."""
-    
-    def __init__(self, config: Dict[str, Any]):
-        """Initialize entity overlap relationship builder."""
-        self.config = config
-        
-        # Get sparsity settings from knowledge graph config (simplified)
-        kg_config = config.get('knowledge_graph', {})
-        extractors_config = kg_config.get('extractors', {})
-        
-        # Use simplified top-k approach
-        self.top_k = 8  # Reduced for performance
-        self.min_similarity = 0.15  # Lower threshold for more connections
-        
-        # Only high-quality entity types
-        self.entity_types = extractors_config.get('ner', {}).get('entity_types', ['PERSON', 'ORG', 'GPE'])[:3]  # Limit to first 3
-    
-    def build_relationships(self, nodes_by_type: Dict[str, List[KGNode]], 
-                          similarity_data: Dict[str, Any]) -> List[KGRelationship]:
-        """Build entity overlap relationships using simplified top-k selection."""
-        relationships = []
-        
-        # Get all nodes for entity overlap computation
-        all_nodes = []
-        for node_list in nodes_by_type.values():
-            all_nodes.extend(node_list)
-        
-        if len(all_nodes) < 2:
-            return relationships
-        
-        self.logger.info(f"🏷️  Building entity overlap relationships for {len(all_nodes)} nodes...")
-        
-        # For each node, find its top-k most similar neighbors by entity overlap
-        for i, source_node in enumerate(all_nodes):
-            if i % 1000 == 0 and i > 0:
-                self.logger.debug(f"Processing entity similarities for node {i+1}/{len(all_nodes)}...")
-            
-            # Compute similarities to all other nodes (vectorized for performance)
-            similarities = []
-            
-            for j, target_node in enumerate(all_nodes):
-                if i != j:  # Skip self
-                    similarity = self._compute_entity_similarity(source_node, target_node)
-                    
-                    if similarity >= self.min_similarity:
-                        similarities.append((similarity, target_node))
-            
-            # Keep only top-k most similar
-            similarities.sort(key=lambda x: x[0], reverse=True)
-            top_k_similar = similarities[:self.top_k]
-            
-            # Create relationships for top-k
-            for similarity, target_node in top_k_similar:
-                relationships.append(KGRelationship(
-                    source=source_node.id,
-                    target=target_node.id,
-                    type="entity_overlap",
-                    granularity_type="entity_based",
-                    properties={
-                        'similarity_score': similarity, 
-                        'entity_types': self.entity_types,
-                        'source_type': source_node.type,
-                        'target_type': target_node.type
-                    },
-                    weight=similarity
-                ))
-        
-        self.logger.info(f"✅ Built {len(relationships):,} entity overlap relationships")
-        return relationships
-    
-    def _compute_entity_similarity(self, node_a: KGNode, node_b: KGNode) -> float:
-        """Compute Jaccard similarity between PERSON/ORG/GPE entities only."""
-        entities_a = node_a.properties.get('entities', {})
-        entities_b = node_b.properties.get('entities', {})
-        
-        all_entities_a = set()
-        all_entities_b = set()
-        
-        for entity_type in self.entity_types:
-            all_entities_a.update(entities_a.get(entity_type, []))
-            all_entities_b.update(entities_b.get(entity_type, []))
-        
-        # Convert to lowercase for comparison
-        all_entities_a = {e.lower() for e in all_entities_a}
-        all_entities_b = {e.lower() for e in all_entities_b}
-        
-        if not all_entities_a and not all_entities_b:
-            return 0.0
-        
-        intersection = len(all_entities_a.intersection(all_entities_b))
-        union = len(all_entities_a.union(all_entities_b))
-        
-        return intersection / union if union > 0 else 0.0
+# EntityOverlapRelationshipBuilder removed for entity removal (was creating 19k spurious relationships)
 
 
 class MultiGranularityKnowledgeGraph:
@@ -932,14 +764,14 @@ class MultiGranularityKnowledgeGraphBuilder:
         self.logger = logger or logging.getLogger(__name__)
         self.kg_config = config.get('knowledge_graph', {})
         
-        # Initialize extractors
-        self.ner_extractor = SimplifiedNERExtractor()
+        # Entity extraction removed for quality (was creating spurious relationships)
+        # Theme-based semantic highways provide superior navigation quality
         
         self.logger.info("🏗️  Initialized multi-granularity knowledge graph builder")
 
     def _create_enhanced_document_nodes(self, chunks: List[Dict[str, Any]],
                                         doc_embeddings: List[DocumentSummaryEmbedding],
-                                        entity_theme_data: Dict[str, Any],
+                                        theme_data: Dict[str, Any],
                                         theme_bridge_builder: ThemeBridgeBuilder,
                                         theme_bridges: Dict[str, List[Tuple[str, float]]]) -> List[KGNode]:
         """Create document-level nodes with themes and inherited theme bridges."""
@@ -955,9 +787,9 @@ class MultiGranularityKnowledgeGraphBuilder:
                 }
             documents[article]['chunks'].append(chunk)
 
-        # Get document themes from entity_theme_data
+        # Get document themes from theme_data
         document_themes_lookup = {}
-        document_themes = entity_theme_data['extraction_results'].get('document_themes', [])
+        document_themes = theme_data['extraction_results'].get('document_themes', [])
         for theme_result in document_themes:
             document_themes_lookup[theme_result.doc_title] = {
                 'themes': theme_result.themes,
@@ -1019,30 +851,23 @@ class MultiGranularityKnowledgeGraphBuilder:
 
     def _create_enhanced_chunk_nodes(self, chunks: List[Dict[str, Any]],
                                      chunk_embeddings: List[ChunkEmbedding],
-                                     entity_theme_data: Dict[str, Any],
+                                     theme_data: Dict[str, Any],
                                      theme_bridge_builder: ThemeBridgeBuilder,
                                      theme_bridges: Dict[str, List[Tuple[str, float]]]) -> List[KGNode]:
-        """Create chunk-level nodes with entities and inherited themes."""
+        """Create chunk-level nodes with inherited themes only (entity extraction removed for quality)."""
         chunk_nodes = []
 
         # Create embedding lookup
         embedding_lookup = {emb.chunk_id: emb for emb in chunk_embeddings}
 
-        # Create entity lookup
-        entity_lookup = {}
-        chunk_entities = entity_theme_data['extraction_results'].get('chunk_entities', [])
-        for entity_result in chunk_entities:
-            entity_lookup[entity_result.source_id] = entity_result.entities
+        # Entity extraction removed for quality (was creating spurious relationships)
 
         for chunk in chunks:
             chunk_id = chunk['chunk_id']
             source_document = chunk['source_article']
 
             # Get themes (direct + inherited)
-            theme_data = theme_bridge_builder.get_inherited_themes_for_node(source_document, theme_bridges)
-
-            # Get entities
-            entities = entity_lookup.get(chunk_id, {'PERSON': [], 'ORG': [], 'GPE': []})
+            theme_data_for_node = theme_bridge_builder.get_inherited_themes_for_node(source_document, theme_bridges)
 
             # Create enhanced chunk node
             node_id = f"chunk_{hashlib.md5(chunk_id.encode()).hexdigest()[:8]}"
@@ -1057,14 +882,11 @@ class MultiGranularityKnowledgeGraphBuilder:
                 'source_sentences': chunk['source_sentences'],
                 'anchor_sentence_idx': chunk['anchor_sentence_idx'],
 
-                # Entities
-                'entities': entities,
-
                 # Theme inheritance (the new semantic highways)
-                'direct_themes': theme_data['direct_themes'],
-                'inherited_themes': theme_data['inherited_themes'],
-                'theme_inheritance_map': theme_data['theme_inheritance_map'],
-                'total_semantic_themes': theme_data['total_themes']
+                'direct_themes': theme_data_for_node['direct_themes'],
+                'inherited_themes': theme_data_for_node['inherited_themes'],
+                'theme_inheritance_map': theme_data_for_node['theme_inheritance_map'],
+                'total_semantic_themes': theme_data_for_node['total_themes']
             }
 
             # Add embedding info if available
@@ -1083,26 +905,19 @@ class MultiGranularityKnowledgeGraphBuilder:
         return chunk_nodes
 
     def _create_enhanced_sentence_nodes(self, sentence_embeddings: List[SentenceEmbedding],
-                                        entity_theme_data: Dict[str, Any],
+                                        theme_data: Dict[str, Any],
                                         theme_bridge_builder: ThemeBridgeBuilder,
                                         theme_bridges: Dict[str, List[Tuple[str, float]]]) -> List[KGNode]:
-        """Create sentence-level nodes with entities and inherited themes."""
+        """Create sentence-level nodes with inherited themes only (entity extraction removed for quality)."""
         sentence_nodes = []
 
-        # Create entity lookup
-        entity_lookup = {}
-        sentence_entities = entity_theme_data['extraction_results'].get('sentence_entities', [])
-        for entity_result in sentence_entities:
-            entity_lookup[entity_result.source_id] = entity_result.entities
+        # Entity extraction removed for quality (was creating spurious relationships)
 
         for sentence_emb in sentence_embeddings:
             source_document = sentence_emb.source_article
 
             # Get themes (inherited from document)
-            theme_data = theme_bridge_builder.get_inherited_themes_for_node(source_document, theme_bridges)
-
-            # Get entities
-            entities = entity_lookup.get(sentence_emb.sentence_id, {'PERSON': [], 'ORG': [], 'GPE': []})
+            theme_data_for_node = theme_bridge_builder.get_inherited_themes_for_node(source_document, theme_bridges)
 
             # Create enhanced sentence node
             node_id = f"sent_{hashlib.md5(sentence_emb.sentence_id.encode()).hexdigest()[:8]}"
@@ -1117,14 +932,11 @@ class MultiGranularityKnowledgeGraphBuilder:
                 'sentence_index': sentence_emb.sentence_index,
                 'containing_chunks': sentence_emb.containing_chunks,
 
-                # Entities
-                'entities': entities,
-
                 # Theme inheritance (the new semantic highways)
-                'direct_themes': theme_data['direct_themes'],
-                'inherited_themes': theme_data['inherited_themes'],
-                'theme_inheritance_map': theme_data['theme_inheritance_map'],
-                'total_semantic_themes': theme_data['total_themes']
+                'direct_themes': theme_data_for_node['direct_themes'],
+                'inherited_themes': theme_data_for_node['inherited_themes'],
+                'theme_inheritance_map': theme_data_for_node['theme_inheritance_map'],
+                'total_semantic_themes': theme_data_for_node['total_themes']
             }
 
             node = KGNode(
@@ -1137,115 +949,9 @@ class MultiGranularityKnowledgeGraphBuilder:
 
         return sentence_nodes
 
-    def _build_high_confidence_entity_relationships(self, nodes_by_type: Dict[str, List[KGNode]]) -> List[
-        KGRelationship]:
-        """Build only high-confidence entity overlap relationships."""
-        relationships = []
-
-        # Get configuration
-        entity_config = self.config.get('knowledge_graph_assembly', {}).get('entity_relationships', {})
-        if not entity_config.get('enabled', True):
-            self.logger.info(f"🏷️  Entity relationships disabled in config, skipping")
-            return relationships
-
-        min_entity_overlap = entity_config.get('min_entity_overlap', 2)
-        min_jaccard_similarity = entity_config.get('min_jaccard_similarity', 0.3)
-        
-        self.logger.info(f"🏷️  Entity relationship config: min_overlap={min_entity_overlap}, min_jaccard={min_jaccard_similarity}")
-
-        # Get all nodes for entity overlap computation (chunks and sentences only for efficiency)
-        processable_nodes = []
-        for node_type in ['CHUNK', 'SENTENCE']:
-            processable_nodes.extend(nodes_by_type.get(node_type, []))
-
-        if len(processable_nodes) < 2:
-            self.logger.warning(f"🏷️  Not enough nodes for entity relationships: {len(processable_nodes)} < 2")
-            return relationships
-
-        self.logger.info(f"🏷️  Building high-confidence entity relationships for {len(processable_nodes)} nodes...")
-
-        entity_types = ['PERSON', 'ORG', 'GPE']
-        relationship_count = 0
-        nodes_with_entities = 0
-        total_comparisons = 0
-        high_overlap_pairs = 0
-
-        # Compare each pair of nodes for entity overlap
-        for i, source_node in enumerate(processable_nodes):
-            source_entities = self._extract_node_entities(source_node, entity_types)
-
-            if len(source_entities) == 0:
-                continue
-            
-            nodes_with_entities += 1
-
-            # Only check against subsequent nodes to avoid duplicates
-            for target_node in processable_nodes[i + 1:]:
-                target_entities = self._extract_node_entities(target_node, entity_types)
-
-                if len(target_entities) == 0:
-                    continue
-                
-                total_comparisons += 1
-
-                # Calculate entity overlap
-                overlap = source_entities.intersection(target_entities)
-                union = source_entities.union(target_entities)
-
-                # Apply high-confidence filters
-                if len(overlap) >= min_entity_overlap and len(union) > 0:
-                    jaccard_similarity = len(overlap) / len(union)
-                    high_overlap_pairs += 1
-
-                    if jaccard_similarity >= min_jaccard_similarity:
-                        # Create bidirectional relationships
-                        relationships.extend([
-                            KGRelationship(
-                                source=source_node.id,
-                                target=target_node.id,
-                                type="high_confidence_entity_overlap",
-                                granularity_type="entity_based",
-                                properties={
-                                    'jaccard_similarity': jaccard_similarity,
-                                    'shared_entities': list(overlap),
-                                    'entity_overlap_count': len(overlap),
-                                    'source_type': source_node.type,
-                                    'target_type': target_node.type
-                                },
-                                weight=jaccard_similarity
-                            ),
-                            KGRelationship(
-                                source=target_node.id,
-                                target=source_node.id,
-                                type="high_confidence_entity_overlap",
-                                granularity_type="entity_based",
-                                properties={
-                                    'jaccard_similarity': jaccard_similarity,
-                                    'shared_entities': list(overlap),
-                                    'entity_overlap_count': len(overlap),
-                                    'source_type': target_node.type,
-                                    'target_type': source_node.type
-                                },
-                                weight=jaccard_similarity
-                            )
-                        ])
-                        relationship_count += 2
-
-        self.logger.info(f"📊 Entity relationship stats: {nodes_with_entities} nodes with entities, {total_comparisons} comparisons, {high_overlap_pairs} with sufficient overlap")
-        self.logger.info(f"✅ Built {relationship_count} high-confidence entity relationships")
-        return relationships
-
-    def _extract_node_entities(self, node: KGNode, entity_types: List[str]) -> set:
-        """Extract entities from a node for overlap calculation."""
-        entities = node.properties.get('entities', {})
-        all_entities = set()
-
-        for entity_type in entity_types:
-            node_entities = entities.get(entity_type, [])
-            # Normalize to lowercase for comparison
-            all_entities.update({e.lower() for e in node_entities})
-
-        return all_entities
+    # Entity relationship building methods removed for quality improvement
+    # These methods were creating ~19k spurious relationships that reduced semantic navigation quality
+    # Theme-based semantic highways provide superior cross-document navigation
 
     def _build_enhanced_relationships(self, nodes_by_type: Dict[str, List[KGNode]],
                                       similarity_data: Dict[str, Any],
@@ -1269,10 +975,8 @@ class MultiGranularityKnowledgeGraphBuilder:
         self.logger.info(
             f"✅ Built {len(similarity_relationships)} similarity relationships from pre-computed connections")
 
-        # Build entity overlap relationships (high-confidence only)
-        entity_relationships = self._build_high_confidence_entity_relationships(nodes_by_type)
-        all_relationships.extend(entity_relationships)
-        self.logger.info(f"✅ Built {len(entity_relationships)} high-confidence entity relationships")
+        # Entity relationships removed for quality (was creating ~19k spurious relationships)
+        # Theme-based semantic highways provide superior navigation quality
 
         return all_relationships
 
@@ -1349,8 +1053,8 @@ class MultiGranularityKnowledgeGraphBuilder:
     def build_knowledge_graph(self, chunks: List[Dict[str, Any]],
                               multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
                               multi_granularity_similarities: Dict[str, Dict[str, Any]],
-                              entity_theme_data: Dict[str, Any]) -> MultiGranularityKnowledgeGraph:
-        """Build multi-granularity knowledge graph using pre-computed similarities and extracted entities/themes."""
+                              theme_data: Dict[str, Any]) -> MultiGranularityKnowledgeGraph:
+        """Build multi-granularity knowledge graph using pre-computed similarities and extracted themes."""
         start_time = time.time()
 
         self.logger.info("🌟 Building Phase 6: Knowledge Graph Assembly using pre-computed data")
@@ -1371,7 +1075,7 @@ class MultiGranularityKnowledgeGraphBuilder:
         config_with_theme_bridging = self.config.copy()
         config_with_theme_bridging['theme_bridging'] = theme_config
         
-        theme_bridge_builder = ThemeBridgeBuilder(entity_theme_data, embedding_model, config_with_theme_bridging, self.logger)
+        theme_bridge_builder = ThemeBridgeBuilder(theme_data, embedding_model, config_with_theme_bridging, self.logger)
 
         # Compute cross-document theme bridges
         theme_bridges = theme_bridge_builder.compute_cross_document_theme_bridges()
@@ -1379,23 +1083,23 @@ class MultiGranularityKnowledgeGraphBuilder:
         # Step 1: Create document nodes (level 0) with themes
         document_nodes = self._create_enhanced_document_nodes(
             chunks, granularity_embeddings.get('doc_summaries', []),
-            entity_theme_data, theme_bridge_builder, theme_bridges
+            theme_data, theme_bridge_builder, theme_bridges
         )
         for node in document_nodes:
             kg.add_node(node)
 
-        # Step 2: Create chunk nodes (level 1) with inherited themes and entities
+        # Step 2: Create chunk nodes (level 1) with inherited themes only
         chunk_nodes = self._create_enhanced_chunk_nodes(
             chunks, granularity_embeddings.get('chunks', []),
-            entity_theme_data, theme_bridge_builder, theme_bridges
+            theme_data, theme_bridge_builder, theme_bridges
         )
         for node in chunk_nodes:
             kg.add_node(node)
 
-        # Step 3: Create sentence nodes (level 2) with inherited themes and entities
+        # Step 3: Create sentence nodes (level 2) with inherited themes only
         sentence_nodes = self._create_enhanced_sentence_nodes(
             granularity_embeddings.get('sentences', []),
-            entity_theme_data, theme_bridge_builder, theme_bridges
+            theme_data, theme_bridge_builder, theme_bridges
         )
         for node in sentence_nodes:
             kg.add_node(node)
