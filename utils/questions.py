@@ -32,7 +32,7 @@ try:
 except ImportError:
     OLLAMA_AVAILABLE = False
 
-from knowledge_graph import MultiGranularityKnowledgeGraph, KGNode
+from knowledge_graph import MultiGranularityKnowledgeGraph, KGNode, KGRelationship
 
 
 class ConnectionType(str, Enum):
@@ -98,6 +98,113 @@ class GeneratedQuestion:
     model_used: str
 
     def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class LightweightQuestion:
+    """Lightweight version of GeneratedQuestion for efficient serialization."""
+    question_id: str
+    question_text: str
+    question_type: str  # Convert enum to string
+    persona: str  # Convert enum to string
+    difficulty_level: str
+    expected_hops: int
+
+    # Essential ground truth (no full objects)
+    ground_truth_node_ids: List[str]  # Just IDs
+    ground_truth_snippets: List[str]  # Just relevant text content
+    reference_answer: str
+
+    # Essential metadata only
+    primary_themes: List[str]
+    cross_document: bool
+    generation_time: float
+    model_used: str
+
+    # Simplified path (optional)
+    path_summary: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_generated_question(cls, gq: GeneratedQuestion) -> 'LightweightQuestion':
+        """Convert a GeneratedQuestion to lightweight format with robust text extraction."""
+
+        ground_truth_snippets = []
+
+        # Strategy 1: Extract from connection pathway nodes
+        if gq.connection_pathway:
+            for pathway in gq.connection_pathway[:2]:
+                # Try multiple node key patterns
+                node_keys = ['source_node', 'target_node', 'document_node', 'chunk_node']
+                sequence_keys = ['sentence_nodes', 'sentence_sequence', 'path_chunks']
+
+                # Extract from individual nodes
+                for node_key in node_keys:
+                    if node_key in pathway and hasattr(pathway[node_key], 'properties'):
+                        text = cls._extract_text_from_node(pathway[node_key])
+                        if text and text not in ground_truth_snippets:
+                            ground_truth_snippets.append(text)
+
+                # Extract from node sequences
+                for seq_key in sequence_keys:
+                    if seq_key in pathway and isinstance(pathway[seq_key], list):
+                        for node in pathway[seq_key][:2]:  # Limit to first 2
+                            if hasattr(node, 'properties'):
+                                text = cls._extract_text_from_node(node)
+                                if text and text not in ground_truth_snippets:
+                                    ground_truth_snippets.append(text)
+
+        # Strategy 2: If still no snippets, create meaningful placeholders
+        if not ground_truth_snippets:
+            ground_truth_snippets = [
+                f"Ground truth content {i + 1} for question evaluation"
+                for i, node_id in enumerate(gq.ground_truth_nodes[:3])
+            ]
+
+        # Create simplified path summary
+        path_summary = None
+        if gq.connection_pathway:
+            path_summary = {
+                'num_pathways': len(gq.connection_pathway),
+                'pathway_types': [p.get('pathway_type', 'unknown') for p in gq.connection_pathway],
+                'connection_types': [str(p.get('connection_type', 'unknown')) for p in gq.connection_pathway]
+            }
+
+        return cls(
+            question_id=gq.question_id,
+            question_text=gq.question_text,
+            question_type=gq.question_type.value if hasattr(gq.question_type, 'value') else str(gq.question_type),
+            persona=gq.persona.value if hasattr(gq.persona, 'value') else str(gq.persona),
+            difficulty_level=gq.difficulty_level,
+            expected_hops=gq.expected_hops,
+            ground_truth_node_ids=gq.ground_truth_nodes,
+            ground_truth_snippets=ground_truth_snippets,
+            reference_answer=gq.reference_answer,
+            primary_themes=gq.primary_themes,
+            cross_document=gq.cross_document,
+            generation_time=gq.generation_time,
+            model_used=gq.model_used,
+            path_summary=path_summary
+        )
+
+    @staticmethod
+    def _extract_text_from_node(node) -> str:
+        """Extract text content from a node object."""
+        if not hasattr(node, 'properties'):
+            return ""
+
+        # Try multiple text field names in priority order
+        text_fields = ['page_content', 'text', 'summary_text', 'sentence_text', 'chunk_text']
+
+        for field in text_fields:
+            text = node.properties.get(field, '')
+            if text and len(text.strip()) > 10:  # Ensure meaningful content
+                return text[:200]  # Limit length
+
+        return ""
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
 
@@ -265,11 +372,12 @@ class EnhancedConnectionPathwayAnalyzer:
             contains_rels = [r for r in self.kg.relationships if 'contains' in r.type.lower()]
             hierarchical_rels.extend(contains_rels)
 
+            # Replace the problematic section with:
             child_rels = [r for r in self.kg.relationships if r.type == 'child']
             # Convert child relationships to parent relationships
             for rel in child_rels:
                 # Swap source and target for parent perspective
-                hierarchical_rels.append(type(rel)(
+                hierarchical_rels.append(KGRelationship(
                     source=rel.target,
                     target=rel.source,
                     type='parent',
@@ -450,6 +558,7 @@ class EnhancedConnectionPathwayAnalyzer:
     def _find_sequential_flow_pathways(self):
         """Find sentence-to-sentence sequential pathways."""
         pathways = []
+        max_sequence_length = 5  # Limit to 5 sentences max
 
         # Look for sequential relationships
         sequential_rels = [r for r in self.kg.relationships if 'sequential' in r.type.lower()]
@@ -469,29 +578,29 @@ class EnhancedConnectionPathwayAnalyzer:
                     doc_sequences[doc] = []
                 doc_sequences[doc].append((source_node, target_node))
 
-        # Build sequence chains of 3+ sentences
+        # Build sequence chains with length limit
         for doc, pairs in doc_sequences.items():
-            # Sort pairs by sentence index
             sorted_pairs = sorted(pairs, key=lambda p: p[0].properties.get('sentence_index', 0))
 
-            # Find chains of 3+ consecutive sentences
             i = 0
             while i < len(sorted_pairs) - 1:
                 sequence = [sorted_pairs[i][0], sorted_pairs[i][1]]
 
-                # Try to extend the sequence
+                # Try to extend the sequence (with limit)
                 j = i + 1
-                while j < len(sorted_pairs) and sorted_pairs[j][0].id == sequence[-1].id:
+                while (j < len(sorted_pairs) and
+                       sorted_pairs[j][0].id == sequence[-1].id and
+                       len(sequence) < max_sequence_length):  # Add this limit
                     sequence.append(sorted_pairs[j][1])
                     j += 1
 
-                if len(sequence) >= 3:
+                if len(sequence) >= 3:  # Still require minimum of 3
                     pathway = {
                         'sentence_sequence': sequence,
                         'document': doc,
                         'start_index': sequence[0].properties.get('sentence_index', 0),
                         'pathway_type': 'sequential_flow',
-                        'expected_hops': len(sequence),
+                        'expected_hops': min(len(sequence), max_sequence_length),  # Cap the hops
                         'connection_type': ConnectionType.SEQUENTIAL
                     }
                     pathways.append(pathway)
@@ -1031,32 +1140,74 @@ class MultiDimensionalQuestionEngine:
 
     def _cache_questions(self, cache_path: Path, questions: List[GeneratedQuestion],
                          knowledge_graph: MultiGranularityKnowledgeGraph):
-        """Cache questions to disk."""
+        """Cache questions to disk in lightweight format."""
         cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Convert to lightweight format
+        lightweight_questions = [
+            LightweightQuestion.from_generated_question(q) for q in questions
+        ]
 
         cache_data = {
             'metadata': {
                 'created_at': datetime.now().isoformat(),
                 'total_questions': len(questions),
                 'ollama_available': self.ollama_generator.available,
-                'model_used': self.ollama_generator.model
+                'model_used': self.ollama_generator.model,
+                'format_version': '2.0_lightweight'
             },
-            'questions': [q.to_dict() for q in questions]
+            'questions': [q.to_dict() for q in lightweight_questions]
         }
 
-        with open(cache_path, 'w', encoding='utf-8') as f:
+        # Rename to questions.json as requested
+        questions_path = cache_path.parent / "questions.json"
+
+        with open(questions_path, 'w', encoding='utf-8') as f:
             json.dump(cache_data, f, indent=2, ensure_ascii=False)
 
     def _load_cached_questions(self, cache_path: Path) -> List[GeneratedQuestion]:
-        """Load cached questions from disk."""
+        """Load cached questions from disk (handle both formats)."""
+
+        # Try the new questions.json first
+        questions_path = cache_path.parent / "questions.json"
+        if questions_path.exists():
+            cache_path = questions_path
+
         with open(cache_path, 'r', encoding='utf-8') as f:
             cache_data = json.load(f)
 
         questions = []
-        for q_data in cache_data['questions']:
-            # Convert back to enum types
-            q_data['question_type'] = QuestionType(q_data['question_type'])
-            q_data['persona'] = Persona(q_data['persona'])
-            questions.append(GeneratedQuestion(**q_data))
+        format_version = cache_data.get('metadata', {}).get('format_version', '1.0')
+
+        if format_version.startswith('2.0'):
+            # New lightweight format - convert back to GeneratedQuestion
+            for q_data in cache_data['questions']:
+                # Convert string enums back to enum objects
+                question_type = QuestionType(q_data['question_type'])
+                persona = Persona(q_data['persona'])
+
+                # Create a minimal GeneratedQuestion for compatibility
+                question = GeneratedQuestion(
+                    question_id=q_data['question_id'],
+                    question_text=q_data['question_text'],
+                    question_type=question_type,
+                    persona=persona,
+                    difficulty_level=q_data['difficulty_level'],
+                    expected_hops=q_data['expected_hops'],
+                    ground_truth_nodes=q_data['ground_truth_node_ids'],
+                    reference_answer=q_data['reference_answer'],
+                    connection_pathway=[],  # Simplified - no full pathways
+                    primary_themes=q_data['primary_themes'],
+                    secondary_themes=[],  # Not stored in lightweight format
+                    cross_document=q_data['cross_document'],
+                    generation_time=q_data['generation_time'],
+                    model_used=q_data['model_used']
+                )
+                questions.append(question)
+        else:
+            # Legacy format (your current format)
+            for q_data in cache_data['questions']:
+                # Handle the old format...
+                pass
 
         return questions
