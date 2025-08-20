@@ -26,14 +26,13 @@ from chunking import ChunkEngine
 from models import MultiGranularityEmbeddingEngine
 from similarity import MultiGranularitySimilarityEngine
 from retrieval import RetrievalEngine
-from questions import MultiDimensionalQuestionEngine
 from knowledge_graph import MultiGranularityKnowledgeGraphBuilder, MultiGranularityKnowledgeGraph
 from extraction import ThemeExtractionEngine
 
 class SemanticRAGPipeline:
     """Enhanced main pipeline orchestrator for multi-granularity semantic RAG system."""
 
-    def __init__(self, config_path: str = "config.yaml"):
+    def __init__(self, config_path: str = "/Users/eric/Documents/Development/semantic-rag-chunking-research/config.yaml"):
         """Initialize the pipeline with configuration."""
         self.config_path = config_path
         self.config = None
@@ -109,13 +108,6 @@ class SemanticRAGPipeline:
                     self._phase_6_knowledge_graph_construction()  # This will be renamed/updated
                 else:
                     self.logger.info("⏭️  Skipping Phase 6: Knowledge Graph Construction")
-
-            # Phase 7: Question Generation (renamed from old Phase 6)
-            if self.config['execution']['mode'] in ['full_pipeline']:
-                if 'question_generation' not in self.config['execution']['skip_phases']:
-                    self._phase_7_question_generation()  # This will be renamed
-                else:
-                    self.logger.info("⏭️  Skipping Phase 7: Question Generation")
 
             self.logger.info("🎉 Enhanced pipeline with entity/theme extraction completed successfully!")
             return {
@@ -497,199 +489,6 @@ class SemanticRAGPipeline:
         except Exception as e:
             self.logger.error(f"❌ Phase 6 failed: {e}")
             raise
-
-    def _phase_7_question_generation(self):
-        """Phase 7: Multi-Dimensional Question Generation using sophisticated pathways."""
-        self.logger.info("🎯 Starting Phase 7: Multi-Dimensional Question Generation")
-
-        # Check if we have knowledge graph from Phase 6
-        if not hasattr(self, 'knowledge_graph') or not self.knowledge_graph:
-            self.logger.warning("No knowledge graph available. Loading from cache...")
-            # Try to load from cache
-            kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
-            if kg_path.exists():
-                from knowledge_graph import MultiGranularityKnowledgeGraph
-                self.knowledge_graph = MultiGranularityKnowledgeGraph.load(str(kg_path))
-                self.kg_stats = self.knowledge_graph.metadata
-                self.logger.info("📂 Loaded multi-granularity knowledge graph from cache")
-            else:
-                raise RuntimeError("No knowledge graph available. Please run Phase 6 first.")
-
-        try:
-            # Initialize MultiDimensionalQuestionEngine
-            question_generator = MultiDimensionalQuestionEngine(self.config, self.logger)
-
-            # Check if we should force recompute
-            force_recompute = 'questions' in self.config['execution'].get('force_recompute', [])
-
-            # Get target question count from config
-            target_questions = self.config.get('question_generation', {}).get('target_questions', 50)
-
-            # Generate questions using the sophisticated multi-dimensional system
-            questions = question_generator.generate_questions(
-                self.knowledge_graph,
-                target_count=target_questions,
-                force_recompute=force_recompute
-            )
-
-            if not questions:
-                raise RuntimeError("No questions were generated")
-
-            # Calculate comprehensive statistics
-            question_stats = self._calculate_question_statistics(questions)
-
-            self.logger.info("📊 Multi-Dimensional Question Generation Statistics:")
-            self.logger.info(f"   Total questions: {len(questions):,}")
-
-            # Log distribution by question type
-            if 'by_question_type' in question_stats:
-                self.logger.info(f"   By question type:")
-                for q_type, count in question_stats['by_question_type'].items():
-                    self.logger.info(f"      {q_type}: {count}")
-
-            # Log distribution by persona
-            if 'by_persona' in question_stats:
-                self.logger.info(f"   By persona:")
-                for persona, count in question_stats['by_persona'].items():
-                    self.logger.info(f"      {persona}: {count}")
-
-            # Log distribution by difficulty
-            if 'by_difficulty' in question_stats:
-                self.logger.info(f"   By difficulty:")
-                for difficulty, count in question_stats['by_difficulty'].items():
-                    self.logger.info(f"      {difficulty}: {count}")
-
-            # Log pathway complexity
-            if 'pathway_complexity' in question_stats:
-                complexity_stats = question_stats['pathway_complexity']
-                self.logger.info(f"   Pathway complexity:")
-                self.logger.info(f"      Average hops: {complexity_stats['avg_hops']:.1f}")
-                self.logger.info(f"      Cross-document questions: {complexity_stats['cross_document_count']}")
-                self.logger.info(f"      Multi-granularity questions: {complexity_stats['multi_granularity_count']}")
-
-            # Log generation performance
-            if 'generation_performance' in question_stats:
-                perf_stats = question_stats['generation_performance']
-                self.logger.info(f"   Generation performance:")
-                self.logger.info(f"      Total generation time: {perf_stats['total_time']:.2f}s")
-                self.logger.info(f"      Average per question: {perf_stats['avg_time_per_question']:.3f}s")
-                self.logger.info(f"      Ollama questions: {perf_stats['ollama_generated']}")
-                self.logger.info(f"      Fallback questions: {perf_stats['fallback_generated']}")
-
-            # Store questions and stats in pipeline
-            self.questions = questions
-            self.question_stats = question_stats
-
-            self.logger.info("✅ Phase 7 Multi-Dimensional Question Generation completed successfully")
-
-        except Exception as e:
-            self.logger.error(f"❌ Phase 7 failed: {e}")
-            raise
-
-    def _calculate_question_statistics(self, questions: List) -> Dict[str, Any]:
-        """Calculate comprehensive statistics about generated questions."""
-        if not questions:
-            return {}
-
-        stats = {
-            'total_questions': len(questions),
-            'by_question_type': {},
-            'by_persona': {},
-            'by_difficulty': {},
-            'by_expected_hops': {},
-            'pathway_complexity': {},
-            'generation_performance': {},
-            'ground_truth_coverage': {}
-        }
-
-        # Collect data for analysis
-        question_types = []
-        personas = []
-        difficulties = []
-        expected_hops = []
-        generation_times = []
-        cross_document_count = 0
-        multi_granularity_count = 0
-        ollama_generated = 0
-        fallback_generated = 0
-        ground_truth_node_counts = []
-
-        for question in questions:
-            # Extract values handling both enum and string types
-            q_type = question.question_type.value if hasattr(question.question_type, 'value') else str(
-                question.question_type)
-            persona = question.persona.value if hasattr(question.persona, 'value') else str(question.persona)
-
-            question_types.append(q_type)
-            personas.append(persona)
-            difficulties.append(question.difficulty_level)
-            expected_hops.append(question.expected_hops)
-            generation_times.append(question.generation_time)
-            ground_truth_node_counts.append(len(question.ground_truth_nodes))
-
-            # Check for cross-document questions
-            if getattr(question, 'cross_document', False):
-                cross_document_count += 1
-
-            # Check for multi-granularity questions (hops >= 3)
-            if question.expected_hops >= 3:
-                multi_granularity_count += 1
-
-            # Check generation method
-            if question.model_used and 'llama' in question.model_used.lower():
-                ollama_generated += 1
-            else:
-                fallback_generated += 1
-
-        # Calculate distributions
-        for q_type in question_types:
-            stats['by_question_type'][q_type] = stats['by_question_type'].get(q_type, 0) + 1
-
-        for persona in personas:
-            stats['by_persona'][persona] = stats['by_persona'].get(persona, 0) + 1
-
-        for difficulty in difficulties:
-            stats['by_difficulty'][difficulty] = stats['by_difficulty'].get(difficulty, 0) + 1
-
-        for hops in expected_hops:
-            stats['by_expected_hops'][hops] = stats['by_expected_hops'].get(hops, 0) + 1
-
-        # Calculate pathway complexity statistics
-        stats['pathway_complexity'] = {
-            'avg_hops': sum(expected_hops) / len(expected_hops) if expected_hops else 0,
-            'max_hops': max(expected_hops) if expected_hops else 0,
-            'min_hops': min(expected_hops) if expected_hops else 0,
-            'cross_document_count': cross_document_count,
-            'cross_document_percentage': (cross_document_count / len(questions)) * 100 if questions else 0,
-            'multi_granularity_count': multi_granularity_count,
-            'multi_granularity_percentage': (multi_granularity_count / len(questions)) * 100 if questions else 0
-        }
-
-        # Calculate generation performance statistics
-        total_time = sum(generation_times) if generation_times else 0
-        stats['generation_performance'] = {
-            'total_time': total_time,
-            'avg_time_per_question': total_time / len(questions) if questions else 0,
-            'max_generation_time': max(generation_times) if generation_times else 0,
-            'min_generation_time': min(generation_times) if generation_times else 0,
-            'ollama_generated': ollama_generated,
-            'fallback_generated': fallback_generated,
-            'ollama_percentage': (ollama_generated / len(questions)) * 100 if questions else 0
-        }
-
-        # Calculate ground truth coverage statistics
-        if ground_truth_node_counts:
-            stats['ground_truth_coverage'] = {
-                'avg_nodes_per_question': sum(ground_truth_node_counts) / len(ground_truth_node_counts),
-                'max_nodes_per_question': max(ground_truth_node_counts),
-                'min_nodes_per_question': min(ground_truth_node_counts),
-                'total_ground_truth_nodes': sum(ground_truth_node_counts),
-                'questions_with_ground_truth': len([count for count in ground_truth_node_counts if count > 0]),
-                'ground_truth_coverage_percentage': (len([count for count in ground_truth_node_counts if
-                                                          count > 0]) / len(questions)) * 100
-            }
-
-        return stats
 
     def _load_config(self):
         """Load configuration from YAML file."""
