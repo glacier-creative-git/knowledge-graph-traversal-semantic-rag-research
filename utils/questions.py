@@ -635,6 +635,8 @@ class OllamaQuestionGenerator:
 
             QuestionType.SEQUENTIAL_FLOW: "This question should require following a logical sequence or argument that builds across multiple sentences.",
 
+            QuestionType.RAW_SIMILARITY: f"This question should require understanding the direct semantic similarity between two pieces of content with a similarity score of {blueprint.theme_context.get('similarity_score', 'high')}.",
+
             QuestionType.MULTI_DIMENSIONAL: "This question should require complex reasoning that combines multiple types of connections and reasoning patterns."
         }
 
@@ -796,7 +798,7 @@ class MultiDimensionalQuestionEngine:
         return counts
 
     def _create_blueprint(self, question_type: QuestionType, pathway: Dict[str, Any]) -> QuestionBlueprint:
-        """Create a question blueprint from a pathway."""
+        """Create a question blueprint from a pathway with robust error handling."""
 
         # Randomly select persona
         persona = random.choices(
@@ -804,84 +806,217 @@ class MultiDimensionalQuestionEngine:
             weights=list(self.persona_distribution.values())
         )[0]
 
-        # Extract nodes and themes based on question type
-        if question_type == QuestionType.THEME_BRIDGE:
-            source_nodes = [pathway['source_node'], pathway['target_node']]
-            theme_context = {
-                'bridge_themes': pathway['bridge_themes'],
-                'cross_document': True,
-                'primary_themes': pathway['bridge_themes']
-            }
-            ground_truth_nodes = [n.id for n in source_nodes]
+        # Handle each question type with defensive programming
+        try:
+            if question_type == QuestionType.THEME_BRIDGE:
+                return self._create_theme_bridge_blueprint(pathway, persona)
+            elif question_type == QuestionType.GRANULARITY_CASCADE:
+                return self._create_granularity_cascade_blueprint(pathway, persona)
+            elif question_type == QuestionType.THEME_SYNTHESIS:
+                return self._create_theme_synthesis_blueprint(pathway, persona)
+            elif question_type == QuestionType.SEQUENTIAL_FLOW:
+                return self._create_sequential_flow_blueprint(pathway, persona)
+            elif question_type == QuestionType.RAW_SIMILARITY:  # ← THIS IS THE MISSING CASE
+                return self._create_raw_similarity_blueprint(pathway, persona)
+            elif question_type == QuestionType.MULTI_DIMENSIONAL:
+                return self._create_multi_dimensional_blueprint(pathway, persona)
+            else:
+                raise ValueError(f"Unknown question type: {question_type}")
 
-        elif question_type == QuestionType.GRANULARITY_CASCADE:
-            source_nodes = [pathway['document_node'], pathway['chunk_node']] + pathway['sentence_nodes'][:2]
-            theme_context = {
-                'themes': pathway['themes'],
-                'cross_document': False,
-                'primary_themes': pathway['themes']
-            }
-            ground_truth_nodes = [n.id for n in source_nodes]
+        except KeyError as e:
+            self.logger.warning(f"Pathway structure issue for {question_type}: missing key {e}")
+            # Return a fallback blueprint
+            return self._create_fallback_blueprint(question_type, pathway, persona)
+        except Exception as e:
+            self.logger.warning(f"Blueprint creation failed for {question_type}: {e}")
+            return self._create_fallback_blueprint(question_type, pathway, persona)
 
-        elif question_type == QuestionType.THEME_SYNTHESIS:
-            source_nodes = [pathway['source_node'], pathway['target_node']]
-            theme_context = {
-                'themes_to_synthesize': pathway['shared_themes'] + pathway['source_unique_themes'][:2],
-                'primary_themes': pathway['shared_themes'],
-                'secondary_themes': pathway['source_unique_themes'][:2]
-            }
-            ground_truth_nodes = [n.id for n in source_nodes]
-
-        elif question_type == QuestionType.SEQUENTIAL_FLOW:
-            source_nodes = pathway['sentence_sequence']
-            theme_context = {
-                'document': pathway['document'],
-                'sequential': True,
-                'primary_themes': []  # Could extract from sentence content
-            }
-            ground_truth_nodes = [n.id for n in source_nodes]
-
-        else:  # MULTI_DIMENSIONAL
-            bridge = pathway.get('bridge_pathway')
-            if not bridge:
-                self.logger.warning(f"MULTI_DIMENSIONAL pathway missing bridge_pathway: {pathway.keys()}")
-                return None
-            hierarchical_nodes = pathway.get('hierarchical_connections', [])
-            raw_similarity_nodes = pathway.get('raw_similarity_connections', [])
-
-            # Combine bridge nodes with additional connections
-            source_nodes = [bridge['source_node'], bridge['target_node']]
-            if hierarchical_nodes:
-                source_nodes.extend(hierarchical_nodes[:2])
-            if raw_similarity_nodes and len(source_nodes) < 4:
-                source_nodes.extend(raw_similarity_nodes[:2])
-
-            theme_context = {
-                'bridge_themes': bridge['bridge_themes'],
-                'cross_document': True,
-                'multi_dimensional': True,
-                'primary_themes': bridge['bridge_themes']
-            }
-            ground_truth_nodes = [n.id for n in source_nodes]
-
-        # Determine difficulty based on question type and expected hops
-        difficulty_map = {
-            QuestionType.THEME_BRIDGE: "medium",
-            QuestionType.GRANULARITY_CASCADE: "medium",
-            QuestionType.THEME_SYNTHESIS: "hard",
-            QuestionType.SEQUENTIAL_FLOW: "easy",
-            QuestionType.MULTI_DIMENSIONAL: "expert"
+    def _create_theme_bridge_blueprint(self, pathway: Dict[str, Any], persona: Persona) -> QuestionBlueprint:
+        """Create theme bridge blueprint with validation."""
+        source_nodes = [pathway['source_node'], pathway['target_node']]
+        theme_context = {
+            'bridge_themes': pathway.get('bridge_themes', []),
+            'cross_document': True,
+            'primary_themes': pathway.get('bridge_themes', [])
         }
+        ground_truth_nodes = [n.id for n in source_nodes]
 
         return QuestionBlueprint(
-            question_type=question_type,
+            question_type=QuestionType.THEME_BRIDGE,
             persona=persona,
             source_nodes=source_nodes,
             connection_pathway=[pathway],
-            difficulty_level=difficulty_map[question_type],
+            difficulty_level="medium",
             expected_hops=pathway.get('expected_hops', 2),
             ground_truth_nodes=ground_truth_nodes,
             theme_context=theme_context
+        )
+
+    def _create_granularity_cascade_blueprint(self, pathway: Dict[str, Any], persona: Persona) -> QuestionBlueprint:
+        """Create granularity cascade blueprint with validation."""
+        source_nodes = [pathway['document_node'], pathway['chunk_node']] + pathway['sentence_nodes'][:2]
+        theme_context = {
+            'themes': pathway.get('themes', []),
+            'cross_document': False,
+            'primary_themes': pathway.get('themes', [])
+        }
+        ground_truth_nodes = [n.id for n in source_nodes]
+
+        return QuestionBlueprint(
+            question_type=QuestionType.GRANULARITY_CASCADE,
+            persona=persona,
+            source_nodes=source_nodes,
+            connection_pathway=[pathway],
+            difficulty_level="medium",
+            expected_hops=pathway.get('expected_hops', 3),
+            ground_truth_nodes=ground_truth_nodes,
+            theme_context=theme_context
+        )
+
+    def _create_theme_synthesis_blueprint(self, pathway: Dict[str, Any], persona: Persona) -> QuestionBlueprint:
+        """Create theme synthesis blueprint with validation."""
+        source_nodes = [pathway['source_node'], pathway['target_node']]
+        theme_context = {
+            'themes_to_synthesize': pathway.get('shared_themes', []) + pathway.get('source_unique_themes', [])[:2],
+            'primary_themes': pathway.get('shared_themes', []),
+            'secondary_themes': pathway.get('source_unique_themes', [])[:2]
+        }
+        ground_truth_nodes = [n.id for n in source_nodes]
+
+        return QuestionBlueprint(
+            question_type=QuestionType.THEME_SYNTHESIS,
+            persona=persona,
+            source_nodes=source_nodes,
+            connection_pathway=[pathway],
+            difficulty_level="hard",
+            expected_hops=pathway.get('expected_hops', 2),
+            ground_truth_nodes=ground_truth_nodes,
+            theme_context=theme_context
+        )
+
+    def _create_sequential_flow_blueprint(self, pathway: Dict[str, Any], persona: Persona) -> QuestionBlueprint:
+        """Create sequential flow blueprint with validation."""
+        source_nodes = pathway.get('sentence_sequence', [])
+        theme_context = {
+            'document': pathway.get('document', 'Unknown'),
+            'sequential': True,
+            'primary_themes': []
+        }
+        ground_truth_nodes = [n.id for n in source_nodes]
+
+        return QuestionBlueprint(
+            question_type=QuestionType.SEQUENTIAL_FLOW,
+            persona=persona,
+            source_nodes=source_nodes,
+            connection_pathway=[pathway],
+            difficulty_level="easy",
+            expected_hops=pathway.get('expected_hops', len(source_nodes)),
+            ground_truth_nodes=ground_truth_nodes,
+            theme_context=theme_context
+        )
+
+    def _create_raw_similarity_blueprint(self, pathway: Dict[str, Any], persona: Persona) -> QuestionBlueprint:
+        """Create raw similarity blueprint with validation."""
+        source_nodes = [pathway['source_node'], pathway['target_node']]
+        theme_context = {
+            'similarity_score': pathway.get('similarity_score', 0.0),
+            'relationship_type': pathway.get('relationship_type', 'unknown'),
+            'primary_themes': []  # Raw similarity doesn't use themes
+        }
+        ground_truth_nodes = [n.id for n in source_nodes]
+
+        return QuestionBlueprint(
+            question_type=QuestionType.RAW_SIMILARITY,
+            persona=persona,
+            source_nodes=source_nodes,
+            connection_pathway=[pathway],
+            difficulty_level="medium",
+            expected_hops=pathway.get('expected_hops', 1),
+            ground_truth_nodes=ground_truth_nodes,
+            theme_context=theme_context
+        )
+
+    def _create_multi_dimensional_blueprint(self, pathway: Dict[str, Any], persona: Persona) -> QuestionBlueprint:
+        """Create multi-dimensional blueprint with robust pathway handling."""
+
+        # Handle different multi-dimensional pathway structures
+        if 'bridge_pathway' in pathway:
+            # Original structure with bridge pathway
+            bridge = pathway['bridge_pathway']
+            source_nodes = [bridge['source_node'], bridge['target_node']] + pathway.get('hierarchical_connections', [])[
+                                                                            :2]
+            theme_context = {
+                'bridge_themes': bridge.get('bridge_themes', []),
+                'cross_document': True,
+                'multi_dimensional': True,
+                'primary_themes': bridge.get('bridge_themes', [])
+            }
+        else:
+            # Alternative structure - use available nodes
+            all_nodes = []
+
+            # Collect nodes from various pathway components
+            if 'source_node' in pathway and 'target_node' in pathway:
+                all_nodes.extend([pathway['source_node'], pathway['target_node']])
+
+            if 'raw_similarity_connections' in pathway:
+                all_nodes.extend(pathway['raw_similarity_connections'][:2])
+
+            if 'hierarchical_connections' in pathway:
+                all_nodes.extend(pathway['hierarchical_connections'][:2])
+
+            # Fallback to first available nodes
+            if not all_nodes and 'sentence_sequence' in pathway:
+                all_nodes = pathway['sentence_sequence'][:3]
+
+            source_nodes = all_nodes[:4] if all_nodes else []
+
+            theme_context = {
+                'multi_dimensional': True,
+                'connection_types': pathway.get('connection_types', []),
+                'primary_themes': []
+            }
+
+        ground_truth_nodes = [n.id for n in source_nodes] if source_nodes else []
+
+        return QuestionBlueprint(
+            question_type=QuestionType.MULTI_DIMENSIONAL,
+            persona=persona,
+            source_nodes=source_nodes,
+            connection_pathway=[pathway],
+            difficulty_level="expert",
+            expected_hops=pathway.get('expected_hops', 4),
+            ground_truth_nodes=ground_truth_nodes,
+            theme_context=theme_context
+        )
+
+    def _create_fallback_blueprint(self, question_type: QuestionType, pathway: Dict[str, Any],
+                                   persona: Persona) -> QuestionBlueprint:
+        """Create a fallback blueprint when pathway structure is unexpected."""
+
+        # Extract any available nodes from the pathway
+        source_nodes = []
+
+        # Try common node keys
+        for key in ['source_node', 'target_node', 'document_node', 'chunk_node']:
+            if key in pathway and pathway[key]:
+                source_nodes.append(pathway[key])
+
+        # Try sequence keys
+        for key in ['sentence_nodes', 'sentence_sequence']:
+            if key in pathway and pathway[key]:
+                source_nodes.extend(pathway[key][:2])
+
+        # Minimum viable blueprint
+        return QuestionBlueprint(
+            question_type=question_type,
+            persona=persona,
+            source_nodes=source_nodes[:3],  # Limit to prevent overflow
+            connection_pathway=[pathway],
+            difficulty_level="medium",
+            expected_hops=2,
+            ground_truth_nodes=[n.id for n in source_nodes[:3]] if source_nodes else [],
+            theme_context={'fallback': True, 'primary_themes': []}
         )
 
     def _get_cache_path(self) -> Path:
