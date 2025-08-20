@@ -90,15 +90,33 @@ class ThemeBridgeBuilder:
             f"🌉 ThemeBridgeBuilder initialized: {len(self.all_unique_themes)} unique themes across {len(self.themes_by_document)} documents")
 
     def _organize_themes_by_document(self) -> Dict[str, List[str]]:
-        """Organize themes by their source documents."""
+        """Organize themes by their source documents (universal data access)."""
         themes_by_doc = {}
 
         document_themes = self.entity_theme_data['extraction_results'].get('document_themes', [])
+
         for theme_result in document_themes:
-            doc_id = theme_result.doc_id
-            themes_by_doc[doc_id] = theme_result.themes
+            try:
+                doc_title = self._get_field(theme_result, 'doc_title')
+                themes = self._get_field(theme_result, 'themes')
+
+                if doc_title and themes:
+                    themes_by_doc[doc_title] = themes
+
+            except ValueError as e:
+                self.logger.warning(f"Failed to extract theme data: {e}")
+                continue
 
         return themes_by_doc
+
+    def _get_field(self, obj, field_name: str):
+        """Universal field accessor for both objects and dictionaries."""
+        if hasattr(obj, field_name):
+            return getattr(obj, field_name)
+        elif isinstance(obj, dict):
+            return obj.get(field_name)
+        else:
+            raise ValueError(f"Cannot access field '{field_name}' from {type(obj)}")
 
     def _extract_unique_themes(self) -> List[str]:
         """Extract all unique themes across all documents."""
@@ -107,7 +125,7 @@ class ThemeBridgeBuilder:
             all_themes.update(themes)
         return list(all_themes)
 
-    def compute_cross_document_theme_bridges(self) -> Dict[str, List[Tuple[str, float]]]:
+    def compute_cross_document_theme_bridges(self) -> dict[Any, Any] | dict[str, list[tuple[float, str]]]:
         """
         Compute cross-document theme similarity bridges.
 
@@ -168,24 +186,22 @@ class ThemeBridgeBuilder:
         return theme_bridges
 
     def _get_document_for_theme(self, theme: str) -> Optional[str]:
-        """Find which document a theme belongs to."""
-        for doc_id, themes in self.themes_by_document.items():
+        """Find which document a theme belongs to (returns document title)."""
+
+        for doc_title, themes in self.themes_by_document.items():
             if theme in themes:
-                return doc_id
+                return doc_title
+
+        # Theme not found - show all available themes for debugging
+        all_available_themes = []
+        for doc_title, themes in self.themes_by_document.items():
+            all_available_themes.extend(themes)
+
         return None
 
     def get_inherited_themes_for_node(self, source_document: str, theme_bridges: Dict[str, List[Tuple[str, float]]]) -> \
     Dict[str, Any]:
-        """
-        Get both direct and inherited themes for a node based on its source document.
-
-        Args:
-            source_document: The document this node belongs to
-            theme_bridges: Pre-computed theme bridge mappings
-
-        Returns:
-            Dictionary containing direct themes and cross-document inherited themes
-        """
+        """Get both direct and inherited themes for a node based on its source document."""
         direct_themes = self.themes_by_document.get(source_document, [])
 
         # Collect cross-document inherited themes
@@ -195,15 +211,18 @@ class ThemeBridgeBuilder:
         for direct_theme in direct_themes:
             if direct_theme in theme_bridges:
                 bridges = theme_bridges[direct_theme]
-                for bridge_theme, similarity in bridges:
+
+                # Fix: The bridges are actually (similarity_float, theme_string) tuples
+                # So we need to unpack as (similarity, bridge_theme) not (bridge_theme, similarity)
+                for similarity, bridge_theme in bridges:  # This should work now
                     inherited_themes.append({
-                        'theme': bridge_theme,
-                        'similarity': similarity,
+                        'theme': bridge_theme,  # ✅ Now string
+                        'similarity': float(similarity),  # ✅ Now float
                         'inherited_from': direct_theme,
                         'source_document': self._get_document_for_theme(bridge_theme)
                     })
 
-                theme_inheritance_map[direct_theme] = bridges
+                theme_inheritance_map[direct_theme] = [(similarity, theme) for similarity, theme in bridges]
 
         return {
             'direct_themes': direct_themes,
@@ -773,24 +792,60 @@ class MultiGranularityKnowledgeGraph:
     def get_nodes_by_type(self, node_type: str) -> List[KGNode]:
         """Get all nodes of a specific type."""
         return [node for node in self.nodes if node.type == node_type]
-    
+
     def get_neighbors(self, node_id: str, relationship_types: List[str] = None) -> List[KGNode]:
-        """Get neighboring nodes."""
+        """Get neighboring nodes with updated relationship type mapping."""
         neighbors = []
-        
+
+        # If no specific types requested, get all neighbors
+        if relationship_types is None:
+            search_types = None
+        else:
+            # Map old relationship type names to new multi-granularity names
+            type_mapping = {
+                'cosine_similarity': [
+                    'sentence_to_sentence_semantic',
+                    'doc_to_doc',
+                    'cosine_similarity_intra',
+                    'cosine_similarity_inter',
+                    'cosine_similarity'
+                ],
+                'entity_overlap': [
+                    'high_confidence_entity_overlap',
+                    'entity_overlap'
+                ],
+                'similarity': [
+                    'sentence_to_sentence_semantic',
+                    'sentence_to_sentence_sequential',
+                    'doc_to_doc',
+                    'cosine_similarity_intra',
+                    'cosine_similarity_inter',
+                    'cosine_similarity'
+                ]
+            }
+
+            # Expand requested types to include all variants
+            search_types = set()
+            for req_type in relationship_types:
+                if req_type in type_mapping:
+                    search_types.update(type_mapping[req_type])
+                else:
+                    search_types.add(req_type)  # Include exact matches too
+
+            search_types = list(search_types)
+
         for rel in self.relationships:
-            if relationship_types and rel.type not in relationship_types:
-                continue
-                
-            if rel.source == node_id:
-                neighbor = self.get_node(rel.target)
-                if neighbor:
-                    neighbors.append(neighbor)
-            elif rel.target == node_id:
-                neighbor = self.get_node(rel.source)
-                if neighbor:
-                    neighbors.append(neighbor)
-        
+            # If search_types is None, include all relationships
+            if search_types is None or rel.type in search_types:
+                if rel.source == node_id:
+                    neighbor = self.get_node(rel.target)
+                    if neighbor:
+                        neighbors.append(neighbor)
+                elif rel.target == node_id:
+                    neighbor = self.get_node(rel.source)
+                    if neighbor:
+                        neighbors.append(neighbor)
+
         return neighbors
     
     def get_parent(self, node_id: str) -> Optional[KGNode]:
