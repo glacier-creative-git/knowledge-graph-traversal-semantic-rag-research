@@ -269,8 +269,8 @@ def test_phase6():
             # Test similarity-based neighbors - use updated type names
             similarity_neighbors = pipeline.knowledge_graph.get_neighbors(test_chunk.id, [
                 'sentence_to_sentence_semantic',
-                'cosine_similarity_intra',
-                'cosine_similarity_inter'
+                'chunk_to_chunk_intra',  # ← Actually this
+                'chunk_to_chunk_inter'  # ← And this
             ])
             print(f"      Similarity neighbors: {len(similarity_neighbors)} similar nodes")
 
@@ -283,6 +283,26 @@ def test_phase6():
             # Test all neighbors (multi-dimensional navigation)
             all_neighbors = pipeline.knowledge_graph.get_neighbors(test_chunk.id)
             print(f"      Total neighbors: {len(all_neighbors)} connected nodes")
+
+        # After the knowledge graph is built, add this debug section:
+        print("\n🔍 DEBUGGING: Actual Relationship Types in Knowledge Graph:")
+        relationship_type_counts = {}
+        for rel in pipeline.knowledge_graph.relationships:
+            rel_type = rel.type
+            if rel_type not in relationship_type_counts:
+                relationship_type_counts[rel_type] = 0
+            relationship_type_counts[rel_type] += 1
+
+        for rel_type, count in sorted(relationship_type_counts.items()):
+            print(f"   {rel_type}: {count:,} relationships")
+
+        # Also check what specific relationships the test chunk has:
+        test_chunk_relationships = []
+        for rel in pipeline.knowledge_graph.relationships:
+            if rel.source == test_chunk.id or rel.target == test_chunk.id:
+                test_chunk_relationships.append(rel.type)
+
+        print(f"\n🎯 Test chunk relationship types: {set(test_chunk_relationships)}")
 
         # Test semantic highway traversal potential
         print("\n🛣️  Testing Semantic Highway Traversal Potential:")

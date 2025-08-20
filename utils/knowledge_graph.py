@@ -1145,10 +1145,13 @@ class MultiGranularityKnowledgeGraphBuilder:
         # Get configuration
         entity_config = self.config.get('knowledge_graph_assembly', {}).get('entity_relationships', {})
         if not entity_config.get('enabled', True):
+            self.logger.info(f"🏷️  Entity relationships disabled in config, skipping")
             return relationships
 
         min_entity_overlap = entity_config.get('min_entity_overlap', 2)
         min_jaccard_similarity = entity_config.get('min_jaccard_similarity', 0.3)
+        
+        self.logger.info(f"🏷️  Entity relationship config: min_overlap={min_entity_overlap}, min_jaccard={min_jaccard_similarity}")
 
         # Get all nodes for entity overlap computation (chunks and sentences only for efficiency)
         processable_nodes = []
@@ -1156,12 +1159,16 @@ class MultiGranularityKnowledgeGraphBuilder:
             processable_nodes.extend(nodes_by_type.get(node_type, []))
 
         if len(processable_nodes) < 2:
+            self.logger.warning(f"🏷️  Not enough nodes for entity relationships: {len(processable_nodes)} < 2")
             return relationships
 
         self.logger.info(f"🏷️  Building high-confidence entity relationships for {len(processable_nodes)} nodes...")
 
         entity_types = ['PERSON', 'ORG', 'GPE']
         relationship_count = 0
+        nodes_with_entities = 0
+        total_comparisons = 0
+        high_overlap_pairs = 0
 
         # Compare each pair of nodes for entity overlap
         for i, source_node in enumerate(processable_nodes):
@@ -1169,6 +1176,8 @@ class MultiGranularityKnowledgeGraphBuilder:
 
             if len(source_entities) == 0:
                 continue
+            
+            nodes_with_entities += 1
 
             # Only check against subsequent nodes to avoid duplicates
             for target_node in processable_nodes[i + 1:]:
@@ -1176,6 +1185,8 @@ class MultiGranularityKnowledgeGraphBuilder:
 
                 if len(target_entities) == 0:
                     continue
+                
+                total_comparisons += 1
 
                 # Calculate entity overlap
                 overlap = source_entities.intersection(target_entities)
@@ -1184,6 +1195,7 @@ class MultiGranularityKnowledgeGraphBuilder:
                 # Apply high-confidence filters
                 if len(overlap) >= min_entity_overlap and len(union) > 0:
                     jaccard_similarity = len(overlap) / len(union)
+                    high_overlap_pairs += 1
 
                     if jaccard_similarity >= min_jaccard_similarity:
                         # Create bidirectional relationships
@@ -1219,6 +1231,7 @@ class MultiGranularityKnowledgeGraphBuilder:
                         ])
                         relationship_count += 2
 
+        self.logger.info(f"📊 Entity relationship stats: {nodes_with_entities} nodes with entities, {total_comparisons} comparisons, {high_overlap_pairs} with sufficient overlap")
         self.logger.info(f"✅ Built {relationship_count} high-confidence entity relationships")
         return relationships
 
@@ -1274,6 +1287,8 @@ class MultiGranularityKnowledgeGraphBuilder:
             self.logger.warning("No pre-computed connections found in similarity data")
             return relationships
 
+        self.logger.info(f"🔄 Processing {len(connections)} pre-computed connections")
+
         # Create node lookup by source IDs
         node_lookup = {}
         for node_list in nodes_by_type.values():
@@ -1287,7 +1302,12 @@ class MultiGranularityKnowledgeGraphBuilder:
                 if 'doc_id' in props:
                     node_lookup[props['doc_id']] = node
 
+        self.logger.info(f"🔍 Created node lookup with {len(node_lookup)} ID mappings")
+
         # Convert connections to relationships
+        successful_matches = 0
+        failed_matches = 0
+        
         for connection in connections:
             source_node = node_lookup.get(connection.source_id)
             target_node = node_lookup.get(connection.target_id)
@@ -1307,6 +1327,22 @@ class MultiGranularityKnowledgeGraphBuilder:
                     weight=connection.similarity_score
                 )
                 relationships.append(relationship)
+                successful_matches += 1
+            else:
+                failed_matches += 1
+                if failed_matches <= 5:  # Log first 5 failures for debugging
+                    self.logger.debug(f"Failed to match connection: {connection.source_id} -> {connection.target_id} (type: {connection.connection_type})")
+
+        self.logger.info(f"✅ Successfully matched {successful_matches} connections, {failed_matches} failed matches")
+        
+        if failed_matches > 0:
+            self.logger.warning(f"⚠️  {failed_matches} connections could not be matched to nodes (ID mismatch)")
+            
+            # Log sample IDs for debugging
+            sample_connection_ids = [conn.source_id for conn in connections[:3]]
+            sample_node_ids = list(node_lookup.keys())[:3]
+            self.logger.debug(f"Sample connection IDs: {sample_connection_ids}")
+            self.logger.debug(f"Sample node lookup IDs: {sample_node_ids}")
 
         return relationships
 
@@ -1327,9 +1363,15 @@ class MultiGranularityKnowledgeGraphBuilder:
         granularity_embeddings = multi_granularity_embeddings[model_name]
         similarity_data = multi_granularity_similarities[model_name]
 
-        # Initialize theme bridge builder
+        # Initialize theme bridge builder with correct config path
         embedding_model = EmbeddingModel(model_name, self.config['system']['device'], self.logger)
-        theme_bridge_builder = ThemeBridgeBuilder(entity_theme_data, embedding_model, self.config, self.logger)
+        
+        # Fix config path mismatch: extract theme_bridging config from knowledge_graph_assembly
+        theme_config = self.config.get('knowledge_graph_assembly', {}).get('theme_bridging', {})
+        config_with_theme_bridging = self.config.copy()
+        config_with_theme_bridging['theme_bridging'] = theme_config
+        
+        theme_bridge_builder = ThemeBridgeBuilder(entity_theme_data, embedding_model, config_with_theme_bridging, self.logger)
 
         # Compute cross-document theme bridges
         theme_bridges = theme_bridge_builder.compute_cross_document_theme_bridges()
