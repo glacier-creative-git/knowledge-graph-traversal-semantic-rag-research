@@ -133,15 +133,15 @@ def test_phase6():
         print(f"✅ Phase 4: Similarity matrices for {len(pipeline.similarities)} models")
 
         # Phase 5: Entity/Theme Extraction (if needed)
-        if not pipeline.entity_theme_data:
+        if not pipeline.theme_data:
             print("🏷️  Running Phase 5: Entity/Theme Extraction...")
-            pipeline._phase_5_entity_theme_extraction()
+            pipeline._phase_5_theme_extraction()
         else:
             print("✅ Phase 5: Entity/theme data already available")
 
-        entities_count = pipeline.entity_theme_data['metadata'].total_entities_extracted
-        themes_count = pipeline.entity_theme_data['metadata'].total_themes_extracted
-        print(f"✅ Phase 5: {entities_count:,} entities and {themes_count} themes extracted")
+        themes_count = pipeline.theme_data['metadata'].total_themes_extracted
+
+        print(f"✅ Phase 5: {themes_count} themes extracted")
 
         # Phase 6: Knowledge Graph Assembly with Theme Bridges
         print("🏗️  Running Phase 6: Knowledge Graph Assembly with Theme Bridges...")
