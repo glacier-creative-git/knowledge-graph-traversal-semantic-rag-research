@@ -160,12 +160,6 @@ similarities:
 entity_theme_extraction:
   use_cached: true
 
-  # Entity extraction settings
-  entity_extraction:
-    entity_types: ["PERSON", "ORG", "GPE"]  # High-quality entity types only
-    spacy_model: "en_core_web_sm"           # spaCy model for NER
-    min_entity_length: 2                    # Minimum entity character length
-
   # Theme extraction settings
   theme_extraction:
     num_themes: 5                           # Number of themes to extract per document
@@ -219,20 +213,6 @@ ollama:
     temperature: 0.1
     num_predict: 100
     stop: ["\n\n", "Text:", "Summary:", "Topics:"]
-
-# Knowledge Graph Question Generation Configuration (unchanged)
-question_generation:
-  target_questions: 50
-  question_types:
-    entity_bridge: 0.4
-    concept_similarity: 0.3
-    hierarchical: 0.2
-    single_hop: 0.1
-  validation:
-    min_question_length: 10
-    max_question_length: 200
-    require_ground_truth: true
-    quality_threshold: 0.7
 
 # Evaluation Configuration (unchanged)
 evaluation:

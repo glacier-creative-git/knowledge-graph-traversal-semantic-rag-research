@@ -13,8 +13,7 @@ from .chunking import ChunkEngine
 from .models import EmbeddingEngine, EmbeddingModel, ChunkEmbedding
 from .similarity import SimilarityEngine, SimilarityConnection
 from .retrieval import RetrievalEngine, SemanticTraversalRetriever, BaselineVectorRetriever
-from .questions import KnowledgeGraphQuestionGenerator, EvaluationQuestion
-from .knowledge_graph import MultiDimensionalKnowledgeGraphBuilder, KnowledgeGraph, KGNode, KGRelationship
+from .knowledge_graph import KnowledgeGraph, KGNode, KGRelationship
 
 __version__ = "1.0.0"
 __all__ = [
@@ -30,9 +29,6 @@ __all__ = [
     "RetrievalEngine",
     "SemanticTraversalRetriever",
     "BaselineVectorRetriever",
-    "KnowledgeGraphQuestionGenerator",
-    "EvaluationQuestion",
-    "MultiDimensionalKnowledgeGraphBuilder",
     "KnowledgeGraph",
     "KGNode",
     "KGRelationship"
