@@ -9,7 +9,6 @@ Currently implements sliding window strategy with easy expansion for future algo
 
 import hashlib
 import logging
-from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 
@@ -180,13 +179,13 @@ class ChunkEngine:
         return chunk_info
     
     def _generate_chunk_id(self, article_title: str, start_idx: int, end_idx: int) -> str:
-        """Generate a unique chunk ID."""
+        """Generate a deterministic unique chunk ID."""
         # Create a readable but unique identifier
         safe_title = article_title.replace(' ', '_').replace('/', '_')[:50]  # Truncate long titles
         chunk_identifier = f"{safe_title}_window_{start_idx}_{end_idx}"
         
-        # Add hash to ensure uniqueness
-        hash_input = f"{article_title}_{start_idx}_{end_idx}_{datetime.now().isoformat()}"
+        # Add hash to ensure uniqueness (deterministic - no timestamp)
+        hash_input = f"{article_title}_{start_idx}_{end_idx}"
         hash_suffix = hashlib.md5(hash_input.encode()).hexdigest()[:8]
         
         return f"{chunk_identifier}_{hash_suffix}"
