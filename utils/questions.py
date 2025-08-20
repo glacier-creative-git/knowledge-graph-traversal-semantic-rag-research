@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """
-Simplified Question Generation Engine
-===================================
+Enhanced Multi-Dimensional Question Generator
+===========================================
 
-Minimalist question generation focusing on three core relationship types:
-1. Entity overlap (PERSON/ORG/GPE only)
-2. Cosine similarity 
-3. Hierarchical relationships
+Generates questions that exploit the full semantic lattice architecture:
+- Cross-document theme bridges
+- Multi-granularity hierarchical navigation
+- Sequential sentence flows
+- Multi-dimensional connection synthesis
 
-Removes themes, keyphrases, and complex metadata extraction for cognitive simplicity.
-Lets Ollama discover connections autonomously from high-quality contexts.
+Personas:
+- Researcher: Complex, multi-hop questions requiring sophisticated reasoning
+- Googler: Simple, direct questions in casual language
 """
 
 import json
@@ -25,827 +27,901 @@ from enum import Enum
 
 try:
     import ollama
+
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
 
-from knowledge_graph import KnowledgeGraph, KGNode
+from knowledge_graph import MultiGranularityKnowledgeGraph, KGNode
 
 
-class QueryStyle(str, Enum):
-    """Question styles for diverse generation."""
-    FORMAL = "Formal"
-    CONVERSATIONAL = "Conversational"
-    ANALYTICAL = "Analytical"
+class ConnectionType(str, Enum):
+    """Types of connections available in the semantic lattice."""
+    RAW_SIMILARITY = "raw_similarity"  # Direct cosine similarity from Phase 4
+    THEME_BRIDGE = "theme_bridge"  # Cross-document theme connections
+    HIERARCHICAL = "hierarchical"  # Parent-child relationships
+    SEQUENTIAL = "sequential"  # Sentence-to-sentence narrative flow
+    ENTITY_OVERLAP = "entity_overlap"  # Shared entity connections
+
+
+class QuestionType(str, Enum):
+    """Five core question types that test different aspects of the semantic lattice."""
+    THEME_BRIDGE = "theme_bridge"
+    GRANULARITY_CASCADE = "granularity_cascade"
+    THEME_SYNTHESIS = "theme_synthesis"
+    SEQUENTIAL_FLOW = "sequential_flow"
+    MULTI_DIMENSIONAL = "multi_dimensional"
+    RAW_SIMILARITY = "raw_similarity"  # NEW: Pure cosine similarity questions
+
+
+class Persona(str, Enum):
+    """Question generation personas with distinct styles."""
+    RESEARCHER = "researcher"  # Complex, academic-style questions
+    GOOGLER = "googler"  # Simple, casual questions
 
 
 @dataclass
-class Persona:
-    """Simplified persona for question generation."""
-    name: str
-    role_description: str
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass
-class QuestionScenario:
-    """Simplified scenario for question generation."""
-    nodes: List[KGNode]
-    shared_entities: List[str]  # Only entities, no themes
+class QuestionBlueprint:
+    """Blueprint for generating a specific question type."""
+    question_type: QuestionType
     persona: Persona
-    style: QueryStyle
-    strategy: str
-    metadata: Dict[str, Any]
+    source_nodes: List[KGNode]
+    connection_pathway: List[Dict[str, Any]]  # Describes the connection path required
+    difficulty_level: str  # easy, medium, hard, expert
+    expected_hops: int
+    ground_truth_nodes: List[str]  # Node IDs that contain the answer
+    theme_context: Dict[str, Any]  # Theme information driving the question
 
 
 @dataclass
-class EvaluationQuestion:
-    """Container for an evaluation question."""
+class GeneratedQuestion:
+    """A fully generated evaluation question."""
     question_id: str
-    question: str
-    reference_answer: Optional[str]
-    question_type: str
-    expected_advantage: str
+    question_text: str
+    question_type: QuestionType
+    persona: Persona
     difficulty_level: str
-    
-    # Ground truth contexts
-    ground_truth_contexts: List[str]
-    reference_contexts: List[str]
-    primary_context_id: str
-    
+    expected_hops: int
+
+    # Ground truth information
+    ground_truth_nodes: List[str]
+    reference_answer: str
+    connection_pathway: List[Dict[str, Any]]
+
+    # Theme and context
+    primary_themes: List[str]
+    secondary_themes: List[str]
+    cross_document: bool
+
     # Generation metadata
-    generation_strategy: str
-    source_nodes: List[str]
-    relationship_types: List[str]
-    entities_used: List[str]  # Changed from themes_used
-    persona_used: str
-    
-    # Ollama metadata
-    model_used: str
     generation_time: float
-    
+    model_used: str
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
         return asdict(self)
 
 
-class PersonaFactory:
-    """Factory for creating simplified personas."""
-    
-    @staticmethod
-    def create_personas() -> List[Persona]:
-        """Create two basic personas."""
-        return [
-            Persona(
-                name="Research Scientist",
-                role_description="An intelligent researcher interested in complex relationships and multi-step reasoning that requires connecting multiple information sources."
-            ),
-            Persona(
-                name="Basic Googler", 
-                role_description="A general user seeking straightforward, factual information with simple, direct questions."
-            )
+class EnhancedConnectionPathwayAnalyzer:
+    """Enhanced analyzer that finds both raw similarity and theme-based pathways."""
+
+    def __init__(self, knowledge_graph: MultiGranularityKnowledgeGraph, logger: logging.Logger):
+        self.kg = knowledge_graph
+        self.logger = logger
+
+        # Cache of pathways by type
+        self.pathway_cache = {
+            QuestionType.THEME_BRIDGE: [],
+            QuestionType.GRANULARITY_CASCADE: [],
+            QuestionType.THEME_SYNTHESIS: [],
+            QuestionType.SEQUENTIAL_FLOW: [],
+            QuestionType.MULTI_DIMENSIONAL: [],
+            QuestionType.RAW_SIMILARITY: []  # NEW
+        }
+
+        # Debug hierarchical relationships
+        self._debug_knowledge_graph_structure()
+
+        # Analyze all pathways with enhanced detection
+        self._analyze_all_pathways()
+
+    def _debug_knowledge_graph_structure(self):
+        """Debug the knowledge graph structure to understand relationship patterns."""
+        self.logger.info("🔍 Debugging knowledge graph structure...")
+
+        # Count nodes by type
+        node_counts = {}
+        for node in self.kg.nodes:
+            node_type = node.type
+            node_counts[node_type] = node_counts.get(node_type, 0) + 1
+
+        self.logger.info(f"   Node counts: {node_counts}")
+
+        # Count relationships by type and granularity_type
+        relationship_counts = {}
+        granularity_type_counts = {}
+
+        for rel in self.kg.relationships:
+            rel_type = rel.type
+            granularity_type = rel.granularity_type
+
+            relationship_counts[rel_type] = relationship_counts.get(rel_type, 0) + 1
+            granularity_type_counts[granularity_type] = granularity_type_counts.get(granularity_type, 0) + 1
+
+        self.logger.info(f"   Relationship types: {relationship_counts}")
+        self.logger.info(f"   Granularity types: {granularity_type_counts}")
+
+        # Check for hierarchical relationships specifically
+        hierarchical_rels = [r for r in self.kg.relationships if r.type in ['parent', 'child']]
+        self.logger.info(f"   Hierarchical relationships found: {len(hierarchical_rels)}")
+
+        if hierarchical_rels:
+            # Show sample hierarchical relationships
+            for i, rel in enumerate(hierarchical_rels[:3]):
+                source_node = self.kg.get_node(rel.source)
+                target_node = self.kg.get_node(rel.target)
+                self.logger.info(f"      Sample {i + 1}: {source_node.type} → {target_node.type} ({rel.type})")
+
+        # Check for raw similarity relationships
+        similarity_rels = [r for r in self.kg.relationships if 'similarity' in r.type.lower()]
+        self.logger.info(f"   Raw similarity relationships found: {len(similarity_rels)}")
+
+        if similarity_rels:
+            # Show sample similarity relationships
+            similarity_types = {}
+            for rel in similarity_rels:
+                similarity_types[rel.type] = similarity_types.get(rel.type, 0) + 1
+            self.logger.info(f"      Similarity types: {similarity_types}")
+
+    def _analyze_all_pathways(self):
+        """Enhanced pathway analysis with both raw similarity and theme connections."""
+        self.logger.info("🔍 Enhanced pathway analysis starting...")
+
+        # Find raw similarity pathways (NEW)
+        self._find_raw_similarity_pathways()
+
+        # Find theme bridge pathways (existing, but enhanced)
+        self._find_theme_bridge_pathways()
+
+        # Find granularity cascade pathways (FIXED)
+        self._find_granularity_cascade_pathways_fixed()
+
+        # Find theme synthesis pathways
+        self._find_theme_synthesis_pathways()
+
+        # Find sequential flow pathways
+        self._find_sequential_flow_pathways()
+
+        # Find multi-dimensional pathways
+        self._find_multi_dimensional_pathways()
+
+        total_pathways = sum(len(pathways) for pathways in self.pathway_cache.values())
+        self.logger.info(f"✅ Enhanced analysis found {total_pathways} pathways across all types")
+
+    def _find_raw_similarity_pathways(self):
+        """NEW: Find pathways based on raw cosine similarity connections."""
+        pathways = []
+
+        # Look for relationships that are pure cosine similarity (not theme-based)
+        similarity_relationship_types = [
+            'cosine_similarity',
+            'cosine_similarity_intra',
+            'cosine_similarity_inter',
+            'sentence_to_sentence_semantic',
+            'doc_to_doc'
         ]
 
+        for rel in self.kg.relationships:
+            if rel.type in similarity_relationship_types:
+                source_node = self.kg.get_node(rel.source)
+                target_node = self.kg.get_node(rel.target)
 
-class SimplifiedPromptGenerator:
-    """Generate simplified prompts that let Ollama discover connections autonomously."""
-    
-    def generate_entity_bridge_prompt(self, scenario: QuestionScenario) -> str:
-        """Generate prompt for entity bridge questions."""
-        shared_entities = scenario.shared_entities[:3]
-        
-        prompt = f"""You are a {scenario.persona.name}. {scenario.persona.role_description}
-
-Generate a question that connects these two contexts through their shared factual elements.
-
-CONTEXT 1: {scenario.nodes[0].properties.get('text', '')[:300]}...
-
-CONTEXT 2: {scenario.nodes[1].properties.get('text', '')[:300]}...
-
-These contexts share: {', '.join(shared_entities)}
-
-Create a question that requires understanding both contexts and their connection.
-
-Question:"""
-        
-        return prompt
-    
-    def generate_concept_similarity_prompt(self, scenario: QuestionScenario) -> str:
-        """Generate prompt for concept similarity questions."""
-        prompt = f"""You are a {scenario.persona.name}. {scenario.persona.role_description}
-
-Generate a question about the relationship between these similar contexts.
-
-CONTEXT 1: {scenario.nodes[0].properties.get('text', '')[:300]}...
-
-CONTEXT 2: {scenario.nodes[1].properties.get('text', '')[:300]}...
-
-These contexts discuss related concepts. Create a question exploring how they relate.
-
-Question:"""
-        
-        return prompt
-    
-    def generate_hierarchical_prompt(self, scenario: QuestionScenario) -> str:
-        """Generate prompt for hierarchical questions."""
-        prompt = f"""You are a {scenario.persona.name}. {scenario.persona.role_description}
-
-Generate a question connecting general and specific information.
-
-GENERAL CONTEXT: {scenario.nodes[0].properties.get('text', '')[:300]}...
-
-SPECIFIC DETAIL: {scenario.nodes[1].properties.get('text', '')[:200]}...
-
-Create a question that requires both general and specific information.
-
-Question:"""
-        
-        return prompt
-    
-    def generate_single_hop_prompt(self, scenario: QuestionScenario) -> str:
-        """Generate prompt for single-hop questions."""
-        node = scenario.nodes[0]
-        context = node.properties.get('text', node.properties.get('page_content', ''))
-        entities = scenario.shared_entities[:2]
-        
-        if entities:
-            entity_focus = f"Create a {scenario.style.value.lower()} question about: {', '.join(entities)}"
-        else:
-            entity_focus = "Create a simple factual question about this text."
-        
-        prompt = f"""You are a {scenario.persona.name}. {scenario.persona.role_description}
-
-Generate a simple factual question about this text.
-
-CONTEXT: {context[:400]}...
-
-{entity_focus}
-
-Question:"""
-        
-        return prompt
-
-
-class EntityExtractor:
-    """Extract shared entities from nodes (PERSON/ORG/GPE only)."""
-    
-    def __init__(self):
-        self.entity_types = ['PERSON', 'ORG', 'GPE']
-    
-    def get_shared_entities(self, nodes: List[KGNode]) -> List[str]:
-        """Get entities shared across all nodes."""
-        if not nodes:
-            return []
-        
-        # Get entity sets for each node
-        entity_sets = []
-        for node in nodes:
-            entities = node.properties.get('entities', {})
-            all_entities = set()
-            for entity_type in self.entity_types:
-                all_entities.update(entities.get(entity_type, []))
-            # Normalize to lowercase for comparison
-            entity_sets.append({e.lower() for e in all_entities})
-        
-        # Find intersection
-        if len(entity_sets) == 1:
-            shared = entity_sets[0]
-        else:
-            shared = entity_sets[0]
-            for entity_set in entity_sets[1:]:
-                shared &= entity_set
-        
-        # Return original case versions (from first node)
-        result = []
-        if nodes:
-            first_node_entities = nodes[0].properties.get('entities', {})
-            for entity_type in self.entity_types:
-                for entity in first_node_entities.get(entity_type, []):
-                    if entity.lower() in shared and entity not in result:
-                        result.append(entity)
-        
-        return result[:5]  # Limit to top 5
-    
-    def get_node_entities(self, node: KGNode) -> List[str]:
-        """Get all entities from a single node."""
-        entities = node.properties.get('entities', {})
-        all_entities = []
-        for entity_type in self.entity_types:
-            all_entities.extend(entities.get(entity_type, []))
-        return all_entities[:5]  # Limit to top 5
-
-
-class NodeSelectionStrategy:
-    """Base class for node selection strategies."""
-    
-    def __init__(self, kg: KnowledgeGraph, logger: logging.Logger):
-        self.kg = kg
-        self.logger = logger
-        self.entity_extractor = EntityExtractor()
-    
-    def select_scenarios(self, num_questions: int, personas: List[Persona]) -> List[QuestionScenario]:
-        """Select scenarios for question generation."""
-        raise NotImplementedError
-
-
-class EntityBridgeStrategy(NodeSelectionStrategy):
-    """Find chunks connected via entity overlap but NOT cosine similarity."""
-    
-    def select_scenarios(self, num_questions: int, personas: List[Persona]) -> List[QuestionScenario]:
-        """Find entity bridge candidates."""
-        scenarios = []
-        
-        chunk_nodes = [n for n in self.kg.nodes if n.type == 'CHUNK']
-        if len(chunk_nodes) < 2:
-            return scenarios
-        
-        for _ in range(num_questions):
-            # Get random chunk with entities
-            candidates = [n for n in chunk_nodes if n.properties.get('entities', {})]
-            if len(candidates) < 2:
-                break
-                
-            source_node = random.choice(candidates)
-            
-            # Find entity neighbors that are NOT cosine similar
-            entity_neighbors = self.kg.get_neighbors(source_node.id, ['entity_overlap'])
-            cosine_neighbors = set(n.id for n in self.kg.get_neighbors(source_node.id, ['cosine_similarity']))
-            
-            # Filter out cosine similar neighbors
-            pure_entity_neighbors = [n for n in entity_neighbors if n.id not in cosine_neighbors]
-            
-            if pure_entity_neighbors:
-                target_node = random.choice(pure_entity_neighbors)
-                nodes = [source_node, target_node]
-                
-                # Extract shared entities
-                shared_entities = self.entity_extractor.get_shared_entities(nodes)
-                
-                # Create scenario
-                persona = random.choice(personas)
-                style = random.choice(list(QueryStyle))
-                
-                scenario = QuestionScenario(
-                    nodes=nodes,
-                    shared_entities=shared_entities,
-                    persona=persona,
-                    style=style,
-                    strategy="entity_bridge",
-                    metadata={
-                        'question_type': 'entity_bridge',
-                        'expected_advantage': 'semantic_traversal',
-                        'difficulty': 'medium'
+                if source_node and target_node:
+                    # This is a raw similarity connection
+                    pathway = {
+                        'source_node': source_node,
+                        'target_node': target_node,
+                        'similarity_score': rel.weight,
+                        'connection_type': ConnectionType.RAW_SIMILARITY,
+                        'relationship_type': rel.type,
+                        'pathway_type': 'raw_cosine_similarity',
+                        'expected_hops': 1  # Direct similarity connection
                     }
-                )
-                scenarios.append(scenario)
-        
-        return scenarios
+                    pathways.append(pathway)
 
+        # Limit to prevent explosion, but sample across different similarity types
+        if len(pathways) > 1000:
+            # Sample proportionally from different relationship types
+            type_samples = {}
+            for pathway in pathways:
+                rel_type = pathway['relationship_type']
+                if rel_type not in type_samples:
+                    type_samples[rel_type] = []
+                type_samples[rel_type].append(pathway)
 
-class ConceptSimilarityStrategy(NodeSelectionStrategy):
-    """Find chunks with high cosine similarity."""
-    
-    def select_scenarios(self, num_questions: int, personas: List[Persona]) -> List[QuestionScenario]:
-        """Find concept similarity candidates."""
-        scenarios = []
-        
-        chunk_nodes = [n for n in self.kg.nodes if n.type == 'CHUNK']
-        if len(chunk_nodes) < 2:
-            return scenarios
-        
-        for _ in range(num_questions):
-            source_node = random.choice(chunk_nodes)
-            
-            # Get cosine similar neighbors with high similarity
-            best_neighbor = None
-            best_similarity = 0.0
-            
+            sampled_pathways = []
+            for rel_type, type_pathways in type_samples.items():
+                sample_size = min(200, len(type_pathways))  # Max 200 per type
+                sampled_pathways.extend(random.sample(type_pathways, sample_size))
+
+            pathways = sampled_pathways
+
+        self.pathway_cache[QuestionType.RAW_SIMILARITY] = pathways
+        self.logger.info(f"   Raw similarity pathways: {len(pathways)} (sampled from available connections)")
+
+    def _find_granularity_cascade_pathways_fixed(self):
+        """FIXED: Find hierarchical pathways using proper relationship traversal."""
+        pathways = []
+
+        # Strategy: Instead of using get_children (which might be broken),
+        # directly traverse the relationships to find hierarchical chains
+
+        # Find all hierarchical relationships
+        hierarchical_rels = [r for r in self.kg.relationships if r.type == 'parent']
+
+        if not hierarchical_rels:
+            self.logger.warning("   No 'parent' relationships found - checking for alternative hierarchical patterns")
+
+            # Look for other hierarchical indicators
+            contains_rels = [r for r in self.kg.relationships if 'contains' in r.type.lower()]
+            hierarchical_rels.extend(contains_rels)
+
+            child_rels = [r for r in self.kg.relationships if r.type == 'child']
+            # Convert child relationships to parent relationships
+            for rel in child_rels:
+                # Swap source and target for parent perspective
+                hierarchical_rels.append(type(rel)(
+                    source=rel.target,
+                    target=rel.source,
+                    type='parent',
+                    granularity_type=rel.granularity_type,
+                    properties=rel.properties,
+                    weight=rel.weight
+                ))
+
+        self.logger.info(f"   Found {len(hierarchical_rels)} hierarchical relationships to analyze")
+
+        # Build hierarchy chains: Document → Chunk → Sentence
+        doc_to_chunk = {}
+        chunk_to_sentence = {}
+
+        for rel in hierarchical_rels:
+            source_node = self.kg.get_node(rel.source)
+            target_node = self.kg.get_node(rel.target)
+
+            if source_node and target_node:
+                if source_node.type == 'DOCUMENT' and target_node.type == 'CHUNK':
+                    if source_node.id not in doc_to_chunk:
+                        doc_to_chunk[source_node.id] = []
+                    doc_to_chunk[source_node.id].append(target_node)
+
+                elif source_node.type == 'CHUNK' and target_node.type == 'SENTENCE':
+                    if source_node.id not in chunk_to_sentence:
+                        chunk_to_sentence[source_node.id] = []
+                    chunk_to_sentence[source_node.id].append(target_node)
+
+        self.logger.info(f"   Doc→Chunk mappings: {len(doc_to_chunk)}")
+        self.logger.info(f"   Chunk→Sentence mappings: {len(chunk_to_sentence)}")
+
+        # Create complete cascades: Document → Chunk → Sentence
+        for doc_id, chunks in doc_to_chunk.items():
+            doc_node = self.kg.get_node(doc_id)
+
+            for chunk_node in chunks:
+                sentences = chunk_to_sentence.get(chunk_node.id, [])
+
+                if sentences:  # We have a complete cascade
+                    # Extract themes from document node
+                    doc_themes = doc_node.properties.get('direct_themes', [])
+
+                    pathway = {
+                        'document_node': doc_node,
+                        'chunk_node': chunk_node,
+                        'sentence_nodes': sentences[:3],  # Limit to first 3 sentences
+                        'themes': doc_themes,
+                        'pathway_type': 'granularity_cascade',
+                        'expected_hops': 3,  # Doc → Chunk → Sentence
+                        'connection_type': ConnectionType.HIERARCHICAL
+                    }
+                    pathways.append(pathway)
+
+        self.pathway_cache[QuestionType.GRANULARITY_CASCADE] = pathways
+        self.logger.info(f"   Granularity cascade pathways: {len(pathways)} (FIXED)")
+
+    def _find_theme_bridge_pathways(self):
+        """Enhanced theme bridge detection with better sampling."""
+        pathways = []
+
+        # Get all chunk nodes with inherited themes
+        chunk_nodes = self.kg.get_nodes_by_type('CHUNK')
+        chunks_with_themes = []
+
+        for chunk_node in chunk_nodes:
+            inherited_themes = chunk_node.properties.get('inherited_themes', [])
+            direct_themes = chunk_node.properties.get('direct_themes', [])
+
+            if inherited_themes or direct_themes:
+                chunks_with_themes.append(chunk_node)
+
+        self.logger.info(f"   Found {len(chunks_with_themes)} chunks with themes for bridge analysis")
+
+        # Sample to prevent explosion
+        max_source_chunks = 1000  # Limit source chunks to prevent quadratic explosion
+        if len(chunks_with_themes) > max_source_chunks:
+            chunks_with_themes = random.sample(chunks_with_themes, max_source_chunks)
+
+        for source_chunk in chunks_with_themes:
+            source_doc = source_chunk.properties.get('source_article')
+            source_inherited = source_chunk.properties.get('inherited_themes', [])
+
+            if source_inherited:
+                # Sample target chunks for comparison (limit to prevent explosion)
+                target_sample_size = min(50, len(chunks_with_themes))
+                target_chunks = random.sample(chunks_with_themes, target_sample_size)
+
+                for target_chunk in target_chunks:
+                    target_doc = target_chunk.properties.get('source_article')
+
+                    if target_doc != source_doc:  # Cross-document only
+                        target_inherited = target_chunk.properties.get('inherited_themes', [])
+                        target_direct = target_chunk.properties.get('direct_themes', [])
+
+                        # Check for theme overlap
+                        source_theme_names = {t['theme'] for t in source_inherited}
+                        target_theme_names = set(target_direct) | {t['theme'] for t in target_inherited}
+
+                        theme_overlap = source_theme_names.intersection(target_theme_names)
+
+                        if theme_overlap:
+                            pathway = {
+                                'source_node': source_chunk,
+                                'target_node': target_chunk,
+                                'bridge_themes': list(theme_overlap),
+                                'source_document': source_doc,
+                                'target_document': target_doc,
+                                'pathway_type': 'cross_document_theme_bridge',
+                                'expected_hops': 2,
+                                'connection_type': ConnectionType.THEME_BRIDGE
+                            }
+                            pathways.append(pathway)
+
+        # Further sampling to manageable size
+        if len(pathways) > 5000:
+            pathways = random.sample(pathways, 5000)
+
+        self.pathway_cache[QuestionType.THEME_BRIDGE] = pathways
+        self.logger.info(f"   Theme bridge pathways: {len(pathways)} (sampled for performance)")
+
+    def _find_theme_synthesis_pathways(self):
+        """Enhanced theme synthesis with better sampling."""
+        pathways = []
+
+        chunk_nodes = self.kg.get_nodes_by_type('CHUNK')
+
+        # Find chunks with multiple themes
+        multi_theme_chunks = []
+        for chunk_node in chunk_nodes:
+            direct_themes = chunk_node.properties.get('direct_themes', [])
+            inherited_themes = chunk_node.properties.get('inherited_themes', [])
+
+            all_themes = set(direct_themes) | {t['theme'] for t in inherited_themes}
+
+            if len(all_themes) >= 2:
+                multi_theme_chunks.append((chunk_node, all_themes))
+
+        self.logger.info(f"   Found {len(multi_theme_chunks)} multi-theme chunks for synthesis analysis")
+
+        # Sample to prevent explosion
+        max_chunks = 1000
+        if len(multi_theme_chunks) > max_chunks:
+            multi_theme_chunks = random.sample(multi_theme_chunks, max_chunks)
+
+        for i, (source_chunk, source_themes) in enumerate(multi_theme_chunks):
+            # Sample targets for comparison
+            target_sample_size = min(20, len(multi_theme_chunks))
+            target_sample = random.sample(multi_theme_chunks, target_sample_size)
+
+            for target_chunk, target_themes in target_sample:
+                if target_chunk.id != source_chunk.id:
+                    overlap = source_themes.intersection(target_themes)
+                    unique_to_source = source_themes - target_themes
+                    unique_to_target = target_themes - source_themes
+
+                    # Interesting if there's partial overlap
+                    if overlap and unique_to_source and unique_to_target:
+                        pathway = {
+                            'source_node': source_chunk,
+                            'target_node': target_chunk,
+                            'shared_themes': list(overlap),
+                            'source_unique_themes': list(unique_to_source),
+                            'target_unique_themes': list(unique_to_target),
+                            'pathway_type': 'theme_synthesis',
+                            'expected_hops': 2,
+                            'connection_type': ConnectionType.THEME_BRIDGE
+                        }
+                        pathways.append(pathway)
+
+        # Sample final results
+        if len(pathways) > 3000:
+            pathways = random.sample(pathways, 3000)
+
+        self.pathway_cache[QuestionType.THEME_SYNTHESIS] = pathways
+        self.logger.info(f"   Theme synthesis pathways: {len(pathways)} (sampled for performance)")
+
+    def _find_sequential_flow_pathways(self):
+        """Find sentence-to-sentence sequential pathways."""
+        pathways = []
+
+        # Look for sequential relationships
+        sequential_rels = [r for r in self.kg.relationships if 'sequential' in r.type.lower()]
+
+        self.logger.info(f"   Found {len(sequential_rels)} sequential relationships")
+
+        # Group sequential relationships by document
+        doc_sequences = {}
+
+        for rel in sequential_rels:
+            source_node = self.kg.get_node(rel.source)
+            target_node = self.kg.get_node(rel.target)
+
+            if source_node and target_node and source_node.type == 'SENTENCE' and target_node.type == 'SENTENCE':
+                doc = source_node.properties.get('source_article')
+                if doc not in doc_sequences:
+                    doc_sequences[doc] = []
+                doc_sequences[doc].append((source_node, target_node))
+
+        # Build sequence chains of 3+ sentences
+        for doc, pairs in doc_sequences.items():
+            # Sort pairs by sentence index
+            sorted_pairs = sorted(pairs, key=lambda p: p[0].properties.get('sentence_index', 0))
+
+            # Find chains of 3+ consecutive sentences
+            i = 0
+            while i < len(sorted_pairs) - 1:
+                sequence = [sorted_pairs[i][0], sorted_pairs[i][1]]
+
+                # Try to extend the sequence
+                j = i + 1
+                while j < len(sorted_pairs) and sorted_pairs[j][0].id == sequence[-1].id:
+                    sequence.append(sorted_pairs[j][1])
+                    j += 1
+
+                if len(sequence) >= 3:
+                    pathway = {
+                        'sentence_sequence': sequence,
+                        'document': doc,
+                        'start_index': sequence[0].properties.get('sentence_index', 0),
+                        'pathway_type': 'sequential_flow',
+                        'expected_hops': len(sequence),
+                        'connection_type': ConnectionType.SEQUENTIAL
+                    }
+                    pathways.append(pathway)
+
+                i = j if j > i + 1 else i + 1
+
+        self.pathway_cache[QuestionType.SEQUENTIAL_FLOW] = pathways
+        self.logger.info(f"   Sequential flow pathways: {len(pathways)}")
+
+    def _find_multi_dimensional_pathways(self):
+        """Find pathways combining multiple connection types."""
+        pathways = []
+
+        # Combine theme bridges with other connection types
+        theme_bridges = self.pathway_cache[QuestionType.THEME_BRIDGE]
+
+        for bridge in theme_bridges[:100]:  # Limit to prevent explosion
+            source_chunk = bridge['source_node']
+            target_chunk = bridge['target_node']
+
+            # Look for additional connections from the target chunk
+            # 1. Raw similarity connections
+            raw_similarities = []
             for rel in self.kg.relationships:
-                if (rel.source == source_node.id and rel.type == 'cosine_similarity' and 
-                    rel.weight > best_similarity and rel.weight > 0.5):
-                    target_node = self.kg.get_node(rel.target)
-                    if target_node:
-                        best_neighbor = target_node
-                        best_similarity = rel.weight
-            
-            if best_neighbor:
-                nodes = [source_node, best_neighbor]
-                
-                # Extract entities from both nodes
-                shared_entities = self.entity_extractor.get_shared_entities(nodes)
-                
-                # Create scenario
-                persona = random.choice(personas)
-                style = random.choice(list(QueryStyle))
-                
-                scenario = QuestionScenario(
-                    nodes=nodes,
-                    shared_entities=shared_entities,
-                    persona=persona,
-                    style=style,
-                    strategy="concept_similarity",
-                    metadata={
-                        'cosine_similarity': best_similarity,
-                        'question_type': 'concept_similarity',
-                        'expected_advantage': 'semantic_traversal',
-                        'difficulty': 'easy'
-                    }
-                )
-                scenarios.append(scenario)
-        
-        return scenarios
+                if (rel.source == target_chunk.id and
+                        rel.type in ['cosine_similarity', 'cosine_similarity_intra', 'cosine_similarity_inter']):
+                    connected_node = self.kg.get_node(rel.target)
+                    if connected_node:
+                        raw_similarities.append(connected_node)
 
+            # 2. Hierarchical connections (down to sentences)
+            hierarchical_children = []
+            for rel in self.kg.relationships:
+                if rel.source == target_chunk.id and rel.type == 'parent':
+                    child_node = self.kg.get_node(rel.target)
+                    if child_node and child_node.type == 'SENTENCE':
+                        hierarchical_children.append(child_node)
 
-class HierarchicalStrategy(NodeSelectionStrategy):
-    """Use parent-child relationships."""
-    
-    def select_scenarios(self, num_questions: int, personas: List[Persona]) -> List[QuestionScenario]:
-        """Find hierarchical candidates."""
-        scenarios = []
-        
-        document_nodes = [n for n in self.kg.nodes if n.type == 'DOCUMENT']
-        
-        for _ in range(num_questions):
-            if not document_nodes:
-                break
-                
-            doc_node = random.choice(document_nodes)
-            
-            # Find chunks belonging to this document
-            doc_chunks = self.kg.get_neighbors(doc_node.id, ['contains'])
-            
-            if doc_chunks:
-                chunk_node = random.choice(doc_chunks)
-                nodes = [doc_node, chunk_node]
-                
-                # Extract entities across hierarchy levels
-                shared_entities = self.entity_extractor.get_shared_entities(nodes)
-                
-                # Create scenario
-                persona = random.choice(personas)
-                style = random.choice(list(QueryStyle))
-                
-                scenario = QuestionScenario(
-                    nodes=nodes,
-                    shared_entities=shared_entities,
-                    persona=persona,
-                    style=style,
-                    strategy="hierarchical",
-                    metadata={
-                        'question_type': 'hierarchical',
-                        'expected_advantage': 'semantic_traversal',
-                        'difficulty': 'hard'
-                    }
-                )
-                scenarios.append(scenario)
-        
-        return scenarios
-
-
-class SingleHopStrategy(NodeSelectionStrategy):
-    """Select individual chunks for simple questions."""
-    
-    def select_scenarios(self, num_questions: int, personas: List[Persona]) -> List[QuestionScenario]:
-        """Find single node candidates."""
-        scenarios = []
-        
-        chunk_nodes = [n for n in self.kg.nodes if n.type == 'CHUNK']
-        
-        for _ in range(min(num_questions, len(chunk_nodes))):
-            node = random.choice(chunk_nodes)
-            
-            # Extract entities from single node
-            entities = self.entity_extractor.get_node_entities(node)
-            
-            # Prefer "Basic Googler" persona for single-hop questions
-            persona = random.choice([p for p in personas if "Basic" in p.name] or personas)
-            style = random.choice([QueryStyle.CONVERSATIONAL, QueryStyle.FORMAL])
-            
-            scenario = QuestionScenario(
-                nodes=[node],
-                shared_entities=entities,
-                persona=persona,
-                style=style,
-                strategy="single_hop",
-                metadata={
-                    'question_type': 'single_hop',
-                    'expected_advantage': 'baseline_vector',
-                    'difficulty': 'easy'
+            if raw_similarities or hierarchical_children:
+                pathway = {
+                    'bridge_pathway': bridge,
+                    'raw_similarity_connections': raw_similarities[:3],  # Limit
+                    'hierarchical_connections': hierarchical_children[:3],  # Limit
+                    'pathway_type': 'multi_dimensional',
+                    'expected_hops': 4,
+                    'connection_types': [ConnectionType.THEME_BRIDGE, ConnectionType.RAW_SIMILARITY,
+                                         ConnectionType.HIERARCHICAL]
                 }
-            )
-            scenarios.append(scenario)
-        
-        return scenarios
+                pathways.append(pathway)
+
+        self.pathway_cache[QuestionType.MULTI_DIMENSIONAL] = pathways
+        self.logger.info(f"   Multi-dimensional pathways: {len(pathways)}")
+
+    def get_random_pathway(self, question_type: QuestionType) -> Optional[Dict[str, Any]]:
+        """Get a random pathway of the specified type."""
+        pathways = self.pathway_cache.get(question_type, [])
+        return random.choice(pathways) if pathways else None
 
 
 class OllamaQuestionGenerator:
-    """Generates questions using Ollama with simplified prompts."""
-    
+    """Generates questions using Ollama with sophisticated prompts."""
+
     def __init__(self, config: Dict[str, Any], logger: logging.Logger):
         self.config = config
         self.logger = logger
         self.model = config.get('ollama', {}).get('model', 'llama3.1:8b')
-        self.available = self._test_ollama_connection()
-        self.prompt_generator = SimplifiedPromptGenerator()
-    
-    def _test_ollama_connection(self) -> bool:
+        self.available = self._test_ollama()
+
+    def _test_ollama(self) -> bool:
         """Test if Ollama is available."""
         if not OLLAMA_AVAILABLE:
             return False
-        
+
         try:
             models = ollama.list()
             available_models = [model.model for model in models.models]
-            
-            if self.model in available_models:
-                self.logger.info(f"✅ Ollama model {self.model} available")
-                return True
-            else:
-                self.logger.warning(f"⚠️  Ollama model {self.model} not found. Available: {available_models}")
-                return False
-        except Exception as e:
-            self.logger.warning(f"⚠️  Ollama not available: {e}")
+            return self.model in available_models
+        except Exception:
             return False
-    
-    def generate_question_and_answer(self, scenario: QuestionScenario) -> Tuple[Optional[str], Optional[str]]:
-        """Generate question based on scenario."""
+
+    def generate_question(self, blueprint: QuestionBlueprint) -> Optional[GeneratedQuestion]:
+        """Generate a question from a blueprint."""
+
+        print(f"🎯 Generating {blueprint.question_type.value} question (persona: {blueprint.persona.value})...")
+
         if not self.available:
-            return self._generate_fallback_question(scenario), None
-        
+            return self._generate_fallback_question(blueprint)
+
+        start_time = time.time()
+
         try:
-            # Generate prompt based on strategy
-            if scenario.strategy == "entity_bridge":
-                prompt = self.prompt_generator.generate_entity_bridge_prompt(scenario)
-            elif scenario.strategy == "concept_similarity":
-                prompt = self.prompt_generator.generate_concept_similarity_prompt(scenario)
-            elif scenario.strategy == "hierarchical":
-                prompt = self.prompt_generator.generate_hierarchical_prompt(scenario)
-            elif scenario.strategy == "single_hop":
-                prompt = self.prompt_generator.generate_single_hop_prompt(scenario)
-            else:
-                prompt = self._generate_generic_prompt(scenario)
-            
-            # Generate question using Ollama
+            prompt = self._build_prompt(blueprint)
+
             response = ollama.generate(
                 model=self.model,
                 prompt=prompt,
                 options={
                     "temperature": 0.3,
-                    "num_predict": 150,
-                    "stop": ["\n\n", "Answer:", "Explanation:", "Context:"],
-                    "timeout": 30
+                    "num_predict": 300,
+                    "stop": ["\n\nEXPLANATION:", "\n\nCONTEXT:", "```"],
+                    "timeout": 45
                 }
             )
-            
-            question = response['response'].strip()
-            question = self._clean_question(question)
-            
-            if self._is_valid_question(question):
-                return question, None
+
+            question_text = self._parse_response(response['response'], blueprint.persona)
+
+            if question_text:
+                return self._create_generated_question(blueprint, question_text, time.time() - start_time)
             else:
-                return self._generate_fallback_question(scenario), None
-        
+                return self._generate_fallback_question(blueprint)
+
         except Exception as e:
-            self.logger.warning(f"Ollama question generation failed: {e}")
-            return self._generate_fallback_question(scenario), None
-    
-    def _clean_question(self, question: str) -> str:
-        """Clean and normalize generated question."""
-        # Remove common prefixes
-        prefixes_to_remove = [
-            "here is a question", "here's a question", "question:", "the question is",
-            "a good question would be", "i would ask", "one could ask"
-        ]
-        
-        question_lower = question.lower().strip()
-        for prefix in prefixes_to_remove:
-            if question_lower.startswith(prefix):
-                question = question[len(prefix):].strip()
-                if question.startswith(':'):
-                    question = question[1:].strip()
-                break
-        
-        # Ensure question ends with question mark
-        question = question.strip()
-        if question and not question.endswith('?'):
-            question += '?'
-        
-        # Capitalize first letter
-        if question:
-            question = question[0].upper() + question[1:]
-        
-        return question
-    
-    def _is_valid_question(self, question: str) -> bool:
-        """Validate generated question quality."""
-        if not question or len(question) < 10:
-            return False
-        
-        if not question.endswith('?'):
-            return False
-        
-        # Should contain question words or be imperative
-        question_indicators = ['what', 'how', 'why', 'when', 'where', 'which', 'who', 'explain', 'describe', 'compare']
-        question_lower = question.lower()
-        
-        return any(indicator in question_lower for indicator in question_indicators)
-    
-    def _generate_fallback_question(self, scenario: QuestionScenario) -> str:
-        """Generate fallback question when Ollama unavailable."""
-        entities = scenario.shared_entities[:2]
-        
-        if "Basic" in scenario.persona.name:
-            if entities:
-                return f"What is {entities[0]}?"
-            else:
-                return "What are the main concepts discussed in this text?"
-        else:
-            if len(scenario.nodes) > 1 and entities:
-                return f"How are {entities[0]} and {entities[1] if len(entities) > 1 else 'related concepts'} connected?"
-            elif entities:
-                return f"What are the implications of {entities[0]} in this context?"
-            else:
-                return "What are the key relationships discussed?"
-    
-    def _generate_generic_prompt(self, scenario: QuestionScenario) -> str:
-        """Generate generic prompt for unknown strategies."""
-        combined_context = '\n\n'.join([node.properties.get('text', '') for node in scenario.nodes])
-        
-        prompt = f"""You are a {scenario.persona.name}. {scenario.persona.role_description}
+            self.logger.warning(f"Ollama generation failed: {e}")
+            return self._generate_fallback_question(blueprint)
 
-Generate a {scenario.style.value.lower()} question based on this content.
+    def _build_prompt(self, blueprint: QuestionBlueprint) -> str:
+        """Build sophisticated prompts based on question type and persona."""
 
-CONTENT:
-{combined_context[:800]}
+        if blueprint.persona == Persona.RESEARCHER:
+            persona_instruction = "You are an academic researcher asking sophisticated questions that require multi-step reasoning and synthesis of complex information."
+            style_instruction = "Generate a complex, intellectually rigorous question in ONLY one sentence. DO NOT generate more than this one sentence."
+        else:  # GOOGLER
+            persona_instruction = "You are a casual internet user asking simple, direct questions in lowercase, conversational style."
+            style_instruction = "Generate a simple, direct question in all lowercase, in ONLY one sentence. DO NOT generate more than this one sentence. If the context given seems like it contains many broad topics, distill it down to as few words as possible."
 
-Generate only the question:"""
-        
+        # Extract key context from the blueprint
+        context_texts = []
+        for node in blueprint.source_nodes:
+            page_content = node.properties.get('page_content', node.properties.get('text', ''))
+            context_texts.append(page_content[:200] + "...")
+
+        combined_context = "\n\n".join(context_texts)
+
+        # Type-specific instructions
+        type_instructions = {
+            QuestionType.THEME_BRIDGE: f"This question should require connecting information across different documents through shared themes: {blueprint.theme_context.get('bridge_themes', [])}",
+
+            QuestionType.GRANULARITY_CASCADE: "This question should require starting with high-level themes and drilling down to specific details across multiple levels of granularity.",
+
+            QuestionType.THEME_SYNTHESIS: f"This question should require synthesizing multiple themes: {blueprint.theme_context.get('themes_to_synthesize', [])}",
+
+            QuestionType.SEQUENTIAL_FLOW: "This question should require following a logical sequence or argument that builds across multiple sentences.",
+
+            QuestionType.MULTI_DIMENSIONAL: "This question should require complex reasoning that combines multiple types of connections and reasoning patterns."
+        }
+
+        prompt = f"""{persona_instruction}
+
+CONTEXT INFORMATION:
+{combined_context}
+
+THEMES INVOLVED:
+{blueprint.theme_context}
+
+QUESTION REQUIREMENTS:
+{type_instructions[blueprint.question_type]}
+
+The question should require {blueprint.expected_hops} steps of reasoning.
+Difficulty level: {blueprint.difficulty_level}
+
+{style_instruction}
+
+QUESTION:"""
+
         return prompt
 
+    def _parse_response(self, response: str, persona: Persona) -> Optional[str]:
+        """Parse and clean the generated response."""
+        question = response.strip()
 
-class QuestionEngine:
-    """Main engine for generating evaluation questions from knowledge graphs."""
-    
+        # Remove common prefixes
+        prefixes = ["question:", "here is a question:", "the question is:"]
+        for prefix in prefixes:
+            if question.lower().startswith(prefix):
+                question = question[len(prefix):].strip()
+
+        # Ensure it ends with a question mark
+        if not question.endswith('?'):
+            question += '?'
+
+        # Apply persona-specific formatting
+        if persona == Persona.GOOGLER:
+            question = question.lower()
+        elif persona == Persona.RESEARCHER:
+            # Ensure first letter is capitalized
+            if question:
+                question = question[0].upper() + question[1:]
+
+        return question if len(question) > 10 else None
+
+    def _create_generated_question(self, blueprint: QuestionBlueprint, question_text: str,
+                                   generation_time: float) -> GeneratedQuestion:
+        """Create a GeneratedQuestion object."""
+        question_id = f"{blueprint.question_type.value}_{hashlib.md5(question_text.encode()).hexdigest()[:8]}"
+
+        return GeneratedQuestion(
+            question_id=question_id,
+            question_text=question_text,
+            question_type=blueprint.question_type,
+            persona=blueprint.persona,
+            difficulty_level=blueprint.difficulty_level,
+            expected_hops=blueprint.expected_hops,
+            ground_truth_nodes=blueprint.ground_truth_nodes,
+            reference_answer="",  # Could be generated separately
+            connection_pathway=blueprint.connection_pathway,
+            primary_themes=blueprint.theme_context.get('primary_themes', []),
+            secondary_themes=blueprint.theme_context.get('secondary_themes', []),
+            cross_document=blueprint.theme_context.get('cross_document', False),
+            generation_time=generation_time,
+            model_used=self.model
+        )
+
+    def _generate_fallback_question(self, blueprint: QuestionBlueprint) -> GeneratedQuestion:
+        """Generate fallback question when Ollama is unavailable."""
+        # Simple template-based fallback
+        if blueprint.persona == Persona.GOOGLER:
+            question_text = f"what is {blueprint.theme_context.get('primary_themes', ['this topic'])[0]}?"
+        else:
+            themes = blueprint.theme_context.get('primary_themes', ['these concepts'])
+            question_text = f"How do {themes[0]} relate to broader theoretical frameworks?"
+
+        return self._create_generated_question(blueprint, question_text, 0.1)
+
+
+class MultiDimensionalQuestionEngine:
+    """Main engine for generating multi-dimensional questions."""
+
     def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        """Initialize the question engine."""
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
-        
+
         # Initialize components
-        self.personas = PersonaFactory.create_personas()
         self.ollama_generator = OllamaQuestionGenerator(config, self.logger)
-        
-        # Question type distribution
+
+        # Question distribution across types and personas
         self.question_distribution = {
-            'entity_bridge': 0.4,
-            'concept_similarity': 0.3,
-            'hierarchical': 0.2,
-            'single_hop': 0.1
+            QuestionType.RAW_SIMILARITY: 0.20,  # Test the 124k+ similarity edges
+            QuestionType.MULTI_DIMENSIONAL: 0.30,  # ← INCREASED! Most sophisticated
+            QuestionType.THEME_BRIDGE: 0.20,  # Cross-document reasoning
+            QuestionType.GRANULARITY_CASCADE: 0.15,  # Hierarchical navigation
+            QuestionType.THEME_SYNTHESIS: 0.10,  # Multi-theme integration
+            QuestionType.SEQUENTIAL_FLOW: 0.05,  # Narrative chains
         }
-        
-        self.logger.info(f"🎯 Initialized simplified question generator with {len(self.personas)} personas")
-    
-    def generate_questions(self, knowledge_graph: KnowledgeGraph, force_recompute: bool = False) -> List[EvaluationQuestion]:
-        """Generate evaluation questions from knowledge graph."""
+
+        self.persona_distribution = {
+            Persona.RESEARCHER: 0.7,
+            Persona.GOOGLER: 0.3
+        }
+
+        self.logger.info("🎯 Initialized multi-dimensional question generator")
+
+    def generate_questions(self, knowledge_graph: MultiGranularityKnowledgeGraph,
+                           target_count: int = 50, force_recompute: bool = False) -> List[GeneratedQuestion]:
+        """Generate the full question suite."""
+
         # Check cache
         cache_path = self._get_cache_path()
         if not force_recompute and self._is_cache_valid(cache_path, knowledge_graph):
             self.logger.info("📂 Loading cached questions")
             return self._load_cached_questions(cache_path)
-        
-        self.logger.info("🎯 Generating fresh questions using simplified approach")
-        start_time = time.time()
-        
+
+        self.logger.info(f"🎯 Generating {target_count} multi-dimensional questions")
+
+        # Analyze pathways
+        pathway_analyzer = EnhancedConnectionPathwayAnalyzer(knowledge_graph, self.logger)
+
         # Calculate question counts by type
-        target_questions = 50  # Default
-        question_counts = self._calculate_question_counts(target_questions)
-        
-        self.logger.info(f"📊 Question distribution: {question_counts}")
-        
-        # Initialize selection strategies
-        strategies = {
-            'entity_bridge': EntityBridgeStrategy(knowledge_graph, self.logger),
-            'concept_similarity': ConceptSimilarityStrategy(knowledge_graph, self.logger),
-            'hierarchical': HierarchicalStrategy(knowledge_graph, self.logger),
-            'single_hop': SingleHopStrategy(knowledge_graph, self.logger)
-        }
-        
-        # Generate scenarios for each strategy
-        all_scenarios = []
-        
-        for strategy_name, count in question_counts.items():
-            if count == 0:
-                continue
-                
-            self.logger.info(f"🔄 Generating {count} {strategy_name} scenarios...")
-            
-            strategy = strategies[strategy_name]
-            scenarios = strategy.select_scenarios(count, self.personas)
-            all_scenarios.extend(scenarios)
-            
-            self.logger.info(f"✅ Generated {len(scenarios)} {strategy_name} scenarios")
-        
-        # Generate questions from scenarios
-        self.logger.info(f"🤖 Generating questions from {len(all_scenarios)} scenarios...")
-        
+        type_counts = self._calculate_question_counts(target_count)
+
         all_questions = []
-        
-        for i, scenario in enumerate(all_scenarios):
-            question = self._generate_question_from_scenario(scenario)
-            if question:
-                all_questions.append(question)
-        
-        generation_time = time.time() - start_time
-        
-        # Cache questions
-        metadata = {
-            'created_at': datetime.now().isoformat(),
-            'total_questions': len(all_questions),
-            'generation_time': generation_time,
-            'model_used': self.ollama_generator.model,
-            'knowledge_graph_stats': {
-                'total_nodes': len(knowledge_graph.nodes),
-                'total_relationships': len(knowledge_graph.relationships)
-            }
-        }
-        
-        self._cache_questions(cache_path, all_questions, metadata)
-        
-        self.logger.info(f"✅ Question generation completed: {len(all_questions)} questions in {generation_time:.2f}s")
-        
+
+        for question_type, count in type_counts.items():
+            self.logger.info(f"Generating {count} {question_type.value} questions...")
+
+            for _ in range(count):
+                # Get pathway for this question type
+                pathway = pathway_analyzer.get_random_pathway(question_type)
+                if not pathway:
+                    continue
+
+                # Create blueprint
+                blueprint = self._create_blueprint(question_type, pathway)
+                if not blueprint:
+                    continue
+
+                # Generate question
+                question = self.ollama_generator.generate_question(blueprint)
+                if question:
+                    all_questions.append(question)
+
+        # Cache results
+        self._cache_questions(cache_path, all_questions, knowledge_graph)
+
+        self.logger.info(f"✅ Generated {len(all_questions)} questions")
         return all_questions
-    
-    def _calculate_question_counts(self, target_questions: int) -> Dict[str, int]:
+
+    def _calculate_question_counts(self, target_count: int) -> Dict[QuestionType, int]:
         """Calculate how many questions to generate for each type."""
-        question_counts = {}
-        
-        for strategy, proportion in self.question_distribution.items():
-            count = int(target_questions * proportion)
-            question_counts[strategy] = count
-        
-        return question_counts
-    
-    def _generate_question_from_scenario(self, scenario: QuestionScenario) -> Optional[EvaluationQuestion]:
-        """Generate an evaluation question from a scenario."""
-        start_time = time.time()
-        
-        question_text, reference_answer = self.ollama_generator.generate_question_and_answer(scenario)
-        if not question_text:
-            return None
-        
-        generation_time = time.time() - start_time
-        
-        # Create ground truth contexts
-        ground_truth_contexts = [node.id for node in scenario.nodes]
-        primary_context_id = scenario.nodes[0].id
-        
-        # Create reference contexts
-        reference_contexts = []
-        for node in scenario.nodes:
-            context_text = node.properties.get('text', node.properties.get('page_content', ''))
-            reference_contexts.append(context_text)
-        
-        # Determine relationship types
-        relationship_types = []
-        if scenario.strategy == "entity_bridge":
-            relationship_types = ["entity_overlap"]
-        elif scenario.strategy == "concept_similarity":
-            relationship_types = ["cosine_similarity"]
-        elif scenario.strategy == "hierarchical":
-            relationship_types = ["contains"]
-        
-        # Create question ID
-        question_id = f"simple_{scenario.strategy}_{hashlib.md5(question_text.encode()).hexdigest()[:8]}"
-        
-        # Create evaluation question
-        question = EvaluationQuestion(
-            question_id=question_id,
-            question=question_text,
-            reference_answer=reference_answer,
-            question_type=scenario.metadata.get('question_type', scenario.strategy),
-            expected_advantage=scenario.metadata.get('expected_advantage', 'neutral'),
-            difficulty_level=scenario.metadata.get('difficulty', 'medium'),
-            ground_truth_contexts=ground_truth_contexts,
-            reference_contexts=reference_contexts,
-            primary_context_id=primary_context_id,
-            generation_strategy=scenario.strategy,
-            source_nodes=[node.id for node in scenario.nodes],
-            relationship_types=relationship_types,
-            entities_used=scenario.shared_entities,
-            persona_used=scenario.persona.name,
-            model_used=self.ollama_generator.model,
-            generation_time=generation_time
+        counts = {}
+        for question_type, proportion in self.question_distribution.items():
+            counts[question_type] = int(target_count * proportion)
+        return counts
+
+    def _create_blueprint(self, question_type: QuestionType, pathway: Dict[str, Any]) -> QuestionBlueprint:
+        """Create a question blueprint from a pathway."""
+
+        # Randomly select persona
+        persona = random.choices(
+            list(self.persona_distribution.keys()),
+            weights=list(self.persona_distribution.values())
+        )[0]
+
+        # Extract nodes and themes based on question type
+        if question_type == QuestionType.THEME_BRIDGE:
+            source_nodes = [pathway['source_node'], pathway['target_node']]
+            theme_context = {
+                'bridge_themes': pathway['bridge_themes'],
+                'cross_document': True,
+                'primary_themes': pathway['bridge_themes']
+            }
+            ground_truth_nodes = [n.id for n in source_nodes]
+
+        elif question_type == QuestionType.GRANULARITY_CASCADE:
+            source_nodes = [pathway['document_node'], pathway['chunk_node']] + pathway['sentence_nodes'][:2]
+            theme_context = {
+                'themes': pathway['themes'],
+                'cross_document': False,
+                'primary_themes': pathway['themes']
+            }
+            ground_truth_nodes = [n.id for n in source_nodes]
+
+        elif question_type == QuestionType.THEME_SYNTHESIS:
+            source_nodes = [pathway['source_node'], pathway['target_node']]
+            theme_context = {
+                'themes_to_synthesize': pathway['shared_themes'] + pathway['source_unique_themes'][:2],
+                'primary_themes': pathway['shared_themes'],
+                'secondary_themes': pathway['source_unique_themes'][:2]
+            }
+            ground_truth_nodes = [n.id for n in source_nodes]
+
+        elif question_type == QuestionType.SEQUENTIAL_FLOW:
+            source_nodes = pathway['sentence_sequence']
+            theme_context = {
+                'document': pathway['document'],
+                'sequential': True,
+                'primary_themes': []  # Could extract from sentence content
+            }
+            ground_truth_nodes = [n.id for n in source_nodes]
+
+        else:  # MULTI_DIMENSIONAL
+            bridge = pathway.get('bridge_pathway')
+            if not bridge:
+                self.logger.warning(f"MULTI_DIMENSIONAL pathway missing bridge_pathway: {pathway.keys()}")
+                return None
+            hierarchical_nodes = pathway.get('hierarchical_connections', [])
+            raw_similarity_nodes = pathway.get('raw_similarity_connections', [])
+
+            # Combine bridge nodes with additional connections
+            source_nodes = [bridge['source_node'], bridge['target_node']]
+            if hierarchical_nodes:
+                source_nodes.extend(hierarchical_nodes[:2])
+            if raw_similarity_nodes and len(source_nodes) < 4:
+                source_nodes.extend(raw_similarity_nodes[:2])
+
+            theme_context = {
+                'bridge_themes': bridge['bridge_themes'],
+                'cross_document': True,
+                'multi_dimensional': True,
+                'primary_themes': bridge['bridge_themes']
+            }
+            ground_truth_nodes = [n.id for n in source_nodes]
+
+        # Determine difficulty based on question type and expected hops
+        difficulty_map = {
+            QuestionType.THEME_BRIDGE: "medium",
+            QuestionType.GRANULARITY_CASCADE: "medium",
+            QuestionType.THEME_SYNTHESIS: "hard",
+            QuestionType.SEQUENTIAL_FLOW: "easy",
+            QuestionType.MULTI_DIMENSIONAL: "expert"
+        }
+
+        return QuestionBlueprint(
+            question_type=question_type,
+            persona=persona,
+            source_nodes=source_nodes,
+            connection_pathway=[pathway],
+            difficulty_level=difficulty_map[question_type],
+            expected_hops=pathway.get('expected_hops', 2),
+            ground_truth_nodes=ground_truth_nodes,
+            theme_context=theme_context
         )
-        
-        return question
-    
+
     def _get_cache_path(self) -> Path:
         """Get cache path for questions."""
         data_dir = Path(self.config['directories']['data'])
-        return data_dir / "questions" / "evaluation_questions.json"
-    
-    def _is_cache_valid(self, cache_path: Path, knowledge_graph: KnowledgeGraph) -> bool:
+        return data_dir / "questions" / "multi_dimensional_questions.json"
+
+    def _is_cache_valid(self, cache_path: Path, knowledge_graph: MultiGranularityKnowledgeGraph) -> bool:
         """Check if cached questions are valid."""
-        if not cache_path.exists():
-            return False
-        
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-            
-            cached_kg_stats = cache_data.get('metadata', {}).get('knowledge_graph_stats', {})
-            current_kg_stats = {
-                'total_nodes': len(knowledge_graph.nodes),
-                'total_relationships': len(knowledge_graph.relationships)
-            }
-            
-            return cached_kg_stats == current_kg_stats
-            
-        except Exception as e:
-            self.logger.warning(f"Failed to validate question cache: {e}")
-            return False
-    
-    def _cache_questions(self, cache_path: Path, questions: List[EvaluationQuestion], metadata: Dict[str, Any]):
+        # Implementation would check if KG structure changed
+        return cache_path.exists()  # Simplified for now
+
+    def _cache_questions(self, cache_path: Path, questions: List[GeneratedQuestion],
+                         knowledge_graph: MultiGranularityKnowledgeGraph):
         """Cache questions to disk."""
-        try:
-            cache_data = {
-                'metadata': metadata,
-                'questions': [question.to_dict() for question in questions]
-            }
-            
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(cache_path, 'w', encoding='utf-8') as f:
-                json.dump(cache_data, f, indent=2, ensure_ascii=False)
-            
-            self.logger.info(f"💾 Cached questions to {cache_path}")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to cache questions: {e}")
-            raise
-    
-    def _load_cached_questions(self, cache_path: Path) -> List[EvaluationQuestion]:
-        """Load cached questions from disk."""
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
-            
-            questions = []
-            for q_data in cache_data['questions']:
-                question = EvaluationQuestion(**q_data)
-                questions.append(question)
-            
-            return questions
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load cached questions: {e}")
-            raise
-    
-    def get_question_statistics(self, questions: List[EvaluationQuestion]) -> Dict[str, Any]:
-        """Get statistics about generated questions."""
-        if not questions:
-            return {}
-        
-        stats = {
-            'total_questions': len(questions),
-            'by_question_type': {},
-            'by_expected_advantage': {},
-            'by_difficulty': {},
-            'by_persona': {},
-            'question_length_stats': {
-                'mean': 0,
-                'min': float('inf'),
-                'max': 0
-            }
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+        cache_data = {
+            'metadata': {
+                'created_at': datetime.now().isoformat(),
+                'total_questions': len(questions),
+                'ollama_available': self.ollama_generator.available,
+                'model_used': self.ollama_generator.model
+            },
+            'questions': [q.to_dict() for q in questions]
         }
-        
-        lengths = []
-        
-        for question in questions:
-            # Count by question type
-            q_type = question.question_type
-            stats['by_question_type'][q_type] = stats['by_question_type'].get(q_type, 0) + 1
-            
-            # Count by expected advantage
-            advantage = question.expected_advantage
-            stats['by_expected_advantage'][advantage] = stats['by_expected_advantage'].get(advantage, 0) + 1
-            
-            # Count by difficulty
-            difficulty = question.difficulty_level
-            stats['by_difficulty'][difficulty] = stats['by_difficulty'].get(difficulty, 0) + 1
-            
-            # Count by persona
-            persona = question.persona_used
-            stats['by_persona'][persona] = stats['by_persona'].get(persona, 0) + 1
-            
-            # Track length
-            length = len(question.question)
-            lengths.append(length)
-            stats['question_length_stats']['min'] = min(stats['question_length_stats']['min'], length)
-            stats['question_length_stats']['max'] = max(stats['question_length_stats']['max'], length)
-        
-        if lengths:
-            stats['question_length_stats']['mean'] = sum(lengths) / len(lengths)
-        
-        return stats
+
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(cache_data, f, indent=2, ensure_ascii=False)
+
+    def _load_cached_questions(self, cache_path: Path) -> List[GeneratedQuestion]:
+        """Load cached questions from disk."""
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            cache_data = json.load(f)
+
+        questions = []
+        for q_data in cache_data['questions']:
+            # Convert back to enum types
+            q_data['question_type'] = QuestionType(q_data['question_type'])
+            q_data['persona'] = Persona(q_data['persona'])
+            questions.append(GeneratedQuestion(**q_data))
+
+        return questions
