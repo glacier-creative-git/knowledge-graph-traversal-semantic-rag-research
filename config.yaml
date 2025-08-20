@@ -189,16 +189,9 @@ knowledge_graph_assembly:
   # Theme bridging configuration (NEW)
   theme_bridging:
     enabled: true
-    top_k_bridges: 3                    # Number of cross-document theme connections per theme
+    top_k_bridges: 1                    # Number of cross-document theme connections per theme
     min_bridge_similarity: 0.2          # Minimum similarity for theme bridges
     exclude_intra_document: true        # Only create cross-document bridges
-
-  # Entity relationship configuration
-  entity_relationships:
-    enabled: true
-    high_confidence_only: true          # Only use high-confidence entity overlaps
-    min_entity_overlap: 2               # Minimum shared entities for relationship
-    min_jaccard_similarity: 0.3         # Minimum Jaccard similarity for entity relationships
 
 # Simplified Knowledge Graph Configuration
 knowledge_graph:
