@@ -20,13 +20,14 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 import torch
 
+from utils.knowledge_graph import KnowledgeGraphBuilder
 # Import engines (updated for multi-granularity)
 from wiki import WikiEngine
 from chunking import ChunkEngine
 from models import MultiGranularityEmbeddingEngine
-from similarity import MultiGranularitySimilarityEngine
+from similarity import SimilarityEngine
 from retrieval import RetrievalEngine
-from knowledge_graph import MultiGranularityKnowledgeGraphBuilder, MultiGranularityKnowledgeGraph
+from knowledge_graph import KnowledgeGraph
 from extraction import ThemeExtractionEngine
 
 class SemanticRAGPipeline:
@@ -295,7 +296,7 @@ class SemanticRAGPipeline:
         try:
             # Initialize enhanced SimilarityEngine
             self.logger.info("🔗 Initializing multi-granularity similarity engine")
-            similarity_engine = MultiGranularitySimilarityEngine(self.config, self.logger)
+            similarity_engine = SimilarityEngine(self.config, self.logger)
             
             # Check if we should force recompute similarities
             force_recompute = 'similarities' in self.config['execution'].get('force_recompute', [])
@@ -315,7 +316,6 @@ class SemanticRAGPipeline:
             self.logger.info("📊 Multi-Granularity Similarity Matrix Statistics:")
             for model_name, stats in similarity_stats.items():
                 self.logger.info(f"   {model_name}:")
-                self.logger.info(f"      Granularity counts: {stats['granularity_counts']}")
                 self.logger.info(f"      Total connections: {stats['total_connections']:,}")
                 self.logger.info(f"      Memory usage: {stats['memory_usage_mb']:.1f} MB")
                 self.logger.info(f"      Computation time: {stats['computation_time']:.2f}s")
@@ -429,18 +429,21 @@ class SemanticRAGPipeline:
             kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
             if not force_recompute and kg_path.exists():
                 self.logger.info("📂 Loading cached knowledge graph")
-                self.knowledge_graph = MultiGranularityKnowledgeGraph.load(str(kg_path))
+                self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
+                # FIX: Load Phase 3 embeddings into cache after loading from JSON
+                self.knowledge_graph.load_phase3_embeddings(self.embeddings)
                 self.kg_stats = self.knowledge_graph.metadata
             else:
                 # Build fresh knowledge graph using assembly approach
                 self.logger.info("🔨 Assembling fresh knowledge graph from pre-computed data")
-                kg_builder = MultiGranularityKnowledgeGraphBuilder(self.config, self.logger)
+                kg_builder = KnowledgeGraphBuilder(self.config, self.logger)
 
+                # Fixed call with all required arguments:
                 self.knowledge_graph = kg_builder.build_knowledge_graph(
                     chunks=self.chunks,
                     multi_granularity_embeddings=self.embeddings,
-                    multi_granularity_similarities=self.similarities,
-                    theme_data=self.theme_data  # Updated: Phase 5 theme data only
+                    similarity_data=self.similarities,  # This was missing
+                    theme_data=self.theme_data
                 )
 
                 # Save knowledge graph
@@ -452,8 +455,6 @@ class SemanticRAGPipeline:
             # Log knowledge graph statistics
             self.logger.info("📊 Knowledge Graph Assembly Statistics:")
             self.logger.info(f"   Architecture: {self.kg_stats.get('architecture', 'phase6_assembly')}")
-            self.logger.info(f"   Total nodes: {self.kg_stats['total_nodes']:,}")
-            self.logger.info(f"   Total relationships: {self.kg_stats['total_relationships']:,}")
 
             if 'theme_bridge_stats' in self.kg_stats:
                 bridge_stats = self.kg_stats['theme_bridge_stats']
