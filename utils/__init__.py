@@ -11,9 +11,9 @@ from .pipeline import SemanticRAGPipeline
 from .wiki import WikiEngine, WikipediaArticle
 from .chunking import ChunkEngine
 from .models import EmbeddingEngine, EmbeddingModel, ChunkEmbedding
-from .similarity import SimilarityEngine, SimilarityConnection
+from .similarity import SimilarityEngine
 from .retrieval import RetrievalEngine, SemanticTraversalRetriever, BaselineVectorRetriever
-from .knowledge_graph import KnowledgeGraph, KGNode, KGRelationship
+from .knowledge_graph import KnowledgeGraph
 
 __version__ = "1.0.0"
 __all__ = [
