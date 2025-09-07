@@ -26,7 +26,7 @@ from wiki import WikiEngine
 from chunking import ChunkEngine
 from models import MultiGranularityEmbeddingEngine
 from similarity import SimilarityEngine
-from retrieval import RetrievalEngine
+from retrieval import create_retrieval_engine
 from knowledge_graph import KnowledgeGraph
 from extraction import ThemeExtractionEngine
 
@@ -465,25 +465,37 @@ class SemanticRAGPipeline:
 
             self.logger.info(f"   Build time: {self.kg_stats.get('build_time', 0):.2f}s")
 
-            # Extract chunk embeddings for retrieval engine (FIX: Convert multi-granularity to chunk-only format)
-            chunk_only_embeddings = {}
-            for model_name, granularity_embeddings in self.embeddings.items():
-                chunk_embeddings = granularity_embeddings.get('chunks', [])
-                chunk_only_embeddings[model_name] = chunk_embeddings
-
-            # TODO: Update retrieval engine to handle multi-granularity similarity matrices
-            # For now, skip retrieval engine initialization to test knowledge graph assembly
-            self.logger.info("🎯 Skipping retrieval engine initialization (multi-granularity format incompatible)")
-            self.logger.info("📋 Knowledge graph assembly validation will focus on node/relationship structure")
-
-            # Store empty retrieval engine info for now
-            self.retrieval_engine = None
-            self.retrieval_stats = {
-                'status': 'skipped_due_to_format_incompatibility',
-                'reason': 'retrieval_engine_needs_multi_granularity_update',
-                'models_available': list(self.embeddings.keys()) if self.embeddings else [],
-                'knowledge_graph_enabled': True
-            }
+            # Initialize the new retrieval engine with knowledge graph
+            self.logger.info("🎯 Initializing enhanced retrieval engine")
+            self.retrieval_engine = create_retrieval_engine(
+                knowledge_graph=self.knowledge_graph,
+                config=self.config,
+                logger=self.logger
+            )
+            
+            # Test retrieval engine with a simple query
+            try:
+                test_query = "What is machine learning?"
+                test_result = self.retrieval_engine.retrieve(test_query, strategy="baseline_vector")
+                
+                self.retrieval_stats = {
+                    'status': 'initialized_successfully',
+                    'test_query_results': len(test_result.retrieved_content),
+                    'models_available': list(self.embeddings.keys()) if self.embeddings else [],
+                    'knowledge_graph_enabled': True,
+                    'available_strategies': ['baseline_vector', 'semantic_traversal']
+                }
+                
+                self.logger.info(f"✅ Retrieval engine test successful: {len(test_result.retrieved_content)} results for test query")
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️  Retrieval engine test failed: {e}")
+                self.retrieval_stats = {
+                    'status': 'initialized_with_warnings',
+                    'error': str(e),
+                    'models_available': list(self.embeddings.keys()) if self.embeddings else [],
+                    'knowledge_graph_enabled': True
+                }
 
             self.logger.info("✅ Phase 6 Knowledge Graph Assembly completed successfully")
 
