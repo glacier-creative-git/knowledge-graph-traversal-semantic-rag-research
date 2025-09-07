@@ -8,13 +8,14 @@ Ensures systemic coherence by defining exactly where and how semantic navigation
 
 This module implements the core principle: Question generation methodology must directly 
 reflect retrieval algorithm capabilities.
+
+PURE RULES ONLY - No computational logic or scoring.
 """
 
 import logging
 from enum import Enum
 from typing import Dict, List, Any, Optional, Tuple, Set
 from dataclasses import dataclass
-from abc import ABC, abstractmethod
 
 
 class ConnectionType(Enum):
@@ -45,7 +46,6 @@ class TraversalPath:
     nodes: List[str]                    # Node IDs in traversal order
     connection_types: List[ConnectionType]  # Connection type used for each hop
     granularity_levels: List[GranularityLevel]  # Granularity of each node
-    context_scores: List[float]         # Context sufficiency score at each step
     total_hops: int
     is_valid: bool
     validation_errors: List[str]
@@ -55,6 +55,8 @@ class TraversalPath:
         self.total_hops = len(self.connection_types)
         if len(self.nodes) != self.total_hops + 1:
             self.is_valid = False
+            if not hasattr(self, 'validation_errors'):
+                self.validation_errors = []
             self.validation_errors.append("Node count must be connection count + 1")
 
 
@@ -200,7 +202,7 @@ class TraversalConstraints:
 class NavigationLogic:
     """
     Core navigation logic for semantic traversal.
-    Implements the decision-making algorithms for path planning and validation.
+    PURE RULES ONLY - No computational work.
     """
     
     @staticmethod
@@ -239,6 +241,7 @@ class NavigationLogic:
         """
         Ensure traversal path maintains semantic coherence.
         Validates all granularity, scope, and progression rules.
+        PURE VALIDATION - No computational work.
         """
         errors = []
         
@@ -283,45 +286,6 @@ class NavigationLogic:
         return len(errors) == 0, errors
     
     @staticmethod
-    def assess_context_sufficiency(nodes: List[str], 
-                                 question_complexity: str,
-                                 node_properties: Dict[str, Dict[str, Any]]) -> List[float]:
-        """
-        Determine if retrieved nodes contain sufficient context for question complexity.
-        Returns context sufficiency scores for each node.
-        """
-        context_scores = []
-        
-        complexity_requirements = {
-            "simple": {"min_words": 50, "min_sentences": 2},
-            "medium": {"min_words": 150, "min_sentences": 5},
-            "hard": {"min_words": 300, "min_sentences": 10},
-            "expert": {"min_words": 500, "min_sentences": 15}
-        }
-        
-        requirements = complexity_requirements.get(question_complexity, complexity_requirements["medium"])
-        
-        for node_id in nodes:
-            node_props = node_properties.get(node_id, {})
-            
-            # Get text content
-            text = node_props.get('page_content', '') or node_props.get('text', '')
-            word_count = len(text.split()) if text else 0
-            
-            # Estimate sentence count (rough approximation)
-            sentence_count = max(1, text.count('.') + text.count('!') + text.count('?')) if text else 0
-            
-            # Calculate sufficiency score
-            word_score = min(1.0, word_count / requirements["min_words"])
-            sentence_score = min(1.0, sentence_count / requirements["min_sentences"])
-            
-            # Combined score with word count weighted more heavily
-            context_score = (word_score * 0.7) + (sentence_score * 0.3)
-            context_scores.append(context_score)
-        
-        return context_scores
-    
-    @staticmethod
     def validate_multi_dimensional_constraints(connection_types: List[ConnectionType]) -> Tuple[bool, List[str]]:
         """
         Validate multi-dimensional traversal constraints.
@@ -347,6 +311,7 @@ class TraversalValidator:
     """
     High-level validator that combines all rules to validate complete traversal paths.
     Used by both question generation and retrieval algorithms.
+    PURE VALIDATION ONLY - No computational scoring.
     """
     
     def __init__(self, logger: Optional[logging.Logger] = None):
@@ -358,12 +323,11 @@ class TraversalValidator:
                      connection_types: List[ConnectionType], 
                      node_granularities: List[GranularityLevel],
                      node_documents: List[str],
-                     traversal_pattern: str,
-                     question_complexity: str = "medium",
-                     node_properties: Optional[Dict[str, Dict[str, Any]]] = None) -> TraversalPath:
+                     traversal_pattern: str) -> TraversalPath:
         """
         Comprehensive path validation using all traversal rules.
         Returns a TraversalPath object with validation results.
+        NO CONTEXT SCORING - Pure structural validation only.
         """
         validation_errors = []
         
@@ -392,22 +356,11 @@ class TraversalValidator:
                 is_multi_valid, multi_errors = NavigationLogic.validate_multi_dimensional_constraints(connection_types)
                 validation_errors.extend(multi_errors)
         
-        # Context sufficiency assessment
-        context_scores = []
-        if node_properties:
-            context_scores = NavigationLogic.assess_context_sufficiency(
-                path_nodes, question_complexity, node_properties
-            )
-        else:
-            # Default scores if no properties provided
-            context_scores = [0.5] * len(path_nodes)
-        
-        # Create traversal path object
+        # Create traversal path object (no context scoring)
         traversal_path = TraversalPath(
             nodes=path_nodes,
             connection_types=connection_types,
             granularity_levels=node_granularities,
-            context_scores=context_scores,
             total_hops=len(connection_types),
             is_valid=len(validation_errors) == 0,
             validation_errors=validation_errors
@@ -426,6 +379,7 @@ class TraversalValidator:
         """
         Generate templates for valid paths based on traversal pattern.
         Used by question generation to create coherent questions.
+        STRUCTURAL TEMPLATES ONLY - No viability scoring.
         """
         templates = []
         
@@ -493,115 +447,6 @@ class TraversalValidator:
         return templates
 
 
-class TraversalPlanner:
-    """
-    High-level planner for creating traversal strategies.
-    Used by question generation to plan coherent paths before executing them.
-    """
-    
-    def __init__(self, validator: TraversalValidator, logger: Optional[logging.Logger] = None):
-        """Initialize planner with validator and optional logger."""
-        self.validator = validator
-        self.logger = logger or logging.getLogger(__name__)
-    
-    def plan_traversal(self, 
-                      start_node_granularity: GranularityLevel,
-                      target_complexity: str,
-                      traversal_pattern: str,
-                      cross_document_required: bool = False) -> List[Dict[str, Any]]:
-        """
-        Plan a traversal strategy based on requirements.
-        Returns list of possible traversal plans ranked by viability.
-        """
-        plans = []
-        
-        # Get valid templates for the pattern
-        templates = self.validator.generate_valid_path_templates(traversal_pattern)
-        
-        for template in templates:
-            # Check if template matches requirements
-            if cross_document_required and not template.get("cross_document", False):
-                continue
-            
-            # Check if starting granularity is compatible
-            if template["granularities"][0] != start_node_granularity:
-                continue
-            
-            # Calculate plan viability score
-            viability_score = self._calculate_plan_viability(template, target_complexity)
-            
-            plan = {
-                "template": template,
-                "viability_score": viability_score,
-                "estimated_context_sufficiency": self._estimate_context_sufficiency(template, target_complexity),
-                "navigation_complexity": len(template["connection_types"]),
-                "recommended": viability_score > 0.7
-            }
-            
-            plans.append(plan)
-        
-        # Sort by viability score (highest first)
-        plans.sort(key=lambda x: x["viability_score"], reverse=True)
-        
-        if self.logger:
-            self.logger.debug(f"Generated {len(plans)} traversal plans for {traversal_pattern} pattern")
-            if plans:
-                best_plan = plans[0]
-                self.logger.debug(f"Best plan: {best_plan['template']['description']} (score: {best_plan['viability_score']:.2f})")
-        
-        return plans
-    
-    def _calculate_plan_viability(self, template: Dict[str, Any], target_complexity: str) -> float:
-        """Calculate viability score for a traversal plan."""
-        base_score = 0.5
-        
-        # Complexity matching
-        complexity_scores = {
-            "simple": {"raw_similarity": 1.0, "hierarchical": 0.8, "sequential_flow": 0.6, "theme_bridge": 0.4, "multi_dimensional": 0.2},
-            "medium": {"raw_similarity": 0.8, "hierarchical": 1.0, "sequential_flow": 0.9, "theme_bridge": 0.8, "multi_dimensional": 0.6},
-            "hard": {"raw_similarity": 0.6, "hierarchical": 0.8, "sequential_flow": 1.0, "theme_bridge": 1.0, "multi_dimensional": 0.9},
-            "expert": {"raw_similarity": 0.4, "hierarchical": 0.6, "sequential_flow": 0.8, "theme_bridge": 0.9, "multi_dimensional": 1.0}
-        }
-        
-        pattern_score = complexity_scores.get(target_complexity, {}).get(template["pattern"], 0.5)
-        
-        # Hop count appropriateness (more hops = more complexity)
-        hop_bonus = min(0.3, template["hops"] * 0.05)
-        
-        # Cross-document capability bonus
-        cross_doc_bonus = 0.1 if template.get("cross_document", False) else 0.0
-        
-        total_score = min(1.0, base_score + pattern_score * 0.4 + hop_bonus + cross_doc_bonus)
-        return total_score
-    
-    def _estimate_context_sufficiency(self, template: Dict[str, Any], target_complexity: str) -> float:
-        """Estimate context sufficiency for a traversal template."""
-        # Base sufficiency depends on number of nodes (more nodes = more context)
-        node_count = template["hops"] + 1
-        base_sufficiency = min(1.0, node_count * 0.15)
-        
-        # Granularity bonus (sentence level provides most detailed context)
-        granularity_bonus = 0.0
-        for granularity in template["granularities"]:
-            if granularity == GranularityLevel.SENTENCE:
-                granularity_bonus += 0.1
-            elif granularity == GranularityLevel.CHUNK:
-                granularity_bonus += 0.05
-        
-        # Complexity adjustment
-        complexity_multipliers = {
-            "simple": 1.2,
-            "medium": 1.0, 
-            "hard": 0.8,
-            "expert": 0.6
-        }
-        
-        multiplier = complexity_multipliers.get(target_complexity, 1.0)
-        
-        total_sufficiency = min(1.0, (base_sufficiency + granularity_bonus) * multiplier)
-        return total_sufficiency
-
-
 # Public API for easy import and usage
 __all__ = [
     "ConnectionType",
@@ -611,6 +456,5 @@ __all__ = [
     "ScopeRules", 
     "TraversalConstraints",
     "NavigationLogic",
-    "TraversalValidator",
-    "TraversalPlanner"
+    "TraversalValidator"
 ]

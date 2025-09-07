@@ -12,7 +12,6 @@ from .wiki import WikiEngine, WikipediaArticle
 from .chunking import ChunkEngine
 from .models import EmbeddingEngine, EmbeddingModel, ChunkEmbedding
 from .similarity import SimilarityEngine
-from .retrieval import RetrievalEngine, SemanticTraversalRetriever, BaselineVectorRetriever
 from .knowledge_graph import KnowledgeGraph
 
 __version__ = "1.0.0"
@@ -25,11 +24,5 @@ __all__ = [
     "EmbeddingModel", 
     "ChunkEmbedding",
     "SimilarityEngine",
-    "SimilarityConnection",
-    "RetrievalEngine",
-    "SemanticTraversalRetriever",
-    "BaselineVectorRetriever",
-    "KnowledgeGraph",
-    "KGNode",
-    "KGRelationship"
+    "KnowledgeGraph"
 ]
