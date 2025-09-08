@@ -53,29 +53,51 @@ class KnowledgeGraphNavigator:
         """
         chunk = self.kg.chunks.get(chunk_id)
         if not chunk:
+            self.logger.warning(f"🚨 DIAGNOSTIC: Chunk {chunk_id} not found in knowledge graph")
             return []
         
         hybrid_nodes = []
         
-        # Get connected chunks (intra and inter-document)
+        # DIAGNOSTIC: Check chunk connections
         all_connected_chunks = chunk.intra_doc_connections + chunk.inter_doc_connections
+        connected_chunks_with_cache = 0
+        
+        # Get connected chunks (intra and inter-document)
         for connected_chunk_id in all_connected_chunks:
             if connected_chunk_id in query_similarity_cache:
+                connected_chunks_with_cache += 1
                 query_sim = query_similarity_cache[connected_chunk_id]
                 hybrid_nodes.append((connected_chunk_id, "chunk", query_sim))
         
-        # Get sentences within current chunk
+        # DIAGNOSTIC: Check sentence associations
         chunk_sentences = self.kg.get_chunk_sentences(chunk_id)
+        sentences_with_cache = 0
+        
+        # Get sentences within current chunk
         for sentence_obj in chunk_sentences:
             sentence_id = sentence_obj.sentence_id
             if sentence_id in query_similarity_cache:
+                sentences_with_cache += 1
                 query_sim = query_similarity_cache[sentence_id]
                 hybrid_nodes.append((sentence_id, "sentence", query_sim))
         
         # Sort by query similarity (descending)
         hybrid_nodes.sort(key=lambda x: x[2], reverse=True)
         
-        self.logger.debug(f"Hybrid connections for {chunk_id}: {len(hybrid_nodes)} total nodes")
+        # DIAGNOSTIC: Log hybrid connection analysis
+        self.logger.info(f"🔍 DIAGNOSTIC: Hybrid Connections for {chunk_id}")
+        self.logger.info(f"   Connected chunks: {connected_chunks_with_cache}/{len(all_connected_chunks)} in cache")
+        self.logger.info(f"   Chunk sentences: {sentences_with_cache}/{len(chunk_sentences)} in cache")
+        self.logger.info(f"   Total hybrid nodes: {len(hybrid_nodes)}")
+        
+        if hybrid_nodes:
+            # Show top 3 candidates
+            self.logger.info(f"   Top candidates:")
+            for i, (node_id, node_type, sim) in enumerate(hybrid_nodes[:3]):
+                self.logger.info(f"     {i+1}. {node_type}: {node_id[:30]}... (sim: {sim:.3f})")
+        else:
+            self.logger.warning(f"   ⚠️  No hybrid nodes found!")
+        
         return hybrid_nodes
     
     def get_chunk_connections(self, chunk_id: str, connection_type: ConnectionType) -> List[Tuple[str, float]]:
@@ -158,20 +180,51 @@ class HybridTraversalEngine:
         query_similarity_cache = {}
         chunk_similarities = []
         
+        # Diagnostic counters
+        chunks_processed = 0
+        chunks_with_embeddings = 0
+        sentences_processed = 0
+        sentences_with_embeddings = 0
+        
         # Compute similarities to all chunks
         for chunk_id in self.kg.chunks.keys():
+            chunks_processed += 1
             chunk_embedding = self.kg.get_chunk_embedding(chunk_id)
             if chunk_embedding is not None:
+                chunks_with_embeddings += 1
                 similarity = cosine_similarity([query_embedding], [chunk_embedding])[0][0]
                 query_similarity_cache[chunk_id] = float(similarity)
                 chunk_similarities.append((chunk_id, float(similarity)))
         
         # Compute similarities to all sentences
         for sentence_id in self.kg.sentences.keys():
+            sentences_processed += 1
             sentence_embedding = self.kg.get_sentence_embedding(sentence_id)
             if sentence_embedding is not None:
+                sentences_with_embeddings += 1
                 similarity = cosine_similarity([query_embedding], [sentence_embedding])[0][0]
                 query_similarity_cache[sentence_id] = float(similarity)
+        
+        # DIAGNOSTIC: Analyze similarity distributions
+        sentence_sims = [sim for node_id, sim in query_similarity_cache.items() if node_id in self.kg.sentences]
+        chunk_sims = [sim for node_id, sim in query_similarity_cache.items() if node_id in self.kg.chunks]
+        
+        self.logger.info(f"📊 DIAGNOSTIC: Cache Coverage Analysis")
+        self.logger.info(f"   Chunks: {chunks_with_embeddings}/{chunks_processed} have embeddings")
+        self.logger.info(f"   Sentences: {sentences_with_embeddings}/{sentences_processed} have embeddings")
+        self.logger.info(f"   Total cached similarities: {len(query_similarity_cache)}")
+        
+        if sentence_sims and chunk_sims:
+            self.logger.info(f"📈 DIAGNOSTIC: Similarity Score Distributions")
+            self.logger.info(f"   Sentence similarities: {min(sentence_sims):.3f} - {max(sentence_sims):.3f} (avg: {sum(sentence_sims)/len(sentence_sims):.3f})")
+            self.logger.info(f"   Chunk similarities: {min(chunk_sims):.3f} - {max(chunk_sims):.3f} (avg: {sum(chunk_sims)/len(chunk_sims):.3f})")
+            
+            # Find top scoring nodes
+            all_nodes_sorted = sorted(query_similarity_cache.items(), key=lambda x: x[1], reverse=True)
+            self.logger.info(f"🎯 DIAGNOSTIC: Top 5 Query-Similar Nodes")
+            for i, (node_id, sim) in enumerate(all_nodes_sorted[:5]):
+                node_type = "sentence" if node_id in self.kg.sentences else "chunk"
+                self.logger.info(f"   {i+1}. {node_type}: {node_id} (sim: {sim:.3f})")
         
         # Find best anchor chunk (highest similarity chunk above threshold)
         chunk_similarities.sort(key=lambda x: x[1], reverse=True)
@@ -233,7 +286,31 @@ class HybridTraversalEngine:
             # Find highest similarity node
             best_node_id, best_node_type, best_similarity = hybrid_nodes[0]
             
-            self.logger.debug(f"   Best node: {best_node_id} ({best_node_type}) sim={best_similarity:.3f}")
+            # DIAGNOSTIC: Log decision analysis
+            self.logger.info(f"🧠 DIAGNOSTIC: Decision Analysis at Hop {hop_count}")
+            self.logger.info(f"   Best node: {best_node_id[:30]}... ({best_node_type}) sim={best_similarity:.3f}")
+            
+            # Show comparison between top sentence and top chunk
+            top_sentence = None
+            top_chunk = None
+            for node_id, node_type, sim in hybrid_nodes:
+                if node_type == "sentence" and top_sentence is None:
+                    top_sentence = (node_id, sim)
+                if node_type == "chunk" and top_chunk is None:
+                    top_chunk = (node_id, sim)
+                if top_sentence and top_chunk:
+                    break
+            
+            if top_sentence and top_chunk:
+                self.logger.info(f"   Top sentence: {top_sentence[0][:30]}... (sim: {top_sentence[1]:.3f})")
+                self.logger.info(f"   Top chunk: {top_chunk[0][:30]}... (sim: {top_chunk[1]:.3f})")
+                self.logger.info(f"   Decision: {'EXTRACT (sentence wins)' if top_sentence[1] > top_chunk[1] else 'TRAVERSE (chunk wins)'}")
+            elif top_sentence:
+                self.logger.info(f"   Only sentences available - should EXTRACT")
+            elif top_chunk:
+                self.logger.info(f"   Only chunks available - will TRAVERSE")
+            else:
+                self.logger.warning(f"   No nodes available!")
             
             if best_node_type == "sentence":
                 # EXTRACT: Drop the crane and extract all sentences from current chunk
@@ -287,9 +364,23 @@ class HybridTraversalEngine:
         return traversal_path, extracted_sentences
     
     def _extract_chunk_sentences(self, chunk_id: str) -> List[str]:
-        """Extract all sentences from a chunk."""
+        """Extract all sentences from a chunk with diagnostic logging."""
         chunk_sentences = self.kg.get_chunk_sentences(chunk_id)
-        return [sent.sentence_text for sent in chunk_sentences]
+        sentence_texts = [sent.sentence_text for sent in chunk_sentences]
+        
+        # DIAGNOSTIC: Log extraction details
+        self.logger.info(f"📦 DIAGNOSTIC: Extracting from chunk {chunk_id}")
+        self.logger.info(f"   Chunk sentence objects: {len(chunk_sentences)}")
+        self.logger.info(f"   Extracted texts: {len(sentence_texts)}")
+        
+        if sentence_texts:
+            self.logger.info(f"   Sample sentences:")
+            for i, text in enumerate(sentence_texts[:2]):
+                self.logger.info(f"     {i+1}. {text[:60]}...")
+        else:
+            self.logger.warning(f"   ⚠️  No sentences extracted from chunk!")
+        
+        return sentence_texts
     
     def _deduplicate_sentences(self, new_sentences: List[str], existing_sentences: List[str]) -> List[str]:
         """Remove sentences that already exist in the extracted list."""
