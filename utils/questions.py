@@ -11,8 +11,10 @@ import hashlib
 import random
 import logging
 import time
+import json
+from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 
 from traversal import (
@@ -32,6 +34,49 @@ class GeneratedQuestion:
     difficulty_level: str
     question_type: str  # "raw_similarity", "hierarchical", etc.
     generation_metadata: Dict[str, Any]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'question_id': self.question_id,
+            'question_text': self.question_text,
+            'ground_truth_path': {
+                'nodes': self.ground_truth_path.nodes,
+                'connection_types': [ct.value for ct in self.ground_truth_path.connection_types],
+                'granularity_levels': [gl.value for gl in self.ground_truth_path.granularity_levels],
+                'total_hops': self.ground_truth_path.total_hops,
+                'is_valid': self.ground_truth_path.is_valid,
+                'validation_errors': self.ground_truth_path.validation_errors
+            },
+            'expected_answer': self.expected_answer,
+            'difficulty_level': self.difficulty_level,
+            'question_type': self.question_type,
+            'generation_metadata': self.generation_metadata
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'GeneratedQuestion':
+        """Create GeneratedQuestion from dictionary."""
+        # Reconstruct TraversalPath
+        path_data = data['ground_truth_path']
+        traversal_path = TraversalPath(
+            nodes=path_data['nodes'],
+            connection_types=[ConnectionType(ct) for ct in path_data['connection_types']],
+            granularity_levels=[GranularityLevel(gl) for gl in path_data['granularity_levels']],
+            total_hops=path_data['total_hops'],
+            is_valid=path_data['is_valid'],
+            validation_errors=path_data['validation_errors']
+        )
+        
+        return cls(
+            question_id=data['question_id'],
+            question_text=data['question_text'],
+            ground_truth_path=traversal_path,
+            expected_answer=data['expected_answer'],
+            difficulty_level=data['difficulty_level'],
+            question_type=data['question_type'],
+            generation_metadata=data['generation_metadata']
+        )
 
 
 @dataclass
@@ -40,6 +85,52 @@ class EvaluationDataset:
     questions: List[GeneratedQuestion]
     dataset_metadata: Dict[str, Any]
     generation_config: Dict[str, Any]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            'questions': [q.to_dict() for q in self.questions],
+            'dataset_metadata': self.dataset_metadata,
+            'generation_config': self.generation_config
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'EvaluationDataset':
+        """Create EvaluationDataset from dictionary."""
+        questions = [GeneratedQuestion.from_dict(q_data) for q_data in data['questions']]
+        return cls(
+            questions=questions,
+            dataset_metadata=data['dataset_metadata'],
+            generation_config=data['generation_config']
+        )
+    
+    def save(self, file_path: str, logger: Optional[logging.Logger] = None):
+        """Save dataset to JSON file."""
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f, indent=2, ensure_ascii=False)
+        
+        if logger:
+            logger.info(f"💾 Saved {len(self.questions)} questions to {path}")
+    
+    @classmethod
+    def load(cls, file_path: str, logger: Optional[logging.Logger] = None) -> 'EvaluationDataset':
+        """Load dataset from JSON file."""
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"Dataset file not found: {path}")
+        
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        dataset = cls.from_dict(data)
+        
+        if logger:
+            logger.info(f"📂 Loaded {len(dataset.questions)} questions from {path}")
+        
+        return dataset
 
 
 class QuestionDifficultyAssessment:
@@ -561,20 +652,48 @@ class QuestionGenerator:
 
 
 class DatasetGenerator:
-    """Creates complete evaluation datasets with question-answer pairs."""
+    """Creates complete evaluation datasets with question-answer pairs and caching."""
     
     def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any], 
                  logger: Optional[logging.Logger] = None):
-        """Initialize dataset generator."""
+        """Initialize dataset generator with caching support."""
         self.kg = knowledge_graph
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.question_generator = QuestionGenerator(knowledge_graph, config, logger)
+        
+        # Create questions directory for caching
+        self.questions_dir = Path(config['directories']['data']) / "questions"
+        self.questions_dir.mkdir(parents=True, exist_ok=True)
     
-    def create_dataset(self, num_questions: int, difficulty_levels: List[str] = None) -> EvaluationDataset:
-        """Create a complete evaluation dataset."""
+    def create_dataset(self, num_questions: int, difficulty_levels: List[str] = None, 
+                      cache_name: Optional[str] = None, force_regenerate: bool = False) -> EvaluationDataset:
+        """Create a complete evaluation dataset with automatic caching.
+        
+        Args:
+            num_questions: Number of questions to generate
+            difficulty_levels: List of difficulty levels to include
+            cache_name: Optional name for cached dataset (defaults to timestamp)
+            force_regenerate: Whether to force regeneration even if cache exists
+        """
         if difficulty_levels is None:
             difficulty_levels = ["simple", "medium", "hard"]
+        
+        # Generate cache filename
+        if cache_name is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            cache_name = f"dataset_{num_questions}q_{timestamp}"
+        
+        cache_path = self.questions_dir / f"{cache_name}.json"
+        
+        # Check for cached dataset
+        if not force_regenerate and cache_path.exists():
+            self.logger.info(f"📂 Loading cached dataset from {cache_path}")
+            try:
+                return EvaluationDataset.load(str(cache_path), self.logger)
+            except Exception as e:
+                self.logger.warning(f"Failed to load cached dataset: {e}")
+                self.logger.info("Proceeding with fresh generation")
         
         self.logger.info(f"Creating evaluation dataset with {num_questions} questions")
         
@@ -602,7 +721,13 @@ class DatasetGenerator:
             'multi_hop_questions': len(multi_hop_questions),
             'difficulty_distribution': self._analyze_difficulty_distribution(all_questions),
             'pattern_distribution': self._analyze_pattern_distribution(all_questions),
-            'created_at': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'created_at': datetime.now().isoformat(),
+            'cache_name': cache_name,
+            'generation_params': {
+                'num_questions': num_questions,
+                'difficulty_levels': difficulty_levels,
+                'force_regenerate': force_regenerate
+            },
             'knowledge_graph_stats': {
                 'total_chunks': len(self.kg.chunks),
                 'total_sentences': len(self.kg.sentences),
@@ -616,9 +741,94 @@ class DatasetGenerator:
             generation_config=self.config.get('question_generation', {})
         )
         
+        # Save dataset to cache
+        try:
+            dataset.save(str(cache_path), self.logger)
+            self.logger.info(f"💾 Dataset cached as: {cache_name}")
+        except Exception as e:
+            self.logger.warning(f"Failed to cache dataset: {e}")
+        
         self.logger.info(f"Created evaluation dataset with {len(all_questions)} questions")
         self.logger.info(f"Difficulty distribution: {metadata['difficulty_distribution']}")
         self.logger.info(f"Pattern distribution: {metadata['pattern_distribution']}")
+        
+        return dataset
+    
+    def list_cached_datasets(self) -> List[str]:
+        """List all cached datasets in the questions directory."""
+        cache_files = list(self.questions_dir.glob("*.json"))
+        return [f.stem for f in cache_files]
+    
+    def load_cached_dataset(self, cache_name: str) -> EvaluationDataset:
+        """Load a specific cached dataset by name."""
+        cache_path = self.questions_dir / f"{cache_name}.json"
+        return EvaluationDataset.load(str(cache_path), self.logger)
+    
+    def create_custom_questions(self, questions_data: List[Dict[str, Any]], 
+                               cache_name: str) -> EvaluationDataset:
+        """Create dataset from custom question data (for manual testing).
+        
+        Args:
+            questions_data: List of dictionaries with question information
+            cache_name: Name to save the custom dataset
+        
+        Expected format for questions_data:
+        [
+            {
+                'question_text': 'What is machine learning?',
+                'expected_answer': 'Machine learning is...',
+                'difficulty_level': 'simple',
+                'question_type': 'raw_similarity'
+            },
+            ...
+        ]
+        """
+        questions = []
+        
+        for i, q_data in enumerate(questions_data):
+            # Create minimal traversal path for custom questions
+            dummy_path = TraversalPath(
+                nodes=[],
+                connection_types=[],
+                granularity_levels=[],
+                total_hops=0,
+                is_valid=True,
+                validation_errors=[]
+            )
+            
+            question = GeneratedQuestion(
+                question_id=f"custom_{i}_{hashlib.md5(q_data['question_text'].encode()).hexdigest()[:8]}",
+                question_text=q_data['question_text'],
+                ground_truth_path=dummy_path,
+                expected_answer=q_data.get('expected_answer', ''),
+                difficulty_level=q_data.get('difficulty_level', 'medium'),
+                question_type=q_data.get('question_type', 'custom'),
+                generation_metadata={
+                    'method': 'custom',
+                    'created_at': datetime.now().isoformat()
+                }
+            )
+            questions.append(question)
+        
+        # Create dataset
+        metadata = {
+            'total_questions': len(questions),
+            'created_at': datetime.now().isoformat(),
+            'cache_name': cache_name,
+            'type': 'custom',
+            'difficulty_distribution': self._analyze_difficulty_distribution(questions),
+            'pattern_distribution': self._analyze_pattern_distribution(questions)
+        }
+        
+        dataset = EvaluationDataset(
+            questions=questions,
+            dataset_metadata=metadata,
+            generation_config={'type': 'custom'}
+        )
+        
+        # Save custom dataset
+        cache_path = self.questions_dir / f"{cache_name}.json"
+        dataset.save(str(cache_path), self.logger)
         
         return dataset
     
