@@ -10,6 +10,7 @@ Implements the core principle: questions are generated to match retrieval capabi
 import hashlib
 import random
 import logging
+import time
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
 from pathlib import Path
@@ -510,27 +511,23 @@ class QuestionGenerator:
     
     # Helper methods
     def _get_chunk_similarity_pairs(self, num_pairs: int) -> List[Tuple[str, str, float]]:
-        """Get chunk pairs sorted by similarity."""
+        """Get chunk pairs sorted by similarity using pre-computed connections."""
         pairs = []
-        chunk_ids = list(self.kg.chunks.keys())
         
-        # Sample random pairs and compute similarities
-        for _ in range(min(num_pairs * 3, len(chunk_ids) * 2)):  # Generate extra to filter
-            if len(chunk_ids) < 2:
-                break
+        # Iterate through all chunks and their pre-computed connections
+        for chunk_id, chunk_obj in self.kg.chunks.items():
+            # Get all connections (both intra and inter-document)
+            all_connections = chunk_obj.intra_doc_connections + chunk_obj.inter_doc_connections
             
-            chunk_a = random.choice(chunk_ids)
-            chunk_b = random.choice(chunk_ids)
-            
-            if chunk_a != chunk_b:
-                # Check if they're connected
-                chunk_a_obj = self.kg.chunks.get(chunk_a)
-                if chunk_a_obj and chunk_b in chunk_a_obj.connection_scores:
-                    similarity = chunk_a_obj.connection_scores[chunk_b]
-                    pairs.append((chunk_a, chunk_b, similarity))
+            for connected_chunk_id in all_connections:
+                if connected_chunk_id in chunk_obj.connection_scores:
+                    similarity = chunk_obj.connection_scores[connected_chunk_id]
+                    pairs.append((chunk_id, connected_chunk_id, similarity))
         
-        # Sort by similarity and return top pairs
+        # Sort by similarity (descending) and return top pairs
         pairs.sort(key=lambda x: x[2], reverse=True)
+        
+        self.logger.debug(f"Found {len(pairs)} total chunk pairs, returning top {num_pairs}")
         return pairs[:num_pairs]
     
     def _get_chunk_text(self, chunk_id: str) -> str:
