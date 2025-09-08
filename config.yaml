@@ -92,16 +92,20 @@ chunking:
   window_size: 3
   overlap: 2
 
-# Retrieval Configuration (unchanged)
+# Enhanced Retrieval Configuration - Hybrid Query-Aware Traversal
 retrieval:
   algorithm: "semantic_traversal"
   cache_graphs: true
 
   semantic_traversal:
-    num_anchors: 3
-    max_hops: 3
+    num_anchors: 1  # Single anchor mode based on convergence insight
+    max_hops: 3  # Deprecated - now uses dynamic termination
     similarity_threshold: 0.3
     max_results: 10
+    min_sentence_threshold: 10  # Minimum sentences to extract
+    max_safety_hops: 20  # Safety limit to prevent infinite traversal
+    enable_reranking: true  # Enable reranking of extracted content
+    single_anchor_mode: true  # Use single anchor for efficiency
 
   baseline_vector:
     top_k: 10
