@@ -21,7 +21,7 @@ import scipy.sparse as sp
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
 
-from models import ChunkEmbedding
+from utils.models import ChunkEmbedding
 
 
 @dataclass

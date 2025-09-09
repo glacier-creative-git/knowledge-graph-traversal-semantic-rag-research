@@ -10,7 +10,7 @@ experiment:
 
 # System Configuration
 system:
-  device: "auto"  # auto, cpu, cuda, mps
+  device: "mps"  # auto, cpu, cuda, mps
   max_memory_gb: 8
   min_disk_space_gb: 5
   num_workers: 4

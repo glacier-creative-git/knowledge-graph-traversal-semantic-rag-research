@@ -13,10 +13,10 @@ from pathlib import Path
 # Add utils to path
 sys.path.append(str(Path(__file__).parent / "utils"))
 
-from pipeline import SemanticRAGPipeline
-from retrieval import create_retrieval_engine
-from questions import create_question_generator, create_dataset_generator
-from traversal import TraversalValidator, ConnectionType, GranularityLevel
+from utils.pipeline import SemanticRAGPipeline
+from utils.retrieval import create_retrieval_engine
+from utils.questions import create_question_generator, create_dataset_generator
+from utils.traversal import TraversalValidator, ConnectionType, GranularityLevel
 
 
 def test_hybrid_traversal_system():

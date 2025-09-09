@@ -17,11 +17,11 @@ from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
-from traversal import (
+from utils.traversal import (
     TraversalValidator, TraversalPath, ConnectionType, GranularityLevel,
     NavigationLogic, TraversalConstraints
 )
-from knowledge_graph import KnowledgeGraph
+from utils.knowledge_graph import KnowledgeGraph
 
 
 @dataclass

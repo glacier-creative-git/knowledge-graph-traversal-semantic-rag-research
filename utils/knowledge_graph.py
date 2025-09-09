@@ -19,7 +19,7 @@ from dataclasses import dataclass, asdict
 
 import numpy as np
 
-from models import ChunkEmbedding, SentenceEmbedding, DocumentSummaryEmbedding
+from utils.models import ChunkEmbedding, SentenceEmbedding, DocumentSummaryEmbedding
 
 
 @dataclass
@@ -100,6 +100,7 @@ class KnowledgeGraph:
     def load_phase3_embeddings(self, embeddings_data: Dict[str, Dict[str, List[Any]]]):
         """
         Load Phase 3 cached embeddings into memory for fast lookup.
+        Handles both object and dictionary formats for compatibility.
 
         Args:
             embeddings_data: Multi-granularity embeddings from Phase 3
@@ -111,15 +112,35 @@ class KnowledgeGraph:
             # Load chunk embeddings
             chunk_embeddings = granularity_embeddings.get('chunks', [])
             for chunk_emb in chunk_embeddings:
-                self._embedding_cache[model_name][chunk_emb.chunk_id] = np.array(chunk_emb.embedding)
+                # Handle both object attributes and dictionary keys
+                if hasattr(chunk_emb, 'chunk_id'):
+                    # Object format (from original pipeline)
+                    chunk_id = chunk_emb.chunk_id
+                    embedding = chunk_emb.embedding
+                else:
+                    # Dictionary format (from JSON cache)
+                    chunk_id = chunk_emb['chunk_id']
+                    embedding = chunk_emb['embedding']
+                
+                self._embedding_cache[model_name][chunk_id] = np.array(embedding)
 
             # Load sentence embeddings
             sentence_embeddings = granularity_embeddings.get('sentences', [])
             for sent_emb in sentence_embeddings:
-                self._embedding_cache[model_name][sent_emb.sentence_id] = np.array(sent_emb.embedding)
+                # Handle both object attributes and dictionary keys
+                if hasattr(sent_emb, 'sentence_id'):
+                    # Object format (from original pipeline)
+                    sentence_id = sent_emb.sentence_id
+                    embedding = sent_emb.embedding
+                else:
+                    # Dictionary format (from JSON cache)
+                    sentence_id = sent_emb['sentence_id']
+                    embedding = sent_emb['embedding']
+                
+                self._embedding_cache[model_name][sentence_id] = np.array(embedding)
 
         total_embeddings = sum(len(model_cache) for model_cache in self._embedding_cache.values())
-        print(f"Loaded {total_embeddings} embeddings into cache for {len(self._embedding_cache)} models")
+        print(f"✅ Loaded {total_embeddings} embeddings into cache for {len(self._embedding_cache)} models")
 
     def get_chunk_connections(self, chunk_id: str) -> List[str]:
         """Get all connected chunk IDs for a given chunk."""

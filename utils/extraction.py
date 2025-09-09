@@ -29,8 +29,8 @@ try:
 except ImportError:
     OLLAMA_AVAILABLE = False
 
-from wiki import WikipediaArticle
-from models import ChunkEmbedding, SentenceEmbedding, DocumentSummaryEmbedding
+from utils.wiki import WikipediaArticle
+from utils.models import ChunkEmbedding, SentenceEmbedding, DocumentSummaryEmbedding
 
 
 @dataclass
