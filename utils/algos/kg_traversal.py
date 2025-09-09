@@ -59,6 +59,13 @@ class KGTraversalAlgorithm(BaseRetrievalAlgorithm):
             
             self.logger.debug(f"🚶 Hop {hop_count}: Processing chunk {current_chunk}")
             
+            # ALWAYS extract sentences from current chunk first (fix for Issue #1)
+            if hop_count > 1:  # Skip anchor as already extracted
+                chunk_sentences = self.get_chunk_sentences(current_chunk)
+                newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
+                extracted_sentences.extend(newly_extracted)
+                self.logger.info(f"📦 EXTRACTED: {len(newly_extracted)} new sentences from {current_chunk}")
+            
             # Get hybrid connections (chunks + sentences within current chunk)
             hybrid_nodes = self.get_hybrid_connections(current_chunk)
             
@@ -92,31 +99,12 @@ class KGTraversalAlgorithm(BaseRetrievalAlgorithm):
                            f"chunk_sim={best_chunk_similarity:.3f}")
             
             if best_node_type == "sentence":
-                # EXTRACT: Drop the crane and extract all sentences from current chunk
-                self.logger.info(f"📦 EXTRACT triggered: Best node is sentence in current chunk")
-                
-                chunk_sentences = self.get_chunk_sentences(current_chunk)
-                newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
-                extracted_sentences.extend(newly_extracted)
-                
-                self.logger.info(f"   Extracted {len(newly_extracted)} new sentences from {current_chunk}")
-                
-                # Find next best CHUNK to continue traversal (use chunk similarities)
-                next_chunk = self._find_next_chunk_by_chunk_similarity(chunk_similarity_scores, visited_chunks)
-                
-                if next_chunk:
-                    current_chunk = next_chunk
-                    visited_chunks.add(next_chunk)
-                    path_nodes.append(next_chunk)
-                    connection_types.append(ConnectionType.RAW_SIMILARITY)
-                    granularity_levels.append(GranularityLevel.CHUNK)
-                    self.logger.debug(f"   Moving to next chunk: {current_chunk}")
-                else:
-                    self.logger.debug("   No more unvisited chunks available")
-                    break
+                # TERMINATION: Best node is sentence - no better chunks to explore
+                self.logger.info(f"🎯 TERMINATION: Best node is sentence - optimal extraction point reached")
+                break
             
             elif best_node_type == "chunk":
-                # TRAVERSE: Move to the best connected chunk (based on chunk similarity)
+                # TRAVERSE: Move to the best connected chunk (with stronger revisit prevention)
                 if best_node_id not in visited_chunks:
                     self.logger.info(f"🚶 TRAVERSE: Moving to chunk {best_node_id}")
                     current_chunk = best_node_id
@@ -125,8 +113,19 @@ class KGTraversalAlgorithm(BaseRetrievalAlgorithm):
                     connection_types.append(ConnectionType.RAW_SIMILARITY)
                     granularity_levels.append(GranularityLevel.CHUNK)
                 else:
-                    self.logger.debug(f"   Best chunk {best_node_id} already visited")
-                    break
+                    self.logger.debug(f"   Best chunk {best_node_id} already visited - finding alternative")
+                    # Find next best unvisited chunk using chunk similarities
+                    next_chunk = self._find_next_chunk_by_chunk_similarity(chunk_similarity_scores, visited_chunks)
+                    if next_chunk:
+                        self.logger.info(f"🚶 TRAVERSE: Moving to alternative chunk {next_chunk}")
+                        current_chunk = next_chunk
+                        visited_chunks.add(next_chunk)
+                        path_nodes.append(next_chunk)
+                        connection_types.append(ConnectionType.RAW_SIMILARITY)
+                        granularity_levels.append(GranularityLevel.CHUNK)
+                    else:
+                        self.logger.debug("   No more unvisited chunks available")
+                        break
             else:
                 self.logger.warning(f"   Unknown node type: {best_node_type}")
                 break

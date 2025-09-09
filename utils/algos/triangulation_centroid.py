@@ -79,6 +79,13 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
             
             self.logger.debug(f"🔺 Hop {hop_count}: Processing chunk {current_chunk}")
             
+            # ALWAYS extract sentences from current chunk first (fix for Issue #1)
+            if hop_count > 1:  # Skip anchor as already extracted
+                chunk_sentences = self.get_chunk_sentences(current_chunk)
+                newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
+                extracted_sentences.extend(newly_extracted)
+                self.logger.info(f"📦 EXTRACTED: {len(newly_extracted)} new sentences from {current_chunk}")
+            
             # Get hybrid connections (chunks + sentences within current chunk)
             hybrid_nodes = self.get_hybrid_connections(current_chunk)
             
@@ -103,48 +110,22 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
                            f"centroid={best_triangle.centroid_position:.3f}, "
                            f"distance_to_query={best_triangle.centroid_to_query_distance:.3f}")
             
-            # Enhanced early stopping check
+            # Enhanced early stopping check (optional - can be triggered mid-traversal)
             if self.enable_early_stopping and best_triangle.node_type == "sentence":
                 should_early_stop = self._should_early_stop_sentence(best_triangle, current_chunk)
                 
                 if should_early_stop:
                     self.logger.info(f"🎯 EARLY STOP triggered: Sentence has best triangle AND high chunk similarity")
-                    
-                    # Extract just this specific sentence and stop
-                    sentence_text = self.get_sentence_text(best_triangle.node_id)
-                    if sentence_text and sentence_text not in extracted_sentences:
-                        extracted_sentences.append(sentence_text)
-                        self.logger.info(f"   Extracted target sentence and stopping")
-                    
                     early_stop_triggered = True
                     break
             
             if best_triangle.node_type == "sentence":
-                # EXTRACT: Drop the crane and extract all sentences from current chunk
-                self.logger.info(f"📦 EXTRACT triggered: Best triangle is sentence in current chunk")
-                
-                chunk_sentences = self.get_chunk_sentences(current_chunk)
-                newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
-                extracted_sentences.extend(newly_extracted)
-                
-                self.logger.info(f"   Extracted {len(newly_extracted)} new sentences from {current_chunk}")
-                
-                # Find next best CHUNK triangle for continued traversal
-                next_chunk = self._find_next_chunk_by_triangle(triangle_metrics, visited_chunks)
-                
-                if next_chunk:
-                    current_chunk = next_chunk
-                    visited_chunks.add(next_chunk)
-                    path_nodes.append(next_chunk)
-                    connection_types.append(ConnectionType.RAW_SIMILARITY)
-                    granularity_levels.append(GranularityLevel.CHUNK)
-                    self.logger.debug(f"   Moving to next chunk: {current_chunk}")
-                else:
-                    self.logger.debug("   No more unvisited chunks available")
-                    break
+                # TERMINATION: Best triangle is sentence - no better chunks to explore
+                self.logger.info(f"🎯 TERMINATION: Best triangle is sentence - optimal extraction point reached")
+                break
             
             elif best_triangle.node_type == "chunk":
-                # TRAVERSE: Move to the chunk with the best triangle centroid
+                # TRAVERSE: Move to the chunk with the best triangle centroid (with stronger revisit prevention)
                 if best_triangle.node_id not in visited_chunks:
                     self.logger.info(f"🚶 TRAVERSE: Moving to chunk {best_triangle.node_id}")
                     current_chunk = best_triangle.node_id
@@ -153,8 +134,19 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
                     connection_types.append(ConnectionType.RAW_SIMILARITY)
                     granularity_levels.append(GranularityLevel.CHUNK)
                 else:
-                    self.logger.debug(f"   Best chunk {best_triangle.node_id} already visited")
-                    break
+                    self.logger.debug(f"   Best chunk {best_triangle.node_id} already visited - finding alternative")
+                    # Find next best unvisited chunk using triangle metrics
+                    next_chunk = self._find_next_chunk_by_triangle(triangle_metrics, visited_chunks)
+                    if next_chunk:
+                        self.logger.info(f"🚶 TRAVERSE: Moving to alternative chunk {next_chunk}")
+                        current_chunk = next_chunk
+                        visited_chunks.add(next_chunk)
+                        path_nodes.append(next_chunk)
+                        connection_types.append(ConnectionType.RAW_SIMILARITY)
+                        granularity_levels.append(GranularityLevel.CHUNK)
+                    else:
+                        self.logger.debug("   No more unvisited chunks available")
+                        break
             else:
                 self.logger.warning(f"   Unknown node type: {best_triangle.node_type}")
                 break
