@@ -22,13 +22,13 @@ import torch
 
 from utils.knowledge_graph import KnowledgeGraphBuilder
 # Import engines (updated for multi-granularity)
-from wiki import WikiEngine
-from chunking import ChunkEngine
-from models import MultiGranularityEmbeddingEngine
-from similarity import SimilarityEngine
-from retrieval import create_retrieval_engine
-from knowledge_graph import KnowledgeGraph
-from extraction import ThemeExtractionEngine
+from utils.wiki import WikiEngine
+from utils.chunking import ChunkEngine
+from utils.models import MultiGranularityEmbeddingEngine
+from utils.similarity import SimilarityEngine
+from utils.retrieval import create_retrieval_engine
+from utils.knowledge_graph import KnowledgeGraph
+from utils.extraction import ThemeExtractionEngine
 
 class SemanticRAGPipeline:
     """Enhanced main pipeline orchestrator for multi-granularity semantic RAG system."""
