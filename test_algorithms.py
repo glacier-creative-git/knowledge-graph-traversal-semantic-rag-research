@@ -173,7 +173,7 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
 def create_test_queries() -> List[str]:
     """Create test queries for algorithm evaluation."""
     return [
-        "What are the main challenges in machine learning?",
+        "How does machine learning relate to neural networks?",
         "How does artificial intelligence impact society?",
         "What are the benefits of renewable energy?",
         "Explain the process of photosynthesis",
