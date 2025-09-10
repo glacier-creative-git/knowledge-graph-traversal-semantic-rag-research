@@ -12,6 +12,9 @@ import logging
 import yaml
 from typing import Dict, Any, List
 from pathlib import Path
+import matplotlib.pyplot as plt
+import os
+from datetime import datetime
 
 # Add project root to path
 project_root = Path(__file__).parent
@@ -19,6 +22,8 @@ sys.path.append(str(project_root))
 
 from utils.retrieval import RetrievalOrchestrator
 from utils.knowledge_graph import KnowledgeGraph
+from utils.plotly_visualizer import create_algorithm_visualization
+from utils.matplotlib_visualizer import create_heatmap_visualization
 
 
 def setup_logging() -> logging.Logger:
@@ -106,6 +111,65 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
     return kg
 
 
+def setup_visualization_output() -> Path:
+    """Setup output directory for visualizations."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = project_root / "visualizations" / f"algorithm_test_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
+def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name: str, 
+                         output_dir: Path, logger: logging.Logger) -> None:
+    """Create both plotly and matplotlib visualizations for an algorithm result."""
+    try:
+        logger.info(f"   📊 Creating visualizations for {algorithm_name}...")
+        
+        # Create safe filename
+        safe_query = query.replace(' ', '_').replace('?', '').replace('!', '').replace('.', '')[:50]
+        
+        # Create Plotly 3D visualization
+        try:
+            plotly_fig = create_algorithm_visualization(
+                result=result,
+                query=query,
+                knowledge_graph=kg,
+                method='pca',
+                max_nodes=40,
+                show_all_visited=True
+            )
+            
+            plotly_filename = f"{algorithm_name}_{safe_query}_3d.html"
+            plotly_path = output_dir / plotly_filename
+            plotly_fig.write_html(str(plotly_path))
+            logger.info(f"   ✅ Plotly 3D visualization saved: {plotly_filename}")
+            
+        except Exception as e:
+            logger.warning(f"   ⚠️ Plotly visualization failed: {str(e)}")
+        
+        # Create Matplotlib 2D heatmap visualization
+        try:
+            matplotlib_fig = create_heatmap_visualization(
+                result=result,
+                query=query,
+                knowledge_graph=kg,
+                figure_size=(20, 8),
+                max_documents=6
+            )
+            
+            matplotlib_filename = f"{algorithm_name}_{safe_query}_heatmap.png"
+            matplotlib_path = output_dir / matplotlib_filename
+            matplotlib_fig.savefig(str(matplotlib_path), dpi=300, bbox_inches='tight')
+            plt.close(matplotlib_fig)  # Close to free memory
+            logger.info(f"   ✅ Matplotlib heatmap saved: {matplotlib_filename}")
+            
+        except Exception as e:
+            logger.warning(f"   ⚠️ Matplotlib visualization failed: {str(e)}")
+    
+    except Exception as e:
+        logger.error(f"   ❌ Visualization creation failed: {str(e)}")
+
+
 def create_test_queries() -> List[str]:
     """Create test queries for algorithm evaluation."""
     return [
@@ -118,7 +182,8 @@ def create_test_queries() -> List[str]:
 
 
 def test_individual_algorithm(orchestrator: RetrievalOrchestrator, algorithm_name: str, 
-                            query: str, logger: logging.Logger) -> None:
+                            query: str, kg: KnowledgeGraph, output_dir: Path, 
+                            logger: logging.Logger) -> None:
     """Test a single algorithm with detailed output."""
     logger.info(f"\n{'='*60}")
     logger.info(f"Testing {algorithm_name.upper()} Algorithm")
@@ -149,13 +214,17 @@ def test_individual_algorithm(orchestrator: RetrievalOrchestrator, algorithm_nam
         if hasattr(result, 'metadata') and result.metadata:
             logger.info(f"   Metadata: {result.metadata}")
         
+        # Generate visualizations for this algorithm result
+        create_visualizations(result, query, kg, algorithm_name, output_dir, logger)
+        
     except Exception as e:
         logger.error(f"❌ FAILED - {algorithm_name}: {str(e)}")
         import traceback
         logger.error(traceback.format_exc())
 
 
-def run_benchmark_comparison(orchestrator: RetrievalOrchestrator, query: str, 
+def run_benchmark_comparison(orchestrator: RetrievalOrchestrator, query: str,
+                           kg: KnowledgeGraph, output_dir: Path, 
                            logger: logging.Logger) -> None:
     """Run all algorithms on the same query for comparison."""
     logger.info(f"\n{'='*80}")
@@ -220,6 +289,12 @@ def run_benchmark_comparison(orchestrator: RetrievalOrchestrator, query: str,
                 logger.info(f"   {name}: {len(sentences)} total, {unique_count} unique")
             
             logger.info(f"   Total unique sentences across all algorithms: {len(all_sentences)}")
+            
+            # Generate visualizations for benchmark results
+            logger.info(f"\n🎨 Generating benchmark visualizations...")
+            for algorithm_name, result in successful_results.items():
+                if not result.metadata.get('error'):
+                    create_visualizations(result, query, kg, f"benchmark_{algorithm_name}", output_dir, logger)
         
     except Exception as e:
         logger.error(f"❌ Benchmark failed: {str(e)}")
@@ -242,6 +317,10 @@ def main():
         # Initialize orchestrator
         orchestrator = RetrievalOrchestrator(kg, config, logger)
         
+        # Setup visualization output directory
+        output_dir = setup_visualization_output()
+        logger.info(f"\ud83c� Visualizations will be saved to: {output_dir}")
+        
         # Get test queries
         test_queries = create_test_queries()
         primary_query = test_queries[0]  # Use first query for detailed testing
@@ -253,11 +332,11 @@ def main():
         algorithms = ["basic_retrieval", "query_traversal", "kg_traversal", "triangulation_centroid"]
         
         for algorithm_name in algorithms:
-            test_individual_algorithm(orchestrator, algorithm_name, primary_query, logger)
+            test_individual_algorithm(orchestrator, algorithm_name, primary_query, kg, output_dir, logger)
         
         # Test 2: Benchmark comparison
         logger.info(f"\n🏁 PHASE 2: Benchmark Comparison")
-        run_benchmark_comparison(orchestrator, primary_query, logger)
+        run_benchmark_comparison(orchestrator, primary_query, kg, output_dir, logger)
         
         # Test 3: Quick test on all queries
         logger.info(f"\n⚡ PHASE 3: Quick Test on All Queries")
