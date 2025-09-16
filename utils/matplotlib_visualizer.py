@@ -981,12 +981,12 @@ class KnowledgeGraphMatplotlibVisualizer:
                         alpha = 0.8
                         connection_label = 'Cross-Document'
                     else:
-                        # Same document but different session (blue dashed)
-                        line_color = 'blue'
-                        line_style = '--'
+                        # Same document, different session (green dotted)
+                        line_color = 'green'
+                        line_style = ':'
                         line_width = 2
                         alpha = 0.7
-                        connection_label = 'Hierarchical'
+                        connection_label = 'Within Document'
                     
                     # Draw cross-session connection using ConnectionPatch
                     conn = ConnectionPatch(
@@ -1002,7 +1002,7 @@ class KnowledgeGraphMatplotlibVisualizer:
                     fig.add_artist(conn)
                     print(f"   Cross-session connection: Session {session_idx + 1} -> {session_idx + 2} ({connection_label})")
         
-        # Add updated legend matching windowed approach
+        # Add updated legend without hierarchical connections
         legend_elements = [
             plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='gold',
                        markersize=15, markeredgecolor='black', markeredgewidth=2,
@@ -1015,8 +1015,6 @@ class KnowledgeGraphMatplotlibVisualizer:
                        linestyle='None', label='Early Stop Point'),
             plt.Line2D([0], [0], color='purple', linestyle='--', linewidth=3,
                        label='Cross-Document'),
-            plt.Line2D([0], [0], color='blue', linestyle='--', linewidth=2,
-                       label='Hierarchical'),
             plt.Line2D([0], [0], color='green', linestyle=':', linewidth=2,
                        label='Within Session')
         ]
@@ -1185,18 +1183,14 @@ class KnowledgeGraphMatplotlibVisualizer:
             current_idx = current_heatmap.chunk_to_matrix_idx[current_step.chunk_id]
             next_idx = next_heatmap.chunk_to_matrix_idx[next_step.chunk_id]
 
-            # Determine line properties based on connection type (like reference)
+            # Determine line properties based on connection type (simplified - no hierarchical)
             if next_step.connection_type in ['cross_document', 'theme_bridge']:
                 line_color = 'purple'
                 line_width = 3
                 line_style = '-'  # Solid for cross-document
                 alpha = 0.8
-            elif next_step.connection_type == 'hierarchical':
-                line_color = 'blue'
-                line_width = 2
-                line_style = '--'  # Dashed for hierarchical
-                alpha = 0.7
             else:
+                # Default to within-document connection style
                 line_color = 'green'
                 line_width = 2
                 line_style = ':'  # Dotted for within-document
@@ -1232,7 +1226,7 @@ class KnowledgeGraphMatplotlibVisualizer:
         self._add_legend(fig)
 
     def _add_legend(self, fig: plt.Figure):
-        """Add legend explaining the visualization elements (matching reference style)"""
+        """Add legend explaining the visualization elements (without hierarchical connections)"""
 
         legend_elements = [
             plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='gold',
@@ -1246,8 +1240,6 @@ class KnowledgeGraphMatplotlibVisualizer:
                        linestyle='None', label='Early Stop Point'),
             plt.Line2D([0], [0], color='purple', linestyle='-', linewidth=3,
                        label='Cross-Document'),
-            plt.Line2D([0], [0], color='blue', linestyle='--', linewidth=2,
-                       label='Hierarchical'),
             plt.Line2D([0], [0], color='green', linestyle=':', linewidth=2,
                        label='Within Document')
         ]
