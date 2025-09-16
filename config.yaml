@@ -91,6 +91,7 @@ chunking:
   strategy: "sliding_window"
   window_size: 3
   overlap: 2
+  window_visualization_buffer_size: 3  # Number of chunks to extend visualization window in each direction
 
 # Enhanced Retrieval Configuration - Hybrid Query-Aware Traversal
 retrieval:
