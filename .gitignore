@@ -1,2 +1,7 @@
 /.venv/
 /.idea/
+/.ipynb_checkpoints
+/data/
+/logs/
+/embeddings/
+/visualizations/

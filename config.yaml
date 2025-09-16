@@ -1,0 +1,257 @@
+# Semantic RAG Pipeline Configuration - Enhanced Multi-Granularity Architecture
+# =============================================================================
+
+# Experiment Configuration
+experiment:
+  name: "semantic_rag_pipeline"
+  description: "Enhanced multi-granularity semantic graph traversal RAG system"
+  version: "2.0.0"
+  tags: ["multi_granularity", "graph_traversal", "rag", "ollama"]
+
+# System Configuration
+system:
+  device: "mps"  # auto, cpu, cuda, mps
+  max_memory_gb: 8
+  min_disk_space_gb: 5
+  num_workers: 4
+
+# Directory Structure
+directories:
+  data: "data"
+  embeddings: "embeddings"
+  visualizations: "visualizations"
+  logs: "logs"
+  configs: "configs"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_to_file: true
+  log_to_console: true
+  max_log_file_mb: 100
+  backup_count: 5
+
+# Pipeline Execution
+execution:
+  mode: "full_pipeline"
+  skip_phases: []
+  force_recompute: []
+
+# Enhanced Models Configuration - Multi-Granularity Embeddings
+models:
+  embedding_models:
+    - "sentence-transformers/all-mpnet-base-v2"
+  embedding_batch_size: 32
+  embedding_cache: true
+  
+  # Multi-granularity embedding configuration
+  granularity_types:
+    chunks:
+      enabled: true
+      description: "3-sentence sliding windows (existing)"
+    sentences:
+      enabled: true
+      description: "Individual sentences for fine-grained navigation"
+    doc_summaries:
+      enabled: true
+      description: "Document-level summaries for high-level navigation"
+      method: "extractive"  # extractive, ollama
+      max_sentences: 5
+
+# Wikipedia Configuration (unchanged)
+wikipedia:
+  use_cached_articles: true
+  topics:
+    - "Machine learning"
+    - "Psychology"
+    - "Neural networks"
+    - "Artifical intelligence"
+    - "History of computers"
+  articles_per_topic: 3
+  max_article_length: 5000000
+  min_article_length: 1000
+  language: "en"
+  rate_limit_delay: 1.0
+  retry_attempts: 3
+  timeout_seconds: 30
+
+# Text Processing (unchanged)
+text_processing:
+  clean_html: true
+  remove_references: true
+  remove_navigation: true
+  remove_tables: true
+  fix_encoding: true
+  normalize_whitespace: true
+  min_sentence_length: 10
+  max_sentence_length: 500
+
+# Chunking Configuration (unchanged)
+chunking:
+  strategy: "sliding_window"
+  window_size: 3
+  overlap: 2
+  window_visualization_buffer_size: 3  # Number of chunks to extend visualization window in each direction
+
+# Enhanced Retrieval Configuration - Hybrid Query-Aware Traversal
+retrieval:
+  algorithm: "semantic_traversal"
+  cache_graphs: true
+
+  semantic_traversal:
+    num_anchors: 1  # Single anchor mode based on convergence insight
+    max_hops: 3  # Deprecated - now uses dynamic termination
+    similarity_threshold: 0.3
+    max_results: 10
+    min_sentence_threshold: 10  # Minimum sentences to extract
+    max_safety_hops: 20  # Safety limit to prevent infinite traversal
+    enable_reranking: true  # Enable reranking of extracted content
+    single_anchor_mode: true  # Use single anchor for efficiency
+
+  baseline_vector:
+    top_k: 10
+    similarity_threshold: 0.5
+
+# Enhanced Similarity Matrix Configuration - Multi-Granularity
+similarities:
+  use_cached: true
+  similarity_metric: "cosine"
+  batch_size: 1000
+  max_memory_gb: 4
+  
+  # Multi-granularity similarity computation
+  granularity_types:
+    # Existing chunk-to-chunk similarities
+    chunk_to_chunk:
+      enabled: true
+      intra_document:
+        enabled: true
+        top_k: 15  # Per chunk, within same document
+        min_threshold: 0.4
+      inter_document:
+        enabled: true
+        top_x: 5   # Per chunk, across different documents
+        min_threshold: 0.3
+    
+    # New document-to-document similarities
+    doc_to_doc:
+      enabled: true
+      top_k: 10  # Per document, most similar documents
+      min_threshold: 0.2
+      
+    # New sentence-to-sentence similarities
+    sentence_to_sentence:
+      enabled: true
+      semantic:
+        enabled: true
+        top_k: 3  # Per sentence, semantically similar sentences
+        min_threshold: 0.4
+      sequential:
+        enabled: true
+        description: "Adjacent sentence connections for reading flow"
+        
+    # New cross-granularity similarities
+    cross_granularity:
+      enabled: true
+      sentence_to_chunk:
+        enabled: true
+        top_k: 3  # Per sentence, containing chunks
+        min_threshold: 0.3
+      chunk_to_doc:
+        enabled: true
+        description: "Chunk to parent document summary similarity"
+
+# Phase 5: Entity/Theme Extraction Configuration
+entity_theme_extraction:
+  use_cached: true
+
+  # Theme extraction settings
+  theme_extraction:
+    num_themes: 5                           # Number of themes to extract per document
+    method: "ollama"                        # "ollama" or "fallback"
+    fallback_method: "keyword_patterns"     # Fallback when Ollama unavailable
+
+    # Ollama-specific settings (inherits from main ollama config)
+    prompt_template: "structured_json"      # Template style for theme extraction
+    max_theme_length: 50                    # Maximum characters per theme name
+
+  # Quality filters
+  quality_filters:
+    min_entities_per_item: 0               # Minimum entities required (0 = no filter)
+    min_themes_per_document: 1             # Minimum themes required per document
+    filter_common_words: true              # Filter out common words from entities
+
+# Phase 6: Knowledge Graph Assembly Configuration
+knowledge_graph_assembly:
+  use_cached: true
+
+  # Theme bridging configuration (NEW)
+  theme_bridging:
+    enabled: true
+    top_k_bridges: 1                    # Number of cross-document theme connections per theme
+    min_bridge_similarity: 0.2          # Minimum similarity for theme bridges
+    exclude_intra_document: true        # Only create cross-document bridges
+
+# Simplified Knowledge Graph Configuration
+knowledge_graph:
+  use_cached: true
+  architecture: "multi_granularity_three_tier"  # Document → Chunk → Sentence hierarchy
+  
+  # Note: Sparsity is now controlled in similarities section
+  # This section focuses on graph structure and entity extraction
+  extractors:
+    ner:
+      enabled: true
+      entity_types: ["PERSON", "ORG", "GPE", "PRODUCT", "EVENT", "MISC"]
+    keyphrases:
+      enabled: true
+      max_features: 15
+    summary:
+      enabled: true
+      max_sentences: 2
+
+# Ollama Configuration (unchanged)
+ollama:
+  model: "llama3.1:8b"
+  base_url: "http://localhost:11434"
+  options:
+    temperature: 0.1
+    num_predict: 100
+    stop: ["\n\n", "Text:", "Summary:", "Topics:"]
+
+# Evaluation Configuration (unchanged)
+evaluation:
+  include_custom_metrics: true
+  include_baseline_comparison: true
+  baselines:
+    - "bm25"
+    - "traditional_vector"
+    - "dense_passage_retrieval"
+  metrics:
+    standard: ["f1", "exact_match", "mrr", "ndcg"]
+    custom: ["traversal_efficiency", "multi_hop_success", "semantic_coherence"]
+
+# Visualization Configuration (unchanged)
+visualization:
+  enabled: true
+  similarity_matrices: true
+  traversal_paths: true
+  chunk_boundaries: true
+  question_distribution: true
+  knowledge_graph_structure: true
+
+# Output Configuration (unchanged)
+output:
+  create_report: true
+  export_data: true
+  save_models: false
+  include_question_analysis: true
+
+# Cleanup Configuration (unchanged)
+cleanup:
+  remove_temp_files: false
+  compress_large_files: true
+
+# Notifications (unchanged)
+notifications:
+  enabled: false

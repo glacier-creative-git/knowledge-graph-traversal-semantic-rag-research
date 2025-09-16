@@ -1,452 +1,740 @@
+#!/usr/bin/env python3
 """
-Research Pipeline Orchestration - Updated for Enhanced Dataset System
-====================================================================
+Enhanced Multi-Granularity Semantic RAG Pipeline
+===============================================
 
-High-level pipeline functions that orchestrate the entire research workflow.
-Updated to use the new modular dataset loading system supporting WikiEval,
-Natural Questions, and future datasets.
+Main orchestrator for the enhanced semantic graph traversal RAG system.
+Handles multi-granularity embedding generation, similarity computation, and knowledge graph construction.
 """
 
 import os
-import time
-from typing import Dict, List, Tuple, Optional
-import matplotlib.pyplot as plt
-import plotly.graph_objects as go
+import sys
+import yaml
+import logging
+import platform
+import psutil
+import shutil
+import uuid
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+import torch
 
-from .config import ResearchConfig, get_config
-from .data_loader import create_data_loader, BaseDataLoader  # Updated import
-from .rag_system import SemanticGraphRAG, TraversalStep
-from .visualizations import SemanticGraphVisualizer
-from .evaluation import RAGASEvaluator, EvaluationResults, print_evaluation_results
+from utils.knowledge_graph import KnowledgeGraphBuilder
+# Import engines (updated for multi-granularity)
+from utils.wiki import WikiEngine
+from utils.chunking import ChunkEngine
+from utils.models import MultiGranularityEmbeddingEngine
+from utils.similarity import SimilarityEngine
+from utils.retrieval import create_retrieval_engine
+from utils.knowledge_graph import KnowledgeGraph
+from utils.extraction import ThemeExtractionEngine
 
-class ResearchPipeline:
-    """
-    Complete research pipeline orchestration with enhanced dataset support.
+class SemanticRAGPipeline:
+    """Enhanced main pipeline orchestrator for multi-granularity semantic RAG system."""
 
-    Now supports seamless swapping between WikiEval, Natural Questions,
-    and future datasets through the enhanced data loading system.
-    """
+    def __init__(self, config_path: str = "/Users/eric/Documents/Development/semantic-rag-chunking-research/config.yaml"):
+        """Initialize the pipeline with configuration."""
+        self.config_path = config_path
+        self.config = None
+        self.experiment_id = None
+        self.logger = None
+        self.device = None
+        self.start_time = None
 
-    def __init__(self, config: ResearchConfig):
-        self.config = config
+        # Enhanced data storage for multi-granularity pipeline phases
+        self.articles = []
+        self.corpus_stats = {}
+        self.chunks = []
+        self.chunk_stats = {}
+        
+        # Multi-granularity embeddings: Dict[model_name, Dict[granularity_type, List[Embedding]]]
+        self.embeddings = {}  
+        self.embedding_stats = {}
+        
+        # Multi-granularity similarities: Dict[model_name, similarity_data]
+        self.similarities = {}  
+        self.similarity_stats = {}
+        
+        # Enhanced knowledge graph
+        self.knowledge_graph = None  # MultiGranularityKnowledgeGraph instance
+        self.kg_stats = {}
+        self.retrieval_engine = None  # RetrievalEngine instance
+        self.retrieval_stats = {}
+        self.questions = []  # List[EvaluationQuestion] from QuestionEngine
+        self.question_stats = {}
 
-        # Create appropriate data loader based on configuration
-        self.data_loader = create_data_loader(config.data.dataset_name, config.data)
+        # Phase 5: Theme extraction storage (entity extraction removed)
+        self.theme_data = {}
+        self.theme_stats = {}
 
-        self.rag_system = SemanticGraphRAG(
-            top_k_per_sentence=config.rag.top_k_per_sentence,
-            cross_doc_k=config.rag.cross_doc_k,
-            embedding_model=config.models.embedding_model,
-            traversal_depth=config.rag.traversal_depth,
-            use_sliding_window=config.rag.use_sliding_window,
-            num_contexts=config.rag.num_contexts,
-            similarity_threshold=config.rag.similarity_threshold
-        )
-        self.visualizer = SemanticGraphVisualizer(
-            figure_size_2d=config.viz.figure_size_2d,
-            figure_size_3d=config.viz.figure_size_3d,
-            dpi=config.viz.dpi
-        )
+    # Update the main pipe() method to include Phase 5
+    def pipe(self) -> Dict[str, Any]:
+        """Enhanced pipeline execution function with entity/theme extraction."""
+        try:
+            # Phase 1: Setup & Initialization
+            self._phase_1_setup_and_initialization()
 
-        # Results storage
-        self.last_question = None
-        self.last_contexts = None
-        self.last_retrieved_texts = None
-        self.last_traversal_steps = None
-        self.last_analysis = None
+            # Phase 2: Data Acquisition
+            if self.config['execution']['mode'] in ['full_pipeline', 'data_only']:
+                if 'data_acquisition' not in self.config['execution']['skip_phases']:
+                    self._phase_2_data_acquisition()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 2: Data Acquisition")
 
-        # Set up output directory
-        if config.viz.save_plots:
-            os.makedirs(config.viz.output_dir, exist_ok=True)
+            # Phase 3: Multi-Granularity Embedding Generation
+            if self.config['execution']['mode'] in ['full_pipeline', 'embedding_only']:
+                if 'embedding_generation' not in self.config['execution']['skip_phases']:
+                    self._phase_3_embedding_generation()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 3: Multi-Granularity Embedding Generation")
 
-    def run_single_demo(self, demo_type: str = "random") -> Dict:
-        """
-        Run a single demonstration of the RAG system.
+            # Phase 4: Multi-Granularity Similarity Matrix Construction
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'similarity_matrices' not in self.config['execution']['skip_phases']:
+                    self._phase_4_similarity_matrices()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 4: Multi-Granularity Similarity Matrix Construction")
 
-        Updated to work with any dataset through the enhanced data loader system.
+            # Phase 5: Theme Extraction (entity extraction removed for quality)
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'theme_extraction' not in self.config['execution']['skip_phases']:
+                    self._phase_5_theme_extraction()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 5: Theme Extraction")
 
-        Args:
-            demo_type: "demo", "random", or "focused"
+            # Phase 6: Knowledge Graph Construction will be updated to use Phase 4 + Phase 5 data
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'knowledge_graph_construction' not in self.config['execution']['skip_phases']:
+                    self._phase_6_knowledge_graph_construction()  # This will be renamed/updated
+                else:
+                    self.logger.info("⏭️  Skipping Phase 6: Knowledge Graph Construction")
 
-        Returns:
-            Dictionary with all results
-        """
-        print("🚀 Starting Single RAG Demonstration")
-        print(f"📊 Using dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 50)
+            self.logger.info("🎉 Enhanced pipeline with entity/theme extraction completed successfully!")
+            return {
+                "experiment_id": self.experiment_id,
+                "status": "completed",
+                "execution_time": datetime.now() - self.start_time,
+                "architecture": "multi_granularity_entity_theme_extraction"
+            }
 
-        start_time = time.time()
-
-        # Load data based on demo type using the configured dataset
-        if demo_type == "demo":
-            question, contexts = self.data_loader.create_demo_dataset()
-        elif demo_type == "focused":
-            if not self.data_loader.load_dataset():
-                print(f"⚠️ Failed to load {self.config.data.get_dataset_display_name()}, falling back to demo data")
-                question, contexts = self.data_loader.create_demo_dataset()
+        except Exception as e:
+            if self.logger:
+                self.logger.error(f"Pipeline failed: {str(e)}")
             else:
-                question, contexts = self.data_loader.create_focused_context_set(
-                    ['technology', 'computer', 'science', 'research', 'data'],
-                    self.config.rag.num_contexts
-                )
-        else:  # random
-            if not self.data_loader.load_dataset():
-                print(f"⚠️ Failed to load {self.config.data.get_dataset_display_name()}, falling back to demo data")
-                question, contexts = self.data_loader.create_demo_dataset()
+                print(f"Pipeline failed: {str(e)}")
+            raise
+
+    def _phase_1_setup_and_initialization(self):
+        """Phase 1: Setup & Initialization"""
+        print("🚀 Starting Enhanced Multi-Granularity Semantic RAG Pipeline")
+        print("🌟 Architecture: Three-Tier Hierarchy (Document → Chunk → Sentence)")
+        print("=" * 70)
+
+        # Record start time
+        self.start_time = datetime.now()
+
+        # 1. Load config.yaml
+        self._load_config()
+
+        # 2. Initialize experiment tracker
+        self._initialize_experiment_tracker()
+
+        # 3. Create output directories
+        self._create_output_directories()
+
+        # 4. Initialize logging
+        self._initialize_logging()
+
+        # 5. Check system resources
+        self._check_system_resources()
+
+        # 6. Detect and configure device (M1 Mac compatible)
+        self._detect_and_configure_device()
+
+        # 7. Validate config parameters
+        self._validate_config()
+
+        self.logger.info(f"🎯 Phase 1 completed - Enhanced Experiment ID: {self.experiment_id}")
+        self.logger.info(f"🏗️  Architecture: {self.config.get('experiment', {}).get('description', 'Multi-granularity system')}")
+
+    def _phase_2_data_acquisition(self):
+        """Phase 2: Data Acquisition (unchanged from original)"""
+        self.logger.info("🌐 Starting Phase 2: Data Acquisition")
+
+        # Initialize WikiEngine
+        wiki_engine = WikiEngine(self.config, self.logger)
+
+        # Check if we should force recompute
+        force_recompute = 'data' in self.config['execution'].get('force_recompute', [])
+
+        if force_recompute:
+            self.logger.info("🔄 Force recompute enabled - will fetch fresh articles")
+            # Temporarily disable caching
+            original_use_cached = self.config['wikipedia']['use_cached_articles']
+            self.config['wikipedia']['use_cached_articles'] = False
+
+        try:
+            # Acquire articles
+            wiki_path = Path(self.config['directories']['data']) / "wiki.json"
+            articles = wiki_engine.acquire_articles(wiki_path)
+
+            if not articles:
+                raise RuntimeError("No articles were successfully acquired")
+
+            # Get and log corpus statistics
+            stats = wiki_engine.get_corpus_statistics()
+            self.logger.info("📊 Corpus Statistics:")
+            self.logger.info(f"   Articles: {stats['total_articles']:,}")
+            self.logger.info(f"   Sentences: {stats['total_sentences']:,}")
+            self.logger.info(f"   Words: {stats['total_words']:,}")
+            self.logger.info(f"   Avg sentences/article: {stats['avg_sentences_per_article']:.1f}")
+            self.logger.info(f"   Avg words/sentence: {stats['avg_words_per_sentence']:.1f}")
+
+            # Store articles in pipeline for later phases
+            self.articles = articles
+            self.corpus_stats = stats
+
+            self.logger.info("✅ Phase 2 completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"❌ Phase 2 failed: {e}")
+            raise
+
+        finally:
+            # Restore original caching setting if we changed it
+            if force_recompute:
+                self.config['wikipedia']['use_cached_articles'] = original_use_cached
+
+    def _phase_3_embedding_generation(self):
+        """Phase 3: Enhanced Multi-Granularity Embedding Generation"""
+        self.logger.info("🧠 Starting Phase 3: Enhanced Multi-Granularity Embedding Generation")
+
+        # Check if we have articles from Phase 2
+        if not self.articles:
+            self.logger.warning("No articles available from Phase 2. Loading from cache...")
+            # Try to load articles from cache
+            wiki_engine = WikiEngine(self.config, self.logger)
+            wiki_path = Path(self.config['directories']['data']) / "wiki.json"
+            if wiki_path.exists():
+                self.articles = wiki_engine._load_cached_articles(wiki_path)
             else:
-                question, contexts = self.data_loader.select_random_question_with_contexts(
-                    self.config.rag.num_contexts
-                )
+                raise RuntimeError("No articles available and no cache found. Please run Phase 2 first.")
 
-        print(f"\n🎯 Question: {question}")
-        print(f"📚 Contexts: {len(contexts)}")
+        try:
+            # Step 1: Create chunks using ChunkEngine
+            self.logger.info("✂️  Creating chunks from articles")
+            chunk_engine = ChunkEngine(self.config, self.logger)
+            chunks = chunk_engine.create_chunks(self.articles)
+            
+            if not chunks:
+                raise RuntimeError("No chunks were created from articles")
+            
+            # Get and log chunk statistics
+            chunk_stats = chunk_engine.get_chunking_statistics(chunks)
+            self.logger.info("📊 Chunk Statistics:")
+            self.logger.info(f"   Total chunks: {chunk_stats['total_chunks']:,}")
+            self.logger.info(f"   From articles: {chunk_stats['total_articles']:,}")
+            self.logger.info(f"   Avg chunks/article: {chunk_stats['avg_chunks_per_article']:.1f}")
+            self.logger.info(f"   Avg words/chunk: {chunk_stats['chunk_length_stats']['mean_words']:.1f}")
+            self.logger.info(f"   Avg sentences/chunk: {chunk_stats['sentence_count_stats']['mean_sentences']:.1f}")
+            
+            # Store chunks in pipeline
+            self.chunks = chunks
+            self.chunk_stats = chunk_stats
+            
+            # Step 2: Generate multi-granularity embeddings using enhanced EmbeddingEngine
+            self.logger.info("✨ Generating multi-granularity embeddings for all models")
+            embedding_engine = MultiGranularityEmbeddingEngine(self.config, self.logger)
+            
+            # Check if we should force recompute embeddings
+            force_recompute = 'embeddings' in self.config['execution'].get('force_recompute', [])
+            
+            # Generate multi-granularity embeddings (chunks, sentences, doc_summaries)
+            embeddings = embedding_engine.generate_embeddings(
+                chunks, 
+                self.articles,  # Pass articles for sentence and document summary embedding generation
+                force_recompute=force_recompute
+            )
+            
+            if not embeddings:
+                raise RuntimeError("No multi-granularity embeddings were generated")
+            
+            # Get and log embedding statistics
+            embedding_stats = embedding_engine.get_embedding_statistics(embeddings)
+            self.logger.info("📈 Multi-Granularity Embedding Statistics:")
+            for model_name, stats in embedding_stats.items():
+                self.logger.info(f"   {model_name}:")
+                self.logger.info(f"      Total embeddings: {stats['total_embeddings']:,}")
+                for granularity_type, granularity_stats in stats['granularity_types'].items():
+                    self.logger.info(f"      {granularity_type}: {granularity_stats['count']:,} embeddings, {granularity_stats['embedding_dimension']}D")
+                    if 'sample_chunk_lengths' in granularity_stats:
+                        self.logger.info(f"         Sample lengths: {granularity_stats['sample_chunk_lengths']}")
+            
+            # Store embeddings in pipeline
+            self.embeddings = embeddings
+            self.embedding_stats = embedding_stats
+            
+            self.logger.info("✅ Phase 3 Multi-Granularity Embedding Generation completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 3 failed: {e}")
+            raise
 
-        # Ingest contexts first
-        print("\n📚 Ingesting contexts into RAG system...")
-        ingest_time = self.rag_system.ingest_contexts(contexts)
-        print(f"✅ Contexts ingested in {ingest_time:.2f}s")
+    def _phase_4_similarity_matrices(self):
+        """Phase 4: Enhanced Multi-Granularity Similarity Matrix Construction"""
+        self.logger.info("🕰 Starting Phase 4: Enhanced Multi-Granularity Similarity Matrix Construction")
 
-        # Run RAG retrieval
-        print("\n🔍 Running semantic graph traversal...")
-        retrieved_texts, traversal_steps, analysis = self.rag_system.retrieve(
-            question, top_k=self.config.rag.retrieval_top_k
-        )
+        # Check if we have multi-granularity embeddings from Phase 3
+        if not self.embeddings:
+            self.logger.warning("No multi-granularity embeddings available from Phase 3. Loading from cache...")
+            # Try to load embeddings from cache
+            embedding_engine = MultiGranularityEmbeddingEngine(self.config, self.logger)
+            # We'd need to reload chunks and embeddings here
+            raise RuntimeError("No multi-granularity embeddings available. Please run Phase 3 first.")
 
-        # Store results
-        self.last_question = question
-        self.last_contexts = contexts
-        self.last_retrieved_texts = retrieved_texts
-        self.last_traversal_steps = traversal_steps
-        self.last_analysis = analysis
+        try:
+            # Initialize enhanced SimilarityEngine
+            self.logger.info("🔗 Initializing multi-granularity similarity engine")
+            similarity_engine = SimilarityEngine(self.config, self.logger)
+            
+            # Check if we should force recompute similarities
+            force_recompute = 'similarities' in self.config['execution'].get('force_recompute', [])
+            
+            # Compute multi-granularity similarity matrices
+            self.logger.info(f"🎯 Computing multi-granularity similarity matrices for {len(self.embeddings)} models")
+            similarities = similarity_engine.compute_similarity_matrices(
+                self.embeddings, 
+                force_recompute=force_recompute
+            )
+            
+            if not similarities:
+                raise RuntimeError("No multi-granularity similarity matrices were computed")
+            
+            # Get and log similarity statistics
+            similarity_stats = similarity_engine.get_similarity_statistics(similarities)
+            self.logger.info("📊 Multi-Granularity Similarity Matrix Statistics:")
+            for model_name, stats in similarity_stats.items():
+                self.logger.info(f"   {model_name}:")
+                self.logger.info(f"      Total connections: {stats['total_connections']:,}")
+                self.logger.info(f"      Memory usage: {stats['memory_usage_mb']:.1f} MB")
+                self.logger.info(f"      Computation time: {stats['computation_time']:.2f}s")
+                
+                if 'connections_by_granularity' in stats:
+                    self.logger.info(f"      Connections by granularity:")
+                    for granularity_type, count in stats['connections_by_granularity'].items():
+                        self.logger.info(f"         {granularity_type}: {count:,}")
+                
+                if 'sparsity_statistics' in stats:
+                    self.logger.info(f"      Sparsity statistics:")
+                    for matrix_name, sparsity_info in stats['sparsity_statistics'].items():
+                        self.logger.info(f"         {matrix_name}: {sparsity_info['stored_connections']:,} connections, sparsity={sparsity_info['sparsity_ratio']:.6f}")
+            
+            # Store similarities in pipeline
+            self.similarities = similarities
+            self.similarity_stats = similarity_stats
+            
+            self.logger.info("✅ Phase 4 Multi-Granularity Similarity Matrix Construction completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 4 failed: {e}")
+            raise
 
-        total_time = time.time() - start_time
+    # Updated phase method for theme-only extraction
+    def _phase_5_theme_extraction(self):
+        """Phase 5: Theme Extraction (entity extraction removed for quality)"""
+        self.logger.info("🎨 Starting Phase 5: Theme Extraction")
 
-        print(f"\n✅ Demo completed in {total_time:.2f}s")
-        print(f"📊 Retrieved {len(retrieved_texts)} texts from {len(traversal_steps)} traversal steps")
+        # Check if we have required data from previous phases
+        if not self.embeddings:
+            self.logger.warning("No multi-granularity embeddings available from Phase 3. Loading from cache...")
+            raise RuntimeError("No multi-granularity embeddings available. Please run Phase 3 first.")
 
-        # Show key analysis metrics
-        if analysis.get('reranking_improvement_percent', 0) != 0:
-            improvement = analysis['reranking_improvement_percent']
-            if improvement > 0:
-                print(f"🎯 Reranking improved results by {improvement:.1f}%")
+        if not self.articles:
+            self.logger.warning("No articles available from Phase 2. Loading from cache...")
+            # Try to load articles from cache
+            wiki_engine = WikiEngine(self.config, self.logger)
+            wiki_path = Path(self.config['directories']['data']) / "wiki.json"
+            if wiki_path.exists():
+                self.articles = wiki_engine._load_cached_articles(wiki_path)
             else:
-                print(f"📊 Original traversal order was already optimal")
+                raise RuntimeError("No articles available. Please run Phase 2 first.")
 
-        if analysis.get('sliding_window_enabled'):
-            print(f"🪟 Used 3-sentence forward-looking sliding windows")
+        try:
+            # Initialize ThemeExtractionEngine (entity extraction removed)
+            self.logger.info("🎨 Initializing theme extraction engine")
+            extraction_engine = ThemeExtractionEngine(self.config, self.logger)
 
-        print(f"🔗 Graph: {analysis['graph_parameters']['top_k_per_sentence']} connections/sentence, {analysis['graph_parameters']['cross_doc_k']} cross-doc, threshold: {analysis['graph_parameters']['similarity_threshold']}")
+            # Check if we should force recompute
+            force_recompute = 'themes' in self.config['execution'].get('force_recompute', [])
 
-        return {
-            'question': question,
-            'contexts': contexts,
-            'retrieved_texts': retrieved_texts,
-            'traversal_steps': traversal_steps,
-            'analysis': analysis,
-            'total_time': total_time
-        }
-
-    def create_2d_visualization(self, save: bool = None) -> plt.Figure:
-        """Create 2D matplotlib visualization of the last demo"""
-        if not self.last_traversal_steps:
-            print("⚠️ No traversal data available. Run a demo first.")
-            return plt.Figure()
-
-        print("🎨 Creating 2D visualization...")
-
-        save_path = None
-        if save or (save is None and self.config.viz.save_plots):
-            save_path = os.path.join(self.config.viz.output_dir, "traversal_2d.png")
-
-        fig = self.visualizer.create_2d_visualization(
-            self.rag_system,
-            self.last_question,
-            self.last_traversal_steps,
-            max_steps=self.config.viz.max_steps_shown,
-            save_path=save_path
-        )
-
-        if save_path:
-            print(f"💾 2D visualization saved to {save_path}")
-
-        return fig
-
-    def create_3d_visualization(self, method: str = "pca") -> go.Figure:
-        """Create 3D plotly visualization of the last demo"""
-        if not self.last_traversal_steps:
-            print("⚠️ No traversal data available. Run a demo first.")
-            return go.Figure()
-
-        print(f"🎨 Creating 3D visualization using {method.upper()}...")
-
-        fig = self.visualizer.create_3d_visualization(
-            self.last_question,
-            self.last_traversal_steps,
-            method=method,
-            max_steps=self.config.viz.max_steps_shown
-        )
-
-        if self.config.viz.save_plots:
-            save_path = os.path.join(self.config.viz.output_dir, f"traversal_3d_{method}.html")
-            fig.write_html(save_path)
-            print(f"💾 3D visualization saved to {save_path}")
-
-        return fig
-
-    def create_analysis_charts(self) -> go.Figure:
-        """Create analysis charts for the last demo"""
-        if not self.last_analysis:
-            print("⚠️ No analysis data available. Run a demo first.")
-            return go.Figure()
-
-        print("📊 Creating analysis charts...")
-
-        fig = self.visualizer.create_analysis_charts(self.last_analysis)
-
-        if self.config.viz.save_plots:
-            save_path = os.path.join(self.config.viz.output_dir, "analysis_charts.html")
-            fig.write_html(save_path)
-            print(f"💾 Analysis charts saved to {save_path}")
-
-        return fig
-
-    def run_ragas_evaluation(self) -> EvaluationResults:
-        """
-        Run RAGAS evaluation on the configured dataset.
-
-        Updated to work with any dataset (WikiEval, Natural Questions, etc.)
-        """
-        print("🔍 Starting RAGAS Evaluation")
-        print(f"📊 Using dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 50)
-
-        # Load evaluation dataset using the configured data loader
-        if not self.data_loader.load_dataset():
-            print(f"⚠️ Could not load {self.config.data.get_dataset_display_name()} data for evaluation")
-            return EvaluationResults(
-                context_precision=0.0,
-                context_recall=0.0,
-                faithfulness=0.0,
-                answer_relevancy=0.0,
-                ragas_score=0.0,
-                ingest_time=0.0,
-                eval_time=0.0,
-                num_samples=0,
-                error=f"Could not load {self.config.data.get_dataset_display_name()} data"
+            # Extract themes at document level only (entities removed for quality)
+            self.logger.info(f"⚡ Extracting themes with force_recompute={force_recompute}")
+            theme_data = extraction_engine.extract_themes(
+                multi_granularity_embeddings=self.embeddings,
+                articles=self.articles,
+                force_recompute=force_recompute
             )
 
-        eval_dataset = self.data_loader.get_evaluation_dataset(self.config.data.max_eval_samples)
+            if not theme_data:
+                raise RuntimeError("No theme data was extracted")
 
-        print(f"📊 Evaluation dataset: {eval_dataset['name']}")
-        print(f"📄 Documents: {len(eval_dataset['documents'])}")
-        print(f"❓ Queries: {len(eval_dataset['queries'])}")
+            # Get extraction statistics
+            theme_stats = extraction_engine.get_extraction_statistics(theme_data)
 
-        # Initialize evaluator
-        evaluator = RAGASEvaluator(self.config.models, self.config.data.max_eval_samples)
+            # Log results
+            metadata = theme_data['metadata']
+            self.logger.info("📊 Theme Extraction Statistics:")
+            self.logger.info(f"   Total themes: {metadata.total_themes_extracted:,}")
+            self.logger.info(f"   Documents processed: {metadata.document_count:,}")
+            self.logger.info(f"   Processing time: {metadata.processing_time:.2f}s")
+            self.logger.info(f"   Average themes per document: {metadata.total_themes_extracted / metadata.document_count:.1f}" if metadata.document_count > 0 else "   No documents processed")
 
-        # Run evaluation
-        results = evaluator.benchmark_rag_system(
-            self.rag_system,
-            eval_dataset,
-            f"Semantic Graph RAG ({self.config.data.get_dataset_display_name()})"
+            # Log extraction method used
+            method_status = "✅ Ollama available" if metadata.ollama_available else "⚠️  Using fallback method"
+            self.logger.info(f"   Extraction method: {method_status}")
+
+            # Store results in pipeline
+            self.theme_data = theme_data
+            self.theme_stats = theme_stats
+
+            self.logger.info("✅ Phase 5 Theme Extraction completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"❌ Phase 5 failed: {e}")
+            raise
+
+    def _phase_6_knowledge_graph_construction(self):
+        """Phase 6: Knowledge Graph Assembly using pre-computed data from Phases 4 & 5."""
+        self.logger.info("🏗️  Starting Phase 6: Knowledge Graph Assembly")
+
+        # Check if we have required data from previous phases
+        required_data = [
+            (self.chunks, "chunks", "Phase 3"),
+            (self.embeddings, "multi-granularity embeddings", "Phase 3"),
+            (self.similarities, "similarity matrices", "Phase 4"),
+            (self.theme_data, "theme data", "Phase 5")
+        ]
+
+        for data, name, phase in required_data:
+            if not data:
+                self.logger.warning(f"No {name} available from {phase}. Loading from cache...")
+                raise RuntimeError(f"No {name} available. Please run {phase} first.")
+
+        try:
+            # Check if we should force recompute
+            force_recompute = 'knowledge_graph' in self.config['execution'].get('force_recompute', [])
+
+            # Check cache
+            kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
+            if not force_recompute and kg_path.exists():
+                self.logger.info("📂 Loading cached knowledge graph")
+                self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
+                # FIX: Load Phase 3 embeddings into cache after loading from JSON
+                self.knowledge_graph.load_phase3_embeddings(self.embeddings)
+                self.kg_stats = self.knowledge_graph.metadata
+            else:
+                # Build fresh knowledge graph using assembly approach
+                self.logger.info("🔨 Assembling fresh knowledge graph from pre-computed data")
+                kg_builder = KnowledgeGraphBuilder(self.config, self.logger)
+
+                # Fixed call with all required arguments:
+                self.knowledge_graph = kg_builder.build_knowledge_graph(
+                    chunks=self.chunks,
+                    multi_granularity_embeddings=self.embeddings,
+                    similarity_data=self.similarities,  # This was missing
+                    theme_data=self.theme_data
+                )
+
+                # Save knowledge graph
+                self.logger.info(f"💾 Saving assembled knowledge graph to {kg_path}")
+                self.knowledge_graph.save(str(kg_path))
+
+                self.kg_stats = self.knowledge_graph.metadata
+
+            # Log knowledge graph statistics
+            self.logger.info("📊 Knowledge Graph Assembly Statistics:")
+            self.logger.info(f"   Architecture: {self.kg_stats.get('architecture', 'phase6_assembly')}")
+
+            if 'theme_bridge_stats' in self.kg_stats:
+                bridge_stats = self.kg_stats['theme_bridge_stats']
+                self.logger.info(f"   Theme bridges:")
+                self.logger.info(f"      Unique themes: {bridge_stats['total_unique_themes']}")
+                self.logger.info(f"      Themes with bridges: {bridge_stats['themes_with_bridges']}")
+                self.logger.info(f"      Total bridges: {bridge_stats['total_bridges']}")
+
+            self.logger.info(f"   Build time: {self.kg_stats.get('build_time', 0):.2f}s")
+
+            # Initialize the new retrieval engine with knowledge graph
+            self.logger.info("🎯 Initializing enhanced retrieval engine")
+            self.retrieval_engine = create_retrieval_engine(
+                knowledge_graph=self.knowledge_graph,
+                config=self.config,
+                logger=self.logger
+            )
+            
+            # Test retrieval engine with a simple query
+            try:
+                test_query = "What is machine learning?"
+                test_result = self.retrieval_engine.retrieve(test_query, strategy="baseline_vector")
+                
+                self.retrieval_stats = {
+                    'status': 'initialized_successfully',
+                    'test_query_results': len(test_result.retrieved_content),
+                    'models_available': list(self.embeddings.keys()) if self.embeddings else [],
+                    'knowledge_graph_enabled': True,
+                    'available_strategies': ['baseline_vector', 'semantic_traversal']
+                }
+                
+                self.logger.info(f"✅ Retrieval engine test successful: {len(test_result.retrieved_content)} results for test query")
+                
+            except Exception as e:
+                self.logger.warning(f"⚠️  Retrieval engine test failed: {e}")
+                self.retrieval_stats = {
+                    'status': 'initialized_with_warnings',
+                    'error': str(e),
+                    'models_available': list(self.embeddings.keys()) if self.embeddings else [],
+                    'knowledge_graph_enabled': True
+                }
+
+            self.logger.info("✅ Phase 6 Knowledge Graph Assembly completed successfully")
+
+        except Exception as e:
+            self.logger.error(f"❌ Phase 6 failed: {e}")
+            raise
+
+    def _load_config(self):
+        """Load configuration from YAML file."""
+        try:
+            config_path = Path(self.config_path)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+
+            with open(config_path, 'r') as f:
+                self.config = yaml.safe_load(f)
+
+            print(f"✅ Enhanced Config loaded from {config_path}")
+
+        except Exception as e:
+            print(f"❌ Failed to load config: {e}")
+            raise
+
+    def _initialize_experiment_tracker(self):
+        """Initialize experiment tracking with unique ID."""
+        # Generate experiment ID
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        short_uuid = str(uuid.uuid4())[:8]
+        self.experiment_id = f"{self.config['experiment']['name']}_{timestamp}_{short_uuid}"
+
+        print(f"🔬 Enhanced Experiment ID: {self.experiment_id}")
+
+    def _create_output_directories(self):
+        """Create all necessary output directories."""
+        directories = self.config['directories']
+
+        base_dirs = [
+            directories['data'],
+            directories['embeddings'],
+            directories['visualizations'],
+            directories['logs']
+        ]
+
+        # Create subdirectories (enhanced for multi-granularity)
+        subdirs = [
+            f"{directories['embeddings']}/raw",
+            f"{directories['embeddings']}/similarities",
+            f"{directories['embeddings']}/cross_document",
+            f"{directories['visualizations']}/experiments",
+            f"{directories['data']}/datasets",
+            f"{directories['data']}/experiments",
+            f"{directories['data']}/questions"  # Added for question generation
+        ]
+
+        all_dirs = base_dirs + subdirs
+
+        for dir_path in all_dirs:
+            Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+        # Create experiment-specific directories
+        exp_viz_dir = Path(directories['visualizations']) / "experiments" / self.experiment_id
+        exp_data_dir = Path(directories['data']) / "experiments" / self.experiment_id
+
+        exp_viz_dir.mkdir(parents=True, exist_ok=True)
+        exp_data_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"📁 Created enhanced directory structure")
+
+    def _initialize_logging(self):
+        """Initialize logging configuration."""
+        log_config = self.config['logging']
+
+        # Create logger
+        self.logger = logging.getLogger('semantic_rag_pipeline')
+        self.logger.setLevel(getattr(logging, log_config['level']))
+
+        # Clear any existing handlers
+        self.logger.handlers.clear()
+
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
 
-        # Print results
-        print_evaluation_results(results, f"Semantic Graph RAG ({self.config.data.get_dataset_display_name()})")
+        # Console handler
+        if log_config['log_to_console']:
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(formatter)
+            self.logger.addHandler(console_handler)
 
-        return results
+        # File handler
+        if log_config['log_to_file']:
+            log_file = Path(self.config['directories']['logs']) / f"{self.experiment_id}.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setFormatter(formatter)
+            self.logger.addHandler(file_handler)
 
-    def run_complete_pipeline(self, demo_type: str = "random",
-                             show_2d: bool = True,
-                             show_3d: bool = True,
-                             show_analysis: bool = True,
-                             run_evaluation: bool = False) -> Dict:
-        """
-        Run the complete research pipeline with the configured dataset.
+        # Log initial info
+        self.logger.info(f"Enhanced multi-granularity logging initialized for experiment: {self.experiment_id}")
+        self.logger.info(f"Config: {self.config['experiment']}")
 
-        Args:
-            demo_type: Type of demo to run
-            show_2d: Whether to create 2D visualization
-            show_3d: Whether to create 3D visualization
-            show_analysis: Whether to create analysis charts
-            run_evaluation: Whether to run RAGAS evaluation
+        print(f"📝 Enhanced logging initialized")
 
-        Returns:
-            Dictionary with all results
-        """
-        print("🚀 STARTING COMPLETE RESEARCH PIPELINE")
-        print(f"📊 Dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 70)
+    def _check_system_resources(self):
+        """Check system resources and warn if insufficient."""
+        # Check available memory
+        memory = psutil.virtual_memory()
+        available_gb = memory.available / (1024 ** 3)
+        max_memory_gb = self.config['system']['max_memory_gb']
 
-        results = {}
+        if available_gb < max_memory_gb:
+            warning_msg = f"⚠️  Low memory: {available_gb:.1f}GB available, {max_memory_gb}GB recommended"
+            print(warning_msg)
+            if self.logger:
+                self.logger.warning(warning_msg)
+        else:
+            print(f"💾 Memory check: {available_gb:.1f}GB available ✅")
 
-        # Step 1: Run demo
-        print("STEP 1: Running RAG Demo")
-        print("-" * 30)
-        demo_results = self.run_single_demo(demo_type)
-        results['demo'] = demo_results
+        # Check disk space
+        disk = psutil.disk_usage('.')
+        free_gb = disk.free / (1024 ** 3)
+        min_disk_gb = self.config['system']['min_disk_space_gb']
 
-        # Step 2: Create visualizations
-        if show_2d:
-            print("\nSTEP 2: Creating 2D Visualization")
-            print("-" * 30)
-            fig_2d = self.create_2d_visualization()
-            results['fig_2d'] = fig_2d
+        if free_gb < min_disk_gb:
+            error_msg = f"❌ Insufficient disk space: {free_gb:.1f}GB free, {min_disk_gb}GB required"
+            print(error_msg)
+            if self.logger:
+                self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            print(f"💽 Disk space check: {free_gb:.1f}GB free ✅")
 
-            # Show plot if not saving
-            if not self.config.viz.save_plots:
-                plt.show()
+        # Log system info
+        if self.logger:
+            self.logger.info(f"System: {platform.system()} {platform.machine()}")
+            self.logger.info(f"Python: {sys.version}")
+            self.logger.info(f"Memory: {available_gb:.1f}GB available")
+            self.logger.info(f"Disk: {free_gb:.1f}GB free")
 
-        if show_3d:
-            print("\nSTEP 3: Creating 3D Visualization")
-            print("-" * 30)
-            fig_3d = self.create_3d_visualization()
-            results['fig_3d'] = fig_3d
-            fig_3d.show()
+    def _detect_and_configure_device(self):
+        """Detect and configure computation device (M1 Mac compatible)."""
+        device_config = self.config['system']['device']
 
-        if show_analysis:
-            print("\nSTEP 4: Creating Analysis Charts")
-            print("-" * 30)
-            fig_analysis = self.create_analysis_charts()
-            results['fig_analysis'] = fig_analysis
-            fig_analysis.show()
+        if device_config == "auto":
+            # Auto-detect best available device
+            if torch.cuda.is_available():
+                self.device = "cuda"
+                device_name = torch.cuda.get_device_name()
+                print(f"🖥️  Using CUDA device: {device_name}")
+            elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                self.device = "mps"
+                print(f"🍎 Using MPS device (Apple Silicon)")
+            else:
+                self.device = "cpu"
+                print(f"💻 Using CPU device")
+        else:
+            # Use specified device
+            self.device = device_config
+            print(f"🎯 Using specified device: {self.device}")
 
-        # Step 5: Run evaluation
-        if run_evaluation:
-            print("\nSTEP 5: Running RAGAS Evaluation")
-            print("-" * 30)
-            eval_results = self.run_ragas_evaluation()
-            results['evaluation'] = eval_results
+        # Validate device availability
+        if self.device == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("CUDA device specified but not available")
+        elif self.device == "mps" and not (hasattr(torch.backends, 'mps') and torch.backends.mps.is_available()):
+            raise RuntimeError("MPS device specified but not available")
 
-        print("\n✅ COMPLETE PIPELINE FINISHED")
-        print(f"📊 Dataset: {self.config.data.get_dataset_display_name()}")
-        print("=" * 70)
+        # Log device info
+        if self.logger:
+            self.logger.info(f"Device configured: {self.device}")
+            if self.device == "cuda":
+                self.logger.info(f"CUDA device: {torch.cuda.get_device_name()}")
+                self.logger.info(f"CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024 ** 3:.1f}GB")
+        
+        # Update config with resolved device so other components can use it
+        self.config['system']['device'] = self.device
 
-        return results
+    def _validate_config(self):
+        """Validate configuration parameters."""
+        try:
+            # Validate required sections
+            required_sections = ['experiment', 'system', 'directories', 'logging']
+            for section in required_sections:
+                if section not in self.config:
+                    raise ValueError(f"Missing required config section: {section}")
 
-# Enhanced convenience functions for easy notebook usage
-def quick_demo(demo_type: str = "random",
-               dataset_name: str = "wikieval",
-               openai_api_key: Optional[str] = None,
-               config_type: str = "default") -> Dict:
-    """
-    Quick demo function for notebook usage with dataset selection.
+            # Validate model names (basic check)
+            for model in self.config['models']['embedding_models']:
+                if not isinstance(model, str) or len(model) == 0:
+                    raise ValueError(f"Invalid embedding model: {model}")
 
-    Args:
-        demo_type: "demo", "random", or "focused"
-        dataset_name: "wikieval" or "natural_questions"
-        openai_api_key: OpenAI API key
-        config_type: "default" or "demo"
+            # Validate numeric parameters
+            if self.config['models']['embedding_batch_size'] <= 0:
+                raise ValueError("embedding_batch_size must be positive")
 
-    Returns:
-        Dictionary with results
-    """
-    config = get_config(config_type, openai_api_key=openai_api_key, dataset_name=dataset_name)
-    pipeline = ResearchPipeline(config)
-    return pipeline.run_single_demo(demo_type)
+            if self.config['chunking']['window_size'] <= 0:
+                raise ValueError("window_size must be positive")
 
-def quick_visualization(demo_type: str = "random",
-                       dataset_name: str = "wikieval",
-                       openai_api_key: Optional[str] = None,
-                       show_2d: bool = True,
-                       show_3d: bool = True) -> Dict:
-    """
-    Quick visualization function for notebook usage with dataset selection.
+            # Validate execution mode
+            valid_modes = ['full_pipeline', 'data_only', 'embedding_only', 'evaluation_only', 'visualization_only']
+            if self.config['execution']['mode'] not in valid_modes:
+                raise ValueError(f"Invalid execution mode. Must be one of: {valid_modes}")
 
-    Args:
-        demo_type: Type of demo to run
-        dataset_name: "wikieval" or "natural_questions"
-        openai_api_key: OpenAI API key
-        show_2d: Whether to show 2D visualization
-        show_3d: Whether to show 3D visualization
+            # Validate multi-granularity configuration
+            if 'granularity_types' in self.config['models']:
+                granularity_config = self.config['models']['granularity_types']
+                for granularity_type, enabled in granularity_config.items():
+                    if not isinstance(enabled, dict):
+                        raise ValueError(f"Invalid granularity configuration for {granularity_type}")
 
-    Returns:
-        Dictionary with results and figures
-    """
-    config = get_config("demo", openai_api_key=openai_api_key, dataset_name=dataset_name)
-    pipeline = ResearchPipeline(config)
+            print(f"✅ Enhanced configuration validated")
+            if self.logger:
+                self.logger.info("Enhanced configuration validation passed")
 
-    # Run demo
-    demo_results = pipeline.run_single_demo(demo_type)
+        except Exception as e:
+            error_msg = f"Configuration validation failed: {e}"
+            print(f"❌ {error_msg}")
+            if self.logger:
+                self.logger.error(error_msg)
+            raise
 
-    results = {'demo': demo_results}
 
-    # Create visualizations
-    if show_2d:
-        fig_2d = pipeline.create_2d_visualization()
-        results['fig_2d'] = fig_2d
-        plt.show()
+def main():
+    """Main entry point for the enhanced pipeline."""
+    try:
+        # Initialize and run enhanced pipeline
+        pipeline = SemanticRAGPipeline()
+        results = pipeline.pipe()
 
-    if show_3d:
-        fig_3d = pipeline.create_3d_visualization()
-        results['fig_3d'] = fig_3d
-        fig_3d.show()
+        print("\n" + "=" * 70)
+        print("🎉 Enhanced Multi-Granularity Pipeline completed successfully!")
+        print(f"🌟 Architecture: {results.get('architecture', 'multi_granularity_three_tier')}")
+        print(f"📋 Experiment ID: {results['experiment_id']}")
+        print(f"⏱️  Execution time: {results['execution_time']}")
+        print(f"📁 Results saved in experiments directory")
 
-    return results
+    except Exception as e:
+        print(f"\n❌ Enhanced pipeline failed: {e}")
+        sys.exit(1)
 
-def full_evaluation_pipeline(openai_api_key: str,
-                            dataset_name: str = "wikieval",
-                            demo_type: str = "focused",
-                            max_eval_samples: int = 10) -> Dict:
-    """
-    Full evaluation pipeline including RAGAS assessment with dataset selection.
 
-    Args:
-        openai_api_key: OpenAI API key (required for RAGAS)
-        dataset_name: "wikieval" or "natural_questions"
-        demo_type: Type of demo to run
-        max_eval_samples: Maximum samples for evaluation
-
-    Returns:
-        Dictionary with all results
-    """
-    # Use dataset-specific configuration if available
-    config_type = dataset_name if dataset_name in ["wikieval", "natural_questions"] else "demo"
-
-    config = get_config(config_type,
-                       openai_api_key=openai_api_key,
-                       dataset_name=dataset_name,
-                       max_eval_samples=max_eval_samples)
-
-    pipeline = ResearchPipeline(config)
-
-    return pipeline.run_complete_pipeline(
-        demo_type=demo_type,
-        show_2d=True,
-        show_3d=True,
-        show_analysis=True,
-        run_evaluation=True
-    )
-
-def print_pipeline_summary():
-    """Print a summary of available pipeline functions with dataset options"""
-    print("🔬 SEMANTIC GRAPH RAG RESEARCH PIPELINE")
-    print("=" * 50)
-    print()
-    print("📚 Available Datasets:")
-    print("   • WikiEval: 50 human-annotated Wikipedia QA pairs")
-    print("   • Natural Questions: Real Google queries with Wikipedia answers")
-    print()
-    print("📚 Available Functions:")
-    print()
-    print("1. quick_demo(demo_type='random', dataset_name='wikieval')")
-    print("   - Run a single RAG demonstration on specified dataset")
-    print("   - demo_type: 'demo', 'random', or 'focused'")
-    print("   - dataset_name: 'wikieval' or 'natural_questions'")
-    print()
-    print("2. quick_visualization(dataset_name='wikieval', show_2d=True, show_3d=True)")
-    print("   - Run demo + create visualizations on specified dataset")
-    print("   - Automatically shows plots")
-    print()
-    print("3. full_evaluation_pipeline(openai_api_key, dataset_name='wikieval')")
-    print("   - Complete pipeline with RAGAS evaluation")
-    print("   - Requires OpenAI API key")
-    print()
-    print("4. ResearchPipeline(config) - for advanced usage")
-    print("   - Full control over configuration and dataset selection")
-    print("   - Run individual components")
-    print()
-    print("💡 Example notebook usage:")
-    print("   from utils.pipeline import quick_visualization")
-    print("   results = quick_visualization(dataset_name='natural_questions')")
-    print("   results = quick_demo('focused', dataset_name='wikieval')")
+if __name__ == "__main__":
+    main()
