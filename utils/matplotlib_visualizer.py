@@ -17,6 +17,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from collections import defaultdict
 import warnings
+import yaml
+from pathlib import Path
 
 from .algos.base_algorithm import RetrievalResult
 from .traversal import TraversalPath, GranularityLevel, ConnectionType
@@ -53,6 +55,21 @@ class KnowledgeGraphMatplotlibVisualizer:
         self.kg = knowledge_graph
         self.figure_size = figure_size
         self.dpi = dpi
+        
+        # Load config for visualization parameters
+        self._load_config()
+    
+    def _load_config(self):
+        """Load configuration from config.yaml"""
+        try:
+            # Find config.yaml in project root (assume we're in utils/)
+            config_path = Path(__file__).parent.parent / "config.yaml"
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            self.window_buffer_size = config.get('chunking', {}).get('window_visualization_buffer_size', 3)
+        except Exception as e:
+            print(f"Warning: Could not load config, using default buffer size: {e}")
+            self.window_buffer_size = 3
 
     def visualize_retrieval_result(self, result: RetrievalResult, query: str,
                                    max_documents: int = 6) -> plt.Figure:
@@ -164,44 +181,107 @@ class KnowledgeGraphMatplotlibVisualizer:
         """Get current traversal steps for reference during heatmap building"""
         # This will be set by the calling function
         return getattr(self, '_current_steps', [])
+    
+    def _extract_chunk_index_from_id(self, chunk_id: str) -> Optional[int]:
+        """Extract the starting index from a chunk ID for sequential ordering.
+        
+        Expected format: 'Document_name_window_START_END_hash'
+        Returns the START index for sequential ordering.
+        """
+        try:
+            parts = chunk_id.split('_')
+            if 'window' in parts:
+                window_idx = parts.index('window')
+                if window_idx + 1 < len(parts):
+                    start_idx = int(parts[window_idx + 1])
+                    return start_idx
+        except (ValueError, IndexError) as e:
+            print(f"Warning: Could not extract chunk index from {chunk_id}: {e}")
+        return None
+    
+    def _get_sequential_chunk_window(self, doc_id: str, traversed_chunks: List[str]) -> List[str]:
+        """Get sequential chunk window for a document based on traversed chunks.
+        
+        Args:
+            doc_id: Document identifier
+            traversed_chunks: List of chunk IDs that were traversed in this document
+            
+        Returns:
+            List of chunk IDs in sequential order within the window
+        """
+        # Get all chunks for this document from knowledge graph
+        all_doc_chunks = []
+        for chunk_id, chunk_obj in self.kg.chunks.items():
+            if self._get_chunk_document(chunk_id) == doc_id:
+                chunk_index = self._extract_chunk_index_from_id(chunk_id)
+                if chunk_index is not None:
+                    all_doc_chunks.append((chunk_index, chunk_id))
+        
+        if not all_doc_chunks:
+            return []
+        
+        # Sort by sequential index
+        all_doc_chunks.sort(key=lambda x: x[0])
+        
+        # Find min and max indices of traversed chunks
+        traversed_indices = []
+        for chunk_id in traversed_chunks:
+            chunk_index = self._extract_chunk_index_from_id(chunk_id)
+            if chunk_index is not None:
+                traversed_indices.append(chunk_index)
+        
+        if not traversed_indices:
+            # Fallback: return first few chunks if no traversed chunks found
+            return [chunk_id for _, chunk_id in all_doc_chunks[:15]]
+        
+        min_traversed_idx = min(traversed_indices)
+        max_traversed_idx = max(traversed_indices)
+        
+        # Expand window by buffer size in each direction
+        window_start = min_traversed_idx - self.window_buffer_size
+        window_end = max_traversed_idx + self.window_buffer_size
+        
+        # Select chunks within the window, maintaining sequential order
+        windowed_chunks = []
+        for chunk_index, chunk_id in all_doc_chunks:
+            if window_start <= chunk_index <= window_end:
+                windowed_chunks.append(chunk_id)
+        
+        print(f"   Sequential window: indices {window_start} to {window_end} (traversed: {min_traversed_idx}-{max_traversed_idx})")
+        return windowed_chunks
 
     def _build_document_heatmaps(self, doc_ids: List[str]) -> List[DocumentHeatmapInfo]:
-        """Build similarity matrices for each document using cached embeddings"""
+        """Build similarity matrices for each document using sequential windowed approach.
+        
+        Creates windows around traversed chunks, maintaining sequential document order
+        to demonstrate algorithm reading patterns.
+        """
         heatmap_infos = []
 
         for doc_id in doc_ids:
-            print(f"🔍 Building heatmap for document: '{doc_id}'")
-            # Get all chunks for this document from the knowledge graph
-            doc_chunks = []
-            for chunk_id, chunk_obj in self.kg.chunks.items():
-                chunk_doc = self._get_chunk_document(chunk_id)
-                if chunk_doc == doc_id:
-                    doc_chunks.append(chunk_id)
+            print(f"🔍 Building sequential heatmap for document: '{doc_id}'")
             
-            print(f"   Found {len(doc_chunks)} chunks for document '{doc_id}'")
+            # Find all chunks that were traversed in this document
+            traversed_chunks = []
+            for step in self._get_current_traversal_steps():
+                if step.doc_id == doc_id:
+                    traversed_chunks.append(step.chunk_id)
+            
+            print(f"   Found {len(traversed_chunks)} traversed chunks")
+            
+            # Get sequential window of chunks around traversed ones
+            doc_chunks = self._get_sequential_chunk_window(doc_id, traversed_chunks)
+            
+            print(f"   Sequential window contains {len(doc_chunks)} chunks")
             if len(doc_chunks) > 0:
                 print(f"   Sample chunk IDs: {doc_chunks[:3]}...")
 
-            # For visualization, we need at least 2 chunks. If we have less, try to find more
-            # by expanding the search to include more chunks from this document
+            # Need at least 2 chunks for meaningful heatmap
             if len(doc_chunks) < 2:
-                print(f"⚠️ Document {doc_id} has fewer than 2 total chunks, skipping")
+                print(f"⚠️ Document {doc_id} has fewer than 2 chunks in window, skipping")
                 continue
 
-            # Limit to reasonable number for visualization performance
-            max_chunks_per_doc = 15
-            if len(doc_chunks) > max_chunks_per_doc:
-                # Prioritize chunks that appear in traversal steps
-                traversal_chunks = [step.chunk_id for step in self._get_current_traversal_steps() 
-                                  if step.doc_id == doc_id]
-                
-                # Keep all traversal chunks and fill up to max with others
-                prioritized_chunks = traversal_chunks[:]
-                remaining_chunks = [c for c in doc_chunks if c not in traversal_chunks]
-                prioritized_chunks.extend(remaining_chunks[:max_chunks_per_doc - len(prioritized_chunks)])
-                doc_chunks = prioritized_chunks[:max_chunks_per_doc]
-
-            # Get embeddings for chunks in this document (using cached embeddings)
+            # Get embeddings for chunks in sequential order
             chunk_embeddings = []
             valid_chunks = []
 
@@ -221,7 +301,7 @@ class KnowledgeGraphMatplotlibVisualizer:
                 else:
                     continue
 
-            # Build similarity matrix (like reference examples)
+            # Build similarity matrix using sequential chunks (maintains existing color scheme)
             embeddings_array = np.array(chunk_embeddings)
             # Normalize embeddings for proper cosine similarity
             norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
@@ -230,9 +310,9 @@ class KnowledgeGraphMatplotlibVisualizer:
             embeddings_array = embeddings_array / norms
             similarity_matrix = np.dot(embeddings_array, embeddings_array.T)
             
-            print(f"Built {similarity_matrix.shape} similarity matrix for {doc_id} with {len(valid_chunks)} chunks")
+            print(f"   Built {similarity_matrix.shape} sequential similarity matrix")
 
-            # Create mapping from chunk ID to matrix index
+            # Create mapping from chunk ID to matrix index (sequential order preserved)
             chunk_to_matrix_idx = {chunk_id: i for i, chunk_id in enumerate(valid_chunks)}
 
             heatmap_infos.append(DocumentHeatmapInfo(
