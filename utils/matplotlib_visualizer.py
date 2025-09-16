@@ -170,11 +170,17 @@ class KnowledgeGraphMatplotlibVisualizer:
         heatmap_infos = []
 
         for doc_id in doc_ids:
+            print(f"🔍 Building heatmap for document: '{doc_id}'")
             # Get all chunks for this document from the knowledge graph
             doc_chunks = []
             for chunk_id, chunk_obj in self.kg.chunks.items():
-                if self._get_chunk_document(chunk_id) == doc_id:
+                chunk_doc = self._get_chunk_document(chunk_id)
+                if chunk_doc == doc_id:
                     doc_chunks.append(chunk_id)
+            
+            print(f"   Found {len(doc_chunks)} chunks for document '{doc_id}'")
+            if len(doc_chunks) > 0:
+                print(f"   Sample chunk IDs: {doc_chunks[:3]}...")
 
             # For visualization, we need at least 2 chunks. If we have less, try to find more
             # by expanding the search to include more chunks from this document
@@ -501,38 +507,33 @@ class KnowledgeGraphMatplotlibVisualizer:
 
     def _get_chunk_document(self, chunk_id: str) -> str:
         """Get document ID for a chunk (robust approach)"""
-        # Try different methods to get document ID
+        # Try to get the chunk object from knowledge graph
         chunk_obj = self.kg.chunks.get(chunk_id)
-        if chunk_obj:
-            # Try common attribute names
-            for attr in ['source_document', 'document_id', 'doc_id']:
-                if hasattr(chunk_obj, attr):
-                    doc_id = getattr(chunk_obj, attr)
-                    if doc_id:
-                        return str(doc_id)
+        if chunk_obj and hasattr(chunk_obj, 'source_document'):
+            return chunk_obj.source_document
         
-        # Fallback: extract from chunk ID if it contains document info
+        # Fallback: try to extract from chunk ID and convert underscores back to spaces
         if '_' in chunk_id:
             parts = chunk_id.split('_')
-            # Try to identify the document part of the ID
-            if len(parts) >= 2:
-                return '_'.join(parts[:-1])  # Everything except the last part
-            return parts[0]
+            # Find the 'window' keyword to separate document name from chunk info
+            if 'window' in parts:
+                window_idx = parts.index('window')
+                doc_parts = parts[:window_idx]
+                # Convert underscores back to spaces and handle parentheses
+                doc_name = ' '.join(doc_parts).replace('(', '(').replace(')', ')')
+                return doc_name
+            else:
+                # Fallback to everything except the last hash part
+                doc_parts = parts[:-1] if len(parts) > 1 else parts
+                doc_name = ' '.join(doc_parts).replace('(', '(').replace(')', ')')
+                return doc_name
         
         return "unknown"
 
     def _get_chunk_embedding(self, chunk_id: str) -> Optional[np.ndarray]:
-        """Get embedding for a chunk using cached embeddings"""
-        chunk_obj = self.kg.chunks.get(chunk_id)
-        if chunk_obj:
-            # Try different attribute names for embeddings
-            for attr in ['embedding', 'embeddings', 'vector']:
-                if hasattr(chunk_obj, attr):
-                    embedding = getattr(chunk_obj, attr)
-                    if embedding is not None:
-                        return np.array(embedding)
-        
-        return None
+        """Get embedding for a chunk using cached embeddings from knowledge graph"""
+        # Use the knowledge graph's embedding cache system
+        return self.kg.get_chunk_embedding(chunk_id)
 
     def _calculate_node_relevance(self, node_id: str, result: RetrievalResult) -> float:
         """Calculate relevance score for a node"""
