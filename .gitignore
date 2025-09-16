@@ -5,3 +5,5 @@
 /logs/
 /embeddings/
 /visualizations/
+/.ropeproject/
+/.claude
