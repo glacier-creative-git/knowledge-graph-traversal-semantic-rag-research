@@ -19,6 +19,7 @@ from collections import defaultdict
 import warnings
 import yaml
 from pathlib import Path
+import textwrap
 
 from .algos.base_algorithm import RetrievalResult
 from .traversal import TraversalPath, GranularityLevel, ConnectionType
@@ -58,6 +59,110 @@ class KnowledgeGraphMatplotlibVisualizer:
         
         # Load config for visualization parameters
         self._load_config()
+    
+    def _create_step_based_session_titles(self, reading_sessions: List[List[TraversalStep]]) -> List[str]:
+        """Create session titles based on actual algorithm step numbers instead of artificial session numbers.
+        
+        Args:
+            reading_sessions: List of reading sessions containing actual algorithm steps
+            
+        Returns:
+            List of titles showing actual step ranges for each session
+        """
+        titles = []
+        
+        for session_idx, session_steps in enumerate(reading_sessions):
+            if not session_steps:
+                titles.append(f"Empty Session")
+                continue
+            
+            # Get actual algorithm step numbers for this session
+            step_numbers = [step.step_number for step in session_steps]
+            min_step = min(step_numbers)
+            max_step = max(step_numbers)
+            
+            # Get document name and truncate if needed
+            doc_id = session_steps[0].doc_id
+            if len(doc_id) > 12:
+                doc_id = doc_id[:9] + "..."
+            
+            # Create title showing actual step range
+            if min_step == max_step:
+                title = f"Step {min_step}: {doc_id}"
+            else:
+                title = f"Steps {min_step}-{max_step}: {doc_id}"
+            
+            # Ensure title fits in display space
+            if len(title) > 25:
+                title = title[:22] + "..."
+            
+            titles.append(title)
+        
+        return titles
+    
+    def _format_session_title(self, session_number: int, doc_id: str, 
+                              idx_range: str, max_length: int = 25) -> str:
+        """Format session title with truncation to prevent overlap.
+        
+        Args:
+            session_number: Session number
+            doc_id: Document identifier
+            idx_range: Range of chunks (e.g., "chunks 0-3")
+            max_length: Maximum length for the title
+            
+        Returns:
+            Truncated session title that fits within display constraints
+        """
+        # Truncate document name if too long
+        if len(doc_id) > 15:
+            doc_id = doc_id[:12] + "..."
+        
+        # Create base title
+        base_title = f"S{session_number}: {doc_id}"
+        
+        # Add range info if there's space
+        full_title = f"{base_title} ({idx_range})"
+        
+        if len(full_title) <= max_length:
+            return full_title
+        else:
+            # Fallback to just session and shortened doc name
+            return base_title[:max_length]
+    
+    def _format_title_text(self, algorithm_name: str, query: str, 
+                          retrieved_count: int, score: float, 
+                          additional_info: str = "") -> str:
+        """Format title text with proper wrapping to prevent overlap.
+        
+        Args:
+            algorithm_name: Name of the algorithm
+            query: User query string
+            retrieved_count: Number of retrieved sentences
+            score: Final relevance score
+            additional_info: Additional information to include
+            
+        Returns:
+            Properly formatted title string with line breaks
+        """
+        # Truncate query if too long and wrap it
+        max_query_length = 70
+        if len(query) > max_query_length:
+            query = query[:max_query_length] + "..."
+        
+        # Wrap query text to prevent long lines
+        wrapped_query = textwrap.fill(query, width=80)
+        
+        # Build title components
+        title_parts = [
+            f"{algorithm_name} Traversal Path Visualization",
+            f"Query: '{wrapped_query}'",
+            f"Retrieved: {retrieved_count} sentences | Score: {score:.3f}"
+        ]
+        
+        if additional_info:
+            title_parts.append(additional_info)
+        
+        return "\n".join(title_parts)
     
     def _load_config(self):
         """Load configuration from config.yaml"""
@@ -586,6 +691,9 @@ class KnowledgeGraphMatplotlibVisualizer:
         """
         session_heatmaps = []
         
+        # Generate step-based titles for all sessions
+        step_based_titles = self._create_step_based_session_titles(reading_sessions)
+        
         for session_idx, session_steps in enumerate(reading_sessions):
             if not session_steps:
                 continue
@@ -628,13 +736,8 @@ class KnowledgeGraphMatplotlibVisualizer:
             
             chunk_to_matrix_idx = {chunk_id: i for i, chunk_id in enumerate(valid_chunks)}
             
-            # Get chunk indices for title
-            session_indices = [self._extract_chunk_index_from_id(cid) for cid in session_chunk_ids]
-            session_indices = [idx for idx in session_indices if idx is not None]
-            if session_indices:
-                idx_range = f"chunks {min(session_indices)}-{max(session_indices)}"
-            else:
-                idx_range = f"{len(session_chunk_ids)} chunks"
+            # Use the step-based title from our new function
+            session_title = step_based_titles[session_idx]
             
             session_heatmaps.append(DocumentHeatmapInfo(
                 doc_id=f"Session {session_idx + 1}",
@@ -643,7 +746,7 @@ class KnowledgeGraphMatplotlibVisualizer:
                 chunk_to_matrix_idx=chunk_to_matrix_idx,
                 ax=None,
                 bbox=None,
-                title=f"Session {session_idx + 1}: {doc_id} ({idx_range})"
+                title=session_title  # Use step-based title instead of session-based
             ))
         
         return session_heatmaps
@@ -673,10 +776,11 @@ class KnowledgeGraphMatplotlibVisualizer:
         plt.style.use('default')
         fig = plt.figure(figsize=(fig_width, self.figure_size[1]), facecolor='white', dpi=self.dpi)
         
-        # Create grid layout - colorbar at top, sessions below
+        # Create grid layout with expanded space for title and colorbar
         gs = gridspec.GridSpec(2, num_sessions, figure=fig,
                                height_ratios=[0.08, 1],
-                               hspace=0.05, wspace=0.35)  # More space between sessions
+                               hspace=0.2, wspace=0.35,  # Increased vertical spacing
+                               top=0.82, bottom=0.15)    # More space for title and legend
         
         # Create horizontal colorbar at top
         cbar_ax = fig.add_subplot(gs[0, :])
@@ -698,11 +802,11 @@ class KnowledgeGraphMatplotlibVisualizer:
                            vmin=vmin, vmax=vmax,
                            interpolation='nearest')
             
-            # Set title and labels for session
-            ax.set_title(heatmap_info.title, fontsize=12, fontweight='bold', pad=15)
-            ax.set_xlabel('Chunk Index', fontsize=10)
+            # Set title and labels for session with smaller font to prevent overlap
+            ax.set_title(heatmap_info.title, fontsize=10, fontweight='bold', pad=8)
+            ax.set_xlabel('Chunk Index', fontsize=9)
             if i == 0:  # Only leftmost session gets y-label
-                ax.set_ylabel('Chunk Index', fontsize=10)
+                ax.set_ylabel('Chunk Index', fontsize=9)
             
             # Get actual document indices for session
             actual_indices = self._get_actual_chunk_indices(heatmap_info.chunks_in_doc)
@@ -729,13 +833,17 @@ class KnowledgeGraphMatplotlibVisualizer:
             cbar.set_label('Chunk Similarity Score', fontsize=12, fontweight='bold')
             cbar_ax.xaxis.set_label_position('top')
         
-        # Add comprehensive title
-        title = (f"{result.algorithm_name} Sequential Reading Sessions\n"
-                 f"Query: '{query[:60]}...' | "
-                 f"Retrieved: {len(result.retrieved_content)} sentences | "
-                 f"Score: {result.final_score:.3f} | "
-                 f"Sessions: {num_sessions}")
-        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.95)
+        # Add properly formatted title for sequential sessions
+        additional_info = f"Sessions: {num_sessions}"
+        title = self._format_title_text(
+            algorithm_name=f"{result.algorithm_name} Sequential Reading Sessions",
+            query=query,
+            retrieved_count=len(result.retrieved_content),
+            score=result.final_score,
+            additional_info=additional_info
+        )
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.95,
+                    ha='center', va='top')  # Better alignment and positioning
         
         return fig
     
@@ -931,10 +1039,12 @@ class KnowledgeGraphMatplotlibVisualizer:
 
         fig = plt.figure(figsize=(fig_width, self.figure_size[1]), facecolor='white', dpi=self.dpi)
 
-        # Create grid layout - space at top for colorbar (like reference)
+        # Create grid layout with expanded space for title and colorbar
+        # Increased margins to prevent title overlap with plots
         gs = gridspec.GridSpec(2, num_docs, figure=fig,
                                height_ratios=[0.08, 1],
-                               hspace=0.05, wspace=0.25)
+                               hspace=0.2, wspace=0.25,  # Increased vertical spacing
+                               top=0.82, bottom=0.15)    # More space for title and legend
 
         # Create horizontal colorbar at top
         cbar_ax = fig.add_subplot(gs[0, :])
@@ -986,12 +1096,15 @@ class KnowledgeGraphMatplotlibVisualizer:
             cbar.set_label('Chunk Similarity Score', fontsize=12, fontweight='bold')
             cbar_ax.xaxis.set_label_position('top')
 
-        # Add title (matching reference style)
-        title = (f"{result.algorithm_name} Traversal Path Visualization\n"
-                 f"Query: '{query[:80]}...' | "
-                 f"Retrieved: {len(result.retrieved_content)} sentences | "
-                 f"Score: {result.final_score:.3f}")
-        fig.suptitle(title, fontsize=16, fontweight='bold', y=0.95)
+        # Add properly formatted title with text wrapping
+        title = self._format_title_text(
+            algorithm_name=result.algorithm_name,
+            query=query,
+            retrieved_count=len(result.retrieved_content),
+            score=result.final_score
+        )
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.95,
+                    ha='center', va='top')  # Better alignment and positioning
 
         return fig
 
