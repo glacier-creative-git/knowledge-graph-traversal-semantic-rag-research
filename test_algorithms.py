@@ -23,7 +23,11 @@ sys.path.append(str(project_root))
 from utils.retrieval import RetrievalOrchestrator
 from utils.knowledge_graph import KnowledgeGraph
 from utils.plotly_visualizer import create_algorithm_visualization
-from utils.matplotlib_visualizer import create_heatmap_visualization
+from utils.matplotlib_visualizer import (
+    create_heatmap_visualization,
+    create_global_visualization,
+    create_sequential_visualization
+)
 
 
 def setup_logging() -> logging.Logger:
@@ -147,24 +151,63 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
         except Exception as e:
             logger.warning(f"   ⚠️ Plotly visualization failed: {str(e)}")
         
-        # Create Matplotlib 2D heatmap visualization
+        # Create Matplotlib visualizations (windowed, global, and sequential)
         try:
-            matplotlib_fig = create_heatmap_visualization(
+            # 2. Windowed heatmap (original approach with updated interface)
+            windowed_fig = create_heatmap_visualization(
                 result=result,
                 query=query,
                 knowledge_graph=kg,
                 figure_size=(20, 8),
+                max_documents=6,
+                visualization_type="windowed"
+            )
+            
+            windowed_filename = f"{algorithm_name}_{safe_query}_windowed_heatmap.png"
+            windowed_path = output_dir / windowed_filename
+            windowed_fig.savefig(str(windowed_path), dpi=300, bbox_inches='tight')
+            plt.close(windowed_fig)
+            logger.info(f"   ✅ Windowed heatmap saved: {windowed_filename}")
+            
+        except Exception as e:
+            logger.warning(f"   ⚠️ Windowed heatmap visualization failed: {str(e)}")
+        
+        try:
+            # 3. Global heatmap (complete document view)
+            global_fig = create_global_visualization(
+                result=result,
+                query=query,
+                knowledge_graph=kg,
+                figure_size=(24, 10),  # Larger for global view
                 max_documents=6
             )
             
-            matplotlib_filename = f"{algorithm_name}_{safe_query}_heatmap.png"
-            matplotlib_path = output_dir / matplotlib_filename
-            matplotlib_fig.savefig(str(matplotlib_path), dpi=300, bbox_inches='tight')
-            plt.close(matplotlib_fig)  # Close to free memory
-            logger.info(f"   ✅ Matplotlib heatmap saved: {matplotlib_filename}")
+            global_filename = f"{algorithm_name}_{safe_query}_global_heatmap.png"
+            global_path = output_dir / global_filename
+            global_fig.savefig(str(global_path), dpi=300, bbox_inches='tight')
+            plt.close(global_fig)
+            logger.info(f"   ✅ Global heatmap saved: {global_filename}")
             
         except Exception as e:
-            logger.warning(f"   ⚠️ Matplotlib visualization failed: {str(e)}")
+            logger.warning(f"   ⚠️ Global heatmap visualization failed: {str(e)}")
+        
+        try:
+            # 4. Sequential session heatmap (reading sessions)
+            sequential_fig = create_sequential_visualization(
+                result=result,
+                query=query,
+                knowledge_graph=kg,
+                figure_size=(20, 8)
+            )
+            
+            sequential_filename = f"{algorithm_name}_{safe_query}_sequential_heatmap.png"
+            sequential_path = output_dir / sequential_filename
+            sequential_fig.savefig(str(sequential_path), dpi=300, bbox_inches='tight')
+            plt.close(sequential_fig)
+            logger.info(f"   ✅ Sequential heatmap saved: {sequential_filename}")
+            
+        except Exception as e:
+            logger.warning(f"   ⚠️ Sequential heatmap visualization failed: {str(e)}")
     
     except Exception as e:
         logger.error(f"   ❌ Visualization creation failed: {str(e)}")

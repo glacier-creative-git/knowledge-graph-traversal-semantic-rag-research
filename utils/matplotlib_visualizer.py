@@ -249,6 +249,101 @@ class KnowledgeGraphMatplotlibVisualizer:
         
         print(f"   Sequential window: indices {window_start} to {window_end} (traversed: {min_traversed_idx}-{max_traversed_idx})")
         return windowed_chunks
+        
+    def _get_actual_chunk_indices(self, chunk_ids: List[str]) -> List[int]:
+        """Extract actual document indices from chunk IDs for accurate axis labeling.
+        
+        Args:
+            chunk_ids: List of chunk IDs in the current visualization
+            
+        Returns:
+            List of actual document indices corresponding to the chunk IDs
+        """
+        indices = []
+        for chunk_id in chunk_ids:
+            chunk_index = self._extract_chunk_index_from_id(chunk_id)
+            if chunk_index is not None:
+                indices.append(chunk_index)
+            else:
+                # Fallback: use position in list if extraction fails
+                indices.append(len(indices))
+        return indices
+    
+    def _get_all_document_chunks(self, doc_id: str) -> List[str]:
+        """Get all chunks for a document in sequential order for global visualization.
+        
+        Args:
+            doc_id: Document identifier
+            
+        Returns:
+            List of all chunk IDs in sequential order for this document
+        """
+        # Get all chunks for this document from knowledge graph
+        all_doc_chunks = []
+        for chunk_id, chunk_obj in self.kg.chunks.items():
+            if self._get_chunk_document(chunk_id) == doc_id:
+                chunk_index = self._extract_chunk_index_from_id(chunk_id)
+                if chunk_index is not None:
+                    all_doc_chunks.append((chunk_index, chunk_id))
+        
+        if not all_doc_chunks:
+            return []
+        
+        # Sort by sequential index and return chunk IDs
+        all_doc_chunks.sort(key=lambda x: x[0])
+        return [chunk_id for _, chunk_id in all_doc_chunks]
+    
+    def _detect_reading_sessions(self, steps: List[TraversalStep]) -> List[List[TraversalStep]]:
+        """Detect continuous reading sessions for sequential window visualization.
+        
+        A reading session is a continuous sequence of steps within the same document.
+        Document changes and large index gaps trigger new sessions, but we preserve
+        cross-document connection information for visualization.
+        
+        Args:
+            steps: List of traversal steps
+            
+        Returns:
+            List of reading sessions, where each session is a list of steps
+        """
+        if not steps:
+            return []
+        
+        sessions = []
+        current_session = [steps[0]]
+        
+        for i in range(1, len(steps)):
+            current_step = steps[i]
+            previous_step = steps[i-1]
+            
+            # Start new session if:
+            # 1. Different document, OR  
+            # 2. Same document but large gap in chunk indices (>8 chunks apart)
+            start_new_session = False
+            
+            if current_step.doc_id != previous_step.doc_id:
+                start_new_session = True
+            else:
+                # Check index gap within same document
+                curr_idx = self._extract_chunk_index_from_id(current_step.chunk_id)
+                prev_idx = self._extract_chunk_index_from_id(previous_step.chunk_id)
+                
+                if curr_idx is not None and prev_idx is not None:
+                    index_gap = abs(curr_idx - prev_idx)
+                    if index_gap > 8:  # Reduced threshold for better session continuity
+                        start_new_session = True
+            
+            if start_new_session:
+                sessions.append(current_session)
+                current_session = [current_step]
+            else:
+                current_session.append(current_step)
+        
+        # Add the last session
+        if current_session:
+            sessions.append(current_session)
+        
+        return sessions
 
     def _build_document_heatmaps(self, doc_ids: List[str]) -> List[DocumentHeatmapInfo]:
         """Build similarity matrices for each document using sequential windowed approach.
@@ -326,6 +421,501 @@ class KnowledgeGraphMatplotlibVisualizer:
             ))
 
         return heatmap_infos
+    
+    def create_global_visualization(self, result: RetrievalResult, query: str,
+                                   max_documents: int = 6) -> plt.Figure:
+        """Create global visualization showing full documents with complete traversal paths.
+        
+        This method provides strategic overview by showing entire documents and how
+        algorithms navigate across the full document landscape.
+        
+        Args:
+            result: RetrievalResult from any algorithm
+            query: Original query string
+            max_documents: Maximum number of documents to show
+            
+        Returns:
+            Matplotlib Figure showing global document structure and traversal
+        """
+        print(f"🌍 Creating global visualization for {result.algorithm_name}")
+        
+        # Extract traversal information
+        traversal_steps = self._extract_traversal_steps(result)
+        self._current_steps = traversal_steps
+        print(f"Global view: {len(traversal_steps)} total steps")
+        
+        if not traversal_steps:
+            return self._create_basic_visualization(result, query)
+        
+        # Get documents involved in traversal
+        involved_docs = self._get_involved_documents(traversal_steps)
+        involved_docs = involved_docs[:max_documents]
+        print(f"📚 Global view across {len(involved_docs)} documents: {involved_docs}")
+        
+        # Build global document heatmaps (full documents)
+        heatmap_infos = self._build_global_document_heatmaps(involved_docs)
+        
+        if not heatmap_infos:
+            return self._create_basic_visualization(result, query)
+        
+        # Create figure with global view styling
+        fig = self._create_heatmap_figure(heatmap_infos, result, query)
+        
+        # Draw complete traversal path across full documents
+        self._draw_traversal_path(fig, traversal_steps, heatmap_infos)
+        
+        print(f"✅ Global visualization created successfully")
+        return fig
+    
+    def create_sequential_window_visualization(self, result: RetrievalResult, query: str) -> plt.Figure:
+        """Create sequential window visualization showing reading sessions chronologically.
+        
+        This method provides tactical analysis by showing individual reading sessions
+        as separate panels, arranged left-to-right in temporal order.
+        
+        Args:
+            result: RetrievalResult from any algorithm
+            query: Original query string
+            
+        Returns:
+            Matplotlib Figure showing sequential reading sessions
+        """
+        print(f"📖 Creating sequential window visualization for {result.algorithm_name}")
+        
+        # Extract traversal information
+        traversal_steps = self._extract_traversal_steps(result)
+        self._current_steps = traversal_steps
+        print(f"Sequential view: {len(traversal_steps)} total steps")
+        
+        if not traversal_steps:
+            return self._create_basic_visualization(result, query)
+        
+        # Detect reading sessions
+        reading_sessions = self._detect_reading_sessions(traversal_steps)
+        print(f"📑 Detected {len(reading_sessions)} reading sessions")
+        
+        # Build heatmaps for each reading session
+        session_heatmaps = self._build_session_heatmaps(reading_sessions)
+        
+        if not session_heatmaps:
+            return self._create_basic_visualization(result, query)
+        
+        # Create figure with sequential session layout
+        fig = self._create_sequential_session_figure(session_heatmaps, result, query)
+        
+        # Draw session-specific traversal paths
+        self._draw_sequential_session_paths(fig, reading_sessions, session_heatmaps)
+        
+        print(f"✅ Sequential window visualization created successfully")
+        return fig
+    
+    def _build_global_document_heatmaps(self, doc_ids: List[str]) -> List[DocumentHeatmapInfo]:
+        """Build similarity matrices for complete documents (global view).
+        
+        Creates full document matrices without windowing to show complete
+        document architecture and traversal patterns.
+        
+        Args:
+            doc_ids: List of document identifiers
+            
+        Returns:
+            List of DocumentHeatmapInfo objects for global visualization
+        """
+        heatmap_infos = []
+        
+        for doc_id in doc_ids:
+            print(f"🔍 Building global heatmap for document: '{doc_id}'")
+            
+            # Get ALL chunks for this document in sequential order
+            doc_chunks = self._get_all_document_chunks(doc_id)
+            
+            print(f"   Global document contains {len(doc_chunks)} total chunks")
+            
+            if len(doc_chunks) < 2:
+                print(f"⚠️ Document {doc_id} has fewer than 2 chunks, skipping")
+                continue
+            
+            # Get embeddings for all chunks
+            chunk_embeddings = []
+            valid_chunks = []
+            
+            for chunk_id in doc_chunks:
+                embedding = self._get_chunk_embedding(chunk_id)
+                if embedding is not None:
+                    chunk_embeddings.append(embedding)
+                    valid_chunks.append(chunk_id)
+            
+            if len(valid_chunks) < 2:
+                print(f"⚠️ Document {doc_id} has only {len(valid_chunks)} chunks with embeddings")
+                continue
+            
+            # Build complete similarity matrix
+            embeddings_array = np.array(chunk_embeddings)
+            norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
+            norms = np.where(norms == 0, 1, norms)
+            embeddings_array = embeddings_array / norms
+            similarity_matrix = np.dot(embeddings_array, embeddings_array.T)
+            
+            print(f"   Built global {similarity_matrix.shape} similarity matrix")
+            
+            chunk_to_matrix_idx = {chunk_id: i for i, chunk_id in enumerate(valid_chunks)}
+            
+            heatmap_infos.append(DocumentHeatmapInfo(
+                doc_id=doc_id,
+                similarity_matrix=similarity_matrix,
+                chunks_in_doc=valid_chunks,
+                chunk_to_matrix_idx=chunk_to_matrix_idx,
+                ax=None,
+                bbox=None,
+                title=f"Document {doc_id} (Global View)"
+            ))
+        
+        return heatmap_infos
+    
+    def _build_session_heatmaps(self, reading_sessions: List[List[TraversalStep]]) -> List[DocumentHeatmapInfo]:
+        """Build similarity matrices for each reading session.
+        
+        Creates windowed matrices for individual reading sessions,
+        maintaining sequential order within each session.
+        
+        Args:
+            reading_sessions: List of reading sessions (each session is a list of steps)
+            
+        Returns:
+            List of DocumentHeatmapInfo objects for session visualization
+        """
+        session_heatmaps = []
+        
+        for session_idx, session_steps in enumerate(reading_sessions):
+            if not session_steps:
+                continue
+                
+            # Determine document and chunk range for this session
+            doc_id = session_steps[0].doc_id
+            session_chunk_ids = [step.chunk_id for step in session_steps]
+            
+            print(f"📄 Building session {session_idx + 1} heatmap for '{doc_id}'")
+            print(f"   Session spans {len(session_chunk_ids)} chunks")
+            
+            # Get windowed chunks around this session
+            windowed_chunks = self._get_sequential_chunk_window(doc_id, session_chunk_ids)
+            
+            if len(windowed_chunks) < 2:
+                print(f"⚠️ Session {session_idx + 1} has insufficient chunks, skipping")
+                continue
+            
+            # Build similarity matrix for session window
+            chunk_embeddings = []
+            valid_chunks = []
+            
+            for chunk_id in windowed_chunks:
+                embedding = self._get_chunk_embedding(chunk_id)
+                if embedding is not None:
+                    chunk_embeddings.append(embedding)
+                    valid_chunks.append(chunk_id)
+            
+            if len(valid_chunks) < 2:
+                continue
+            
+            # Compute similarity matrix
+            embeddings_array = np.array(chunk_embeddings)
+            norms = np.linalg.norm(embeddings_array, axis=1, keepdims=True)
+            norms = np.where(norms == 0, 1, norms)
+            embeddings_array = embeddings_array / norms
+            similarity_matrix = np.dot(embeddings_array, embeddings_array.T)
+            
+            print(f"   Built session {similarity_matrix.shape} matrix")
+            
+            chunk_to_matrix_idx = {chunk_id: i for i, chunk_id in enumerate(valid_chunks)}
+            
+            # Get chunk indices for title
+            session_indices = [self._extract_chunk_index_from_id(cid) for cid in session_chunk_ids]
+            session_indices = [idx for idx in session_indices if idx is not None]
+            if session_indices:
+                idx_range = f"chunks {min(session_indices)}-{max(session_indices)}"
+            else:
+                idx_range = f"{len(session_chunk_ids)} chunks"
+            
+            session_heatmaps.append(DocumentHeatmapInfo(
+                doc_id=f"Session {session_idx + 1}",
+                similarity_matrix=similarity_matrix,
+                chunks_in_doc=valid_chunks,
+                chunk_to_matrix_idx=chunk_to_matrix_idx,
+                ax=None,
+                bbox=None,
+                title=f"Session {session_idx + 1}: {doc_id} ({idx_range})"
+            ))
+        
+        return session_heatmaps
+    
+    def _create_sequential_session_figure(self, session_heatmaps: List[DocumentHeatmapInfo],
+                                         result: RetrievalResult, query: str) -> plt.Figure:
+        """Create figure layout for sequential session visualization.
+        
+        Arranges reading sessions chronologically from left to right,
+        with each session as a separate panel.
+        
+        Args:
+            session_heatmaps: List of DocumentHeatmapInfo for each session
+            result: RetrievalResult for metadata
+            query: Original query string
+            
+        Returns:
+            Matplotlib Figure with sequential session layout
+        """
+        num_sessions = len(session_heatmaps)
+        
+        # Calculate figure width based on number of sessions
+        session_width = 4  # Width per session panel
+        fig_width = max(self.figure_size[0], num_sessions * session_width)
+        
+        # Create figure with appropriate styling
+        plt.style.use('default')
+        fig = plt.figure(figsize=(fig_width, self.figure_size[1]), facecolor='white', dpi=self.dpi)
+        
+        # Create grid layout - colorbar at top, sessions below
+        gs = gridspec.GridSpec(2, num_sessions, figure=fig,
+                               height_ratios=[0.08, 1],
+                               hspace=0.05, wspace=0.35)  # More space between sessions
+        
+        # Create horizontal colorbar at top
+        cbar_ax = fig.add_subplot(gs[0, :])
+        
+        # Session visualization parameters
+        vmin, vmax = 0, 1
+        cmap = 'RdYlBu_r'  # Maintain consistent color scheme
+        
+        # Create heatmap for each session
+        for i, heatmap_info in enumerate(session_heatmaps):
+            ax = fig.add_subplot(gs[1, i])
+            heatmap_info.ax = ax
+            heatmap_info.bbox = ax.get_position()
+            
+            # Create heatmap with consistent styling
+            im = ax.imshow(heatmap_info.similarity_matrix,
+                           cmap=cmap,
+                           aspect='equal',
+                           vmin=vmin, vmax=vmax,
+                           interpolation='nearest')
+            
+            # Set title and labels for session
+            ax.set_title(heatmap_info.title, fontsize=12, fontweight='bold', pad=15)
+            ax.set_xlabel('Chunk Index', fontsize=10)
+            if i == 0:  # Only leftmost session gets y-label
+                ax.set_ylabel('Chunk Index', fontsize=10)
+            
+            # Get actual document indices for session
+            actual_indices = self._get_actual_chunk_indices(heatmap_info.chunks_in_doc)
+            n_chunks = len(heatmap_info.chunks_in_doc)
+            
+            # Set ticks with actual document positions
+            if n_chunks <= 12:
+                ax.set_xticks(range(n_chunks))
+                ax.set_yticks(range(n_chunks))
+                ax.set_xticklabels(actual_indices, rotation=45, fontsize=8)
+                ax.set_yticklabels(actual_indices, fontsize=8)
+            else:
+                # For larger sessions, show fewer ticks
+                tick_positions = np.linspace(0, n_chunks - 1, min(8, n_chunks), dtype=int)
+                selected_indices = [actual_indices[i] for i in tick_positions]
+                ax.set_xticks(tick_positions)
+                ax.set_yticks(tick_positions)
+                ax.set_xticklabels(selected_indices, rotation=45, fontsize=8)
+                ax.set_yticklabels(selected_indices, fontsize=8)
+        
+        # Add shared colorbar
+        if session_heatmaps:
+            cbar = plt.colorbar(im, cax=cbar_ax, orientation='horizontal')
+            cbar.set_label('Chunk Similarity Score', fontsize=12, fontweight='bold')
+            cbar_ax.xaxis.set_label_position('top')
+        
+        # Add comprehensive title
+        title = (f"{result.algorithm_name} Sequential Reading Sessions\n"
+                 f"Query: '{query[:60]}...' | "
+                 f"Retrieved: {len(result.retrieved_content)} sentences | "
+                 f"Score: {result.final_score:.3f} | "
+                 f"Sessions: {num_sessions}")
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=0.95)
+        
+        return fig
+    
+    def _draw_sequential_session_paths(self, fig: plt.Figure, 
+                                     reading_sessions: List[List[TraversalStep]],
+                                     session_heatmaps: List[DocumentHeatmapInfo]):
+        """Draw traversal paths within and between reading sessions.
+        
+        Uses consistent marker system from windowed approach with cross-document
+        connections between sessions. Maintains global step numbering across sessions.
+        
+        Args:
+            fig: Matplotlib figure
+            reading_sessions: List of reading sessions
+            session_heatmaps: Corresponding heatmap info for each session
+        """
+        if len(reading_sessions) != len(session_heatmaps):
+            print("Warning: Mismatch between sessions and heatmaps")
+            return
+        
+        print(f"Drawing sequential paths across {len(reading_sessions)} sessions")
+        
+        # Flatten all steps to maintain global numbering
+        all_steps = []
+        session_step_mapping = {}  # Maps (session_idx, step_idx) to global_step_idx
+        
+        global_step_idx = 0
+        for session_idx, session_steps in enumerate(reading_sessions):
+            for step_idx, step in enumerate(session_steps):
+                all_steps.append(step)
+                session_step_mapping[(session_idx, step_idx)] = global_step_idx
+                global_step_idx += 1
+        
+        # Draw paths within each session using windowed marker system
+        for session_idx, (session_steps, heatmap_info) in enumerate(zip(reading_sessions, session_heatmaps)):
+            if not session_steps or not heatmap_info.ax:
+                continue
+            
+            ax = heatmap_info.ax
+            print(f"   Session {session_idx + 1}: {len(session_steps)} steps")
+            
+            # Draw step markers using windowed approach
+            for step_idx, step in enumerate(session_steps):
+                if step.chunk_id not in heatmap_info.chunk_to_matrix_idx:
+                    continue
+                
+                matrix_idx = heatmap_info.chunk_to_matrix_idx[step.chunk_id]
+                global_step_number = session_step_mapping[(session_idx, step_idx)]
+                
+                # Use windowed marker system (consistent with original approach)
+                if global_step_number == 0:
+                    # Global anchor point (gold star)
+                    marker_color = 'gold'
+                    marker_size = 400
+                    edge_color = 'black'
+                    edge_width = 3
+                    marker_symbol = 'star'
+                elif step.is_early_stop_point:
+                    # Early stopping point (red)
+                    marker_color = 'red'
+                    marker_size = 350
+                    edge_color = 'darkred'
+                    edge_width = 3
+                    marker_symbol = 'o'
+                else:
+                    # Regular traversal step (green scale based on relevance)
+                    relevance = max(0, min(1, step.relevance_score))
+                    green_intensity = 0.3 + (relevance * 0.7)
+                    marker_color = (1.0 - green_intensity, 1.0, 1.0 - green_intensity)
+                    marker_size = 200 + (relevance * 200)
+                    edge_color = 'darkgreen'
+                    edge_width = 2
+                    marker_symbol = 'o'
+                
+                # Draw marker on diagonal
+                if marker_symbol == 'star':
+                    ax.scatter([matrix_idx], [matrix_idx], s=marker_size, marker='*',
+                               c=[marker_color], edgecolors=edge_color, linewidths=edge_width, zorder=10)
+                else:
+                    ax.scatter([matrix_idx], [matrix_idx], s=marker_size,
+                               c=[marker_color], edgecolors=edge_color, linewidths=edge_width, zorder=10)
+                
+                # Add global step number (continuous across sessions)
+                ax.text(matrix_idx, matrix_idx, str(global_step_number),
+                        ha='center', va='center', fontsize=11, fontweight='bold',
+                        color='black', zorder=11)
+            
+            # Draw connections within session (same document)
+            for step_idx in range(len(session_steps) - 1):
+                current_step = session_steps[step_idx]
+                next_step = session_steps[step_idx + 1]
+                
+                if (current_step.chunk_id in heatmap_info.chunk_to_matrix_idx and
+                    next_step.chunk_id in heatmap_info.chunk_to_matrix_idx):
+                    
+                    current_idx = heatmap_info.chunk_to_matrix_idx[current_step.chunk_id]
+                    next_idx = heatmap_info.chunk_to_matrix_idx[next_step.chunk_id]
+                    
+                    # Within-session connection (dotted green)
+                    ax.annotate('', xy=(next_idx, next_idx),
+                                xytext=(current_idx, current_idx),
+                                arrowprops=dict(arrowstyle='->',
+                                                color='green',
+                                                linestyle=':',
+                                                linewidth=2,
+                                                alpha=0.6),
+                                zorder=5)
+        
+        # Draw cross-session connections (between different sessions)
+        for session_idx in range(len(reading_sessions) - 1):
+            current_session = reading_sessions[session_idx]
+            next_session = reading_sessions[session_idx + 1]
+            current_heatmap = session_heatmaps[session_idx]
+            next_heatmap = session_heatmaps[session_idx + 1]
+            
+            if (current_session and next_session and 
+                current_heatmap.ax and next_heatmap.ax):
+                
+                # Get last step of current session and first step of next session
+                last_step = current_session[-1]
+                first_step = next_session[0]
+                
+                if (last_step.chunk_id in current_heatmap.chunk_to_matrix_idx and
+                    first_step.chunk_id in next_heatmap.chunk_to_matrix_idx):
+                    
+                    current_idx = current_heatmap.chunk_to_matrix_idx[last_step.chunk_id]
+                    next_idx = next_heatmap.chunk_to_matrix_idx[first_step.chunk_id]
+                    
+                    # Determine connection type based on document change
+                    if last_step.doc_id != first_step.doc_id:
+                        # Cross-document connection (purple dashed)
+                        line_color = 'purple'
+                        line_style = '--'
+                        line_width = 3
+                        alpha = 0.8
+                        connection_label = 'Cross-Document'
+                    else:
+                        # Same document but different session (blue dashed)
+                        line_color = 'blue'
+                        line_style = '--'
+                        line_width = 2
+                        alpha = 0.7
+                        connection_label = 'Hierarchical'
+                    
+                    # Draw cross-session connection using ConnectionPatch
+                    conn = ConnectionPatch(
+                        xyA=(current_idx, current_idx), coordsA='data', axesA=current_heatmap.ax,
+                        xyB=(next_idx, next_idx), coordsB='data', axesB=next_heatmap.ax,
+                        arrowstyle='->',
+                        linestyle=line_style,
+                        linewidth=line_width,
+                        color=line_color,
+                        alpha=alpha,
+                        zorder=5
+                    )
+                    fig.add_artist(conn)
+                    print(f"   Cross-session connection: Session {session_idx + 1} -> {session_idx + 2} ({connection_label})")
+        
+        # Add updated legend matching windowed approach
+        legend_elements = [
+            plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='gold',
+                       markersize=15, markeredgecolor='black', markeredgewidth=2,
+                       linestyle='None', label='Anchor Point'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='lightgreen',
+                       markersize=12, markeredgecolor='darkgreen', markeredgewidth=2,
+                       linestyle='None', label='Traversal Step'),
+            plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red',
+                       markersize=12, markeredgecolor='darkred', markeredgewidth=2,
+                       linestyle='None', label='Early Stop Point'),
+            plt.Line2D([0], [0], color='purple', linestyle='--', linewidth=3,
+                       label='Cross-Document'),
+            plt.Line2D([0], [0], color='blue', linestyle='--', linewidth=2,
+                       label='Hierarchical'),
+            plt.Line2D([0], [0], color='green', linestyle=':', linewidth=2,
+                       label='Within Session')
+        ]
+        
+        fig.legend(handles=legend_elements, loc='lower center',
+                   bbox_to_anchor=(0.5, -0.02), ncol=3, frameon=True,
+                   fancybox=True, shadow=True, fontsize=10)
 
     def _create_heatmap_figure(self, heatmap_infos: List[DocumentHeatmapInfo],
                                result: RetrievalResult, query: str) -> plt.Figure:
@@ -367,24 +957,28 @@ class KnowledgeGraphMatplotlibVisualizer:
 
             # Set title and labels (matching reference style)
             ax.set_title(heatmap_info.title, fontsize=14, fontweight='bold', pad=15)
-            ax.set_xlabel('Chunk Index', fontsize=12)
+            ax.set_xlabel('Chunk Index (Document Position)', fontsize=12)
             if i == 0:  # Only leftmost plot gets y-label
-                ax.set_ylabel('Chunk Index', fontsize=12)
+                ax.set_ylabel('Chunk Index (Document Position)', fontsize=12)
 
-            # Set ticks (like reference examples)
+            # Get actual document indices for accurate labeling
+            actual_indices = self._get_actual_chunk_indices(heatmap_info.chunks_in_doc)
             n_chunks = len(heatmap_info.chunks_in_doc)
-            if n_chunks <= 10:
+            
+            # Set ticks to show actual document positions
+            if n_chunks <= 15:
                 ax.set_xticks(range(n_chunks))
                 ax.set_yticks(range(n_chunks))
-                ax.set_xticklabels(range(n_chunks))
-                ax.set_yticklabels(range(n_chunks))
+                ax.set_xticklabels(actual_indices, rotation=45)
+                ax.set_yticklabels(actual_indices)
             else:
-                # For larger matrices, show fewer ticks
+                # For larger matrices, show fewer ticks but still use actual indices
                 tick_positions = np.linspace(0, n_chunks - 1, min(10, n_chunks), dtype=int)
+                selected_indices = [actual_indices[i] for i in tick_positions]
                 ax.set_xticks(tick_positions)
                 ax.set_yticks(tick_positions)
-                ax.set_xticklabels(tick_positions)
-                ax.set_yticklabels(tick_positions)
+                ax.set_xticklabels(selected_indices, rotation=45)
+                ax.set_yticklabels(selected_indices)
 
         # Add colorbar (matching reference style)
         if heatmap_infos:
@@ -644,23 +1238,80 @@ class KnowledgeGraphMatplotlibVisualizer:
 def create_heatmap_visualization(result: RetrievalResult, query: str,
                                  knowledge_graph: KnowledgeGraph,
                                  figure_size: Tuple[int, int] = (20, 8),
-                                 max_documents: int = 6) -> plt.Figure:
+                                 max_documents: int = 6,
+                                 visualization_type: str = "windowed") -> plt.Figure:
     """
     Main entry point for creating 2D heatmap visualizations of algorithm results.
-    Matches the style and functionality of the perfect reference examples.
+    Supports multiple visualization approaches for different analytical needs.
 
     Args:
         result: RetrievalResult from any algorithm
         query: Original query string
         knowledge_graph: The knowledge graph instance
         figure_size: Figure size as (width, height)
-        max_documents: Maximum number of documents to show side-by-side
+        max_documents: Maximum number of documents to show (for windowed/global views)
+        visualization_type: Type of visualization:
+            - "windowed": Original windowed approach (default, backward compatible)
+            - "global": Full document view showing complete traversal patterns
+            - "sequential": Reading sessions arranged chronologically
 
     Returns:
         Matplotlib Figure ready for display or saving
     """
     visualizer = KnowledgeGraphMatplotlibVisualizer(knowledge_graph, figure_size)
-    return visualizer.visualize_retrieval_result(result, query, max_documents)
+    
+    if visualization_type == "global":
+        return visualizer.create_global_visualization(result, query, max_documents)
+    elif visualization_type == "sequential":
+        return visualizer.create_sequential_window_visualization(result, query)
+    else:  # Default to windowed for backward compatibility
+        return visualizer.visualize_retrieval_result(result, query, max_documents)
+
+
+def create_global_visualization(result: RetrievalResult, query: str,
+                              knowledge_graph: KnowledgeGraph,
+                              figure_size: Tuple[int, int] = (20, 8),
+                              max_documents: int = 6) -> plt.Figure:
+    """
+    Create global visualization showing full documents with complete traversal paths.
+    
+    Provides strategic overview by displaying entire document architecture and
+    how algorithms navigate across the complete document landscape.
+    
+    Args:
+        result: RetrievalResult from any algorithm
+        query: Original query string
+        knowledge_graph: The knowledge graph instance
+        figure_size: Figure size as (width, height)
+        max_documents: Maximum number of documents to show
+        
+    Returns:
+        Matplotlib Figure showing global document structure and traversal
+    """
+    visualizer = KnowledgeGraphMatplotlibVisualizer(knowledge_graph, figure_size)
+    return visualizer.create_global_visualization(result, query, max_documents)
+
+
+def create_sequential_visualization(result: RetrievalResult, query: str,
+                                  knowledge_graph: KnowledgeGraph,
+                                  figure_size: Tuple[int, int] = (20, 8)) -> plt.Figure:
+    """
+    Create sequential window visualization showing reading sessions chronologically.
+    
+    Provides tactical analysis by displaying individual reading sessions as
+    separate panels, arranged left-to-right in temporal order.
+    
+    Args:
+        result: RetrievalResult from any algorithm
+        query: Original query string
+        knowledge_graph: The knowledge graph instance
+        figure_size: Figure size as (width, height)
+        
+    Returns:
+        Matplotlib Figure showing sequential reading sessions
+    """
+    visualizer = KnowledgeGraphMatplotlibVisualizer(knowledge_graph, figure_size)
+    return visualizer.create_sequential_window_visualization(result, query)
 
 
 # Example usage function
