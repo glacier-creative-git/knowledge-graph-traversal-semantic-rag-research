@@ -151,29 +151,9 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
         except Exception as e:
             logger.warning(f"   ⚠️ Plotly visualization failed: {str(e)}")
         
-        # Create Matplotlib visualizations (windowed, global, and sequential)
+        # Create Matplotlib visualizations (global and sequential)
         try:
-            # 2. Windowed heatmap (original approach with updated interface)
-            windowed_fig = create_heatmap_visualization(
-                result=result,
-                query=query,
-                knowledge_graph=kg,
-                figure_size=(20, 8),
-                max_documents=6,
-                visualization_type="windowed"
-            )
-            
-            windowed_filename = f"{algorithm_name}_{safe_query}_windowed_heatmap.png"
-            windowed_path = output_dir / windowed_filename
-            windowed_fig.savefig(str(windowed_path), dpi=300, bbox_inches='tight')
-            plt.close(windowed_fig)
-            logger.info(f"   ✅ Windowed heatmap saved: {windowed_filename}")
-            
-        except Exception as e:
-            logger.warning(f"   ⚠️ Windowed heatmap visualization failed: {str(e)}")
-        
-        try:
-            # 3. Global heatmap (complete document view)
+            # 2. Global heatmap (complete document view)
             global_fig = create_global_visualization(
                 result=result,
                 query=query,
@@ -192,7 +172,7 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
             logger.warning(f"   ⚠️ Global heatmap visualization failed: {str(e)}")
         
         try:
-            # 4. Sequential session heatmap (reading sessions)
+            # 3. Sequential session heatmap (reading sessions)
             sequential_fig = create_sequential_visualization(
                 result=result,
                 query=query,
