@@ -42,8 +42,8 @@ class GeneratedQuestion:
             'question_text': self.question_text,
             'ground_truth_path': {
                 'nodes': self.ground_truth_path.nodes,
-                'connection_types': [ct.value for ct in self.ground_truth_path.connection_types],
-                'granularity_levels': [gl.value for gl in self.ground_truth_path.granularity_levels],
+                'connection_types': [ct.value if hasattr(ct, 'value') else str(ct) for ct in self.ground_truth_path.connection_types],
+                'granularity_levels': [gl.value if hasattr(gl, 'value') else str(gl) for gl in self.ground_truth_path.granularity_levels],
                 'total_hops': self.ground_truth_path.total_hops,
                 'is_valid': self.ground_truth_path.is_valid,
                 'validation_errors': self.ground_truth_path.validation_errors
@@ -59,10 +59,29 @@ class GeneratedQuestion:
         """Create GeneratedQuestion from dictionary."""
         # Reconstruct TraversalPath
         path_data = data['ground_truth_path']
+        
+        # Handle connection types safely
+        connection_types = []
+        for ct in path_data['connection_types']:
+            try:
+                connection_types.append(ConnectionType(ct))
+            except (ValueError, TypeError):
+                # Fallback for string values
+                connection_types.append(ConnectionType.RAW_SIMILARITY)
+        
+        # Handle granularity levels safely  
+        granularity_levels = []
+        for gl in path_data['granularity_levels']:
+            try:
+                granularity_levels.append(GranularityLevel(gl))
+            except (ValueError, TypeError):
+                # Fallback for string/int values
+                granularity_levels.append(GranularityLevel.CHUNK)
+        
         traversal_path = TraversalPath(
             nodes=path_data['nodes'],
-            connection_types=[ConnectionType(ct) for ct in path_data['connection_types']],
-            granularity_levels=[GranularityLevel(gl) for gl in path_data['granularity_levels']],
+            connection_types=connection_types,
+            granularity_levels=granularity_levels,
             total_hops=path_data['total_hops'],
             is_valid=path_data['is_valid'],
             validation_errors=path_data['validation_errors']

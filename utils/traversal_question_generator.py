@@ -328,20 +328,43 @@ class TraversalQuestionGenerator:
         return dataset
     
     def _generate_questions_by_type(self, question_type: str, count: int) -> List[GeneratedQuestion]:
-        """Generate questions for a specific traversal type."""
-        if question_type == 'single_hop':
+        """Generate questions for a specific traversal type with fallback logic."""
+        try:
+            generated = []
+            
+            # Try to generate questions of the requested type
+            if question_type == 'single_hop':
+                generated = self._generate_single_hop_questions(count)
+            elif question_type == 'sequential_flow':
+                generated = self._generate_sequential_flow_questions(count)
+            elif question_type == 'multi_hop':
+                generated = self._generate_multi_hop_questions(count)
+            elif question_type == 'theme_hop':
+                generated = self._generate_theme_hop_questions(count)
+            elif question_type == 'hierarchical':
+                generated = self._generate_hierarchical_questions(count)
+            else:
+                self.logger.warning(f"Unknown question type: {question_type}")
+                generated = []
+            
+            # Implement fallback logic if insufficient questions generated
+            if len(generated) < count:
+                shortfall = count - len(generated)
+                self.logger.warning(f"Only generated {len(generated)}/{count} {question_type} questions. Generating {shortfall} single_hop questions as fallback.")
+                
+                # Generate fallback single_hop questions
+                fallback_questions = self._generate_single_hop_questions(shortfall)
+                generated.extend(fallback_questions)
+                
+                # Log detailed failure reasons
+                self.logger.info(f"Fallback successful: Generated {len(fallback_questions)} single_hop questions to replace failed {question_type} questions")
+            
+            return generated[:count]  # Ensure we don't exceed requested count
+            
+        except Exception as e:
+            self.logger.error(f"Failed to generate {question_type} questions: {e}. Falling back to single_hop questions.")
+            # Complete fallback to single_hop questions
             return self._generate_single_hop_questions(count)
-        elif question_type == 'sequential_flow':
-            return self._generate_sequential_flow_questions(count)
-        elif question_type == 'multi_hop':
-            return self._generate_multi_hop_questions(count)
-        elif question_type == 'theme_hop':
-            return self._generate_theme_hop_questions(count)
-        elif question_type == 'hierarchical':
-            return self._generate_hierarchical_questions(count)
-        else:
-            self.logger.warning(f"Unknown question type: {question_type}")
-            return []
     
     def _generate_single_hop_questions(self, count: int) -> List[GeneratedQuestion]:
         """
@@ -794,64 +817,131 @@ Write only the question (no explanations or labels):"""
         return []
     
     def _find_multi_document_chunks(self, num_docs: int, use_theme_similarity: bool) -> List[Any]:
-        """Find chunks from multiple documents connected by similarity or themes."""
-        chunks = list(self.kg.chunks.values())
-        selected_chunks = []
-        used_documents = set()
-        
-        # Start with random chunk
-        start_chunk = random.choice(chunks)
-        selected_chunks.append(start_chunk)
-        used_documents.add(start_chunk.source_document)
-        
-        current_chunk = start_chunk
-        
-        # Find connected chunks from different documents
-        while len(selected_chunks) < num_docs:
-            candidates = []
+        """Find chunks from multiple documents connected by similarity or themes with improved validation."""
+        try:
+            chunks = list(self.kg.chunks.values())
             
-            if use_theme_similarity:
-                # Use inter-document connections (theme-based)
-                candidates = [self.kg.chunks[cid] for cid in current_chunk.inter_doc_connections 
-                            if cid in self.kg.chunks and 
-                            self.kg.chunks[cid].source_document not in used_documents]
-            else:
-                # Use all connections but filter for different documents
-                all_connections = current_chunk.intra_doc_connections + current_chunk.inter_doc_connections
-                candidates = [self.kg.chunks[cid] for cid in all_connections 
-                            if cid in self.kg.chunks and 
-                            self.kg.chunks[cid].source_document not in used_documents]
+            # Pre-validate that we have enough documents
+            available_docs = set(chunk.source_document for chunk in chunks)
+            if len(available_docs) < num_docs:
+                self.logger.warning(f"Only {len(available_docs)} documents available, but {num_docs} requested")
+                return []
             
-            if not candidates:
-                break
+            # Try multiple starting points for better success rate
+            max_attempts = 10
             
-            next_chunk = random.choice(candidates)
-            selected_chunks.append(next_chunk)
-            used_documents.add(next_chunk.source_document)
-            current_chunk = next_chunk
-        
-        return selected_chunks
+            for attempt in range(max_attempts):
+                selected_chunks = []
+                used_documents = set()
+                
+                # Start with random chunk that has connections
+                potential_starts = [chunk for chunk in chunks 
+                                  if (chunk.inter_doc_connections if use_theme_similarity 
+                                     else chunk.intra_doc_connections + chunk.inter_doc_connections)]
+                
+                if not potential_starts:
+                    self.logger.warning("No chunks with appropriate connections found")
+                    continue
+                
+                start_chunk = random.choice(potential_starts)
+                selected_chunks.append(start_chunk)
+                used_documents.add(start_chunk.source_document)
+                current_chunk = start_chunk
+                
+                # Find connected chunks from different documents
+                while len(selected_chunks) < num_docs:
+                    candidates = []
+                    
+                    if use_theme_similarity:
+                        # Use inter-document connections (theme-based)
+                        candidates = [self.kg.chunks.get(cid) for cid in current_chunk.inter_doc_connections 
+                                    if cid in self.kg.chunks and 
+                                    self.kg.chunks[cid].source_document not in used_documents]
+                    else:
+                        # Use all connections but filter for different documents
+                        all_connections = current_chunk.intra_doc_connections + current_chunk.inter_doc_connections
+                        candidates = [self.kg.chunks.get(cid) for cid in all_connections 
+                                    if cid in self.kg.chunks and 
+                                    self.kg.chunks[cid].source_document not in used_documents]
+                    
+                    # Filter out None values
+                    candidates = [c for c in candidates if c is not None]
+                    
+                    if not candidates:
+                        break
+                    
+                    next_chunk = random.choice(candidates)
+                    selected_chunks.append(next_chunk)
+                    used_documents.add(next_chunk.source_document)
+                    current_chunk = next_chunk
+                
+                # Check if we found enough chunks
+                if len(selected_chunks) >= num_docs:
+                    return selected_chunks
+            
+            # If all attempts failed, log the issue
+            connection_type = "theme-based" if use_theme_similarity else "raw similarity"
+            self.logger.warning(f"Failed to find {num_docs} documents connected by {connection_type} after {max_attempts} attempts")
+            return []
+            
+        except Exception as e:
+            self.logger.error(f"Error in _find_multi_document_chunks: {e}")
+            return []
     
     def _find_hierarchical_sequence(self) -> Tuple[str, Any, Any]:
-        """Find document → chunk → sentence sequence."""
-        documents = list(self.kg.documents.values())
-        
-        for doc in documents:
-            # Get chunks from this document
-            doc_chunks = [chunk for chunk in self.kg.chunks.values() 
-                         if chunk.source_document == doc.title]
+        """Find document → chunk → sentence sequence with improved validation."""
+        try:
+            documents = list(self.kg.documents.values())
             
-            if doc_chunks:
-                chunk = random.choice(doc_chunks)
-                
-                # Get sentences from this chunk
-                sentences = self.kg.get_chunk_sentences(chunk.chunk_id)
-                
-                if sentences:
-                    sentence = random.choice(sentences)
-                    return doc.doc_id, chunk, sentence
-        
-        return None, None, None
+            if not documents:
+                self.logger.warning("No documents available for hierarchical sequence")
+                return None, None, None
+            
+            # Try multiple documents for better success rate
+            random.shuffle(documents)
+            
+            for doc in documents:
+                try:
+                    # Get chunks from this document
+                    doc_chunks = [chunk for chunk in self.kg.chunks.values() 
+                                 if chunk.source_document == doc.title]
+                    
+                    if not doc_chunks:
+                        continue
+                    
+                    chunk = random.choice(doc_chunks)
+                    
+                    # Get sentences from this chunk - try different methods
+                    sentences = []
+                    
+                    # Method 1: Use kg.get_chunk_sentences if available
+                    if hasattr(self.kg, 'get_chunk_sentences'):
+                        sentences = self.kg.get_chunk_sentences(chunk.chunk_id)
+                    
+                    # Method 2: Try to get sentences from chunk.sentence_ids if available
+                    if not sentences and hasattr(chunk, 'sentence_ids'):
+                        sentences = [self.kg.sentences[sid] for sid in chunk.sentence_ids 
+                                   if sid in self.kg.sentences]
+                    
+                    # Method 3: Get any sentences from this document
+                    if not sentences:
+                        sentences = [sent for sent in self.kg.sentences.values() 
+                                   if hasattr(sent, 'source_document') and sent.source_document == doc.title]
+                    
+                    if sentences:
+                        sentence = random.choice(sentences)
+                        return doc.doc_id, chunk, sentence
+                        
+                except Exception as e:
+                    self.logger.warning(f"Failed to process document {doc.title}: {e}")
+                    continue
+            
+            self.logger.warning("No valid hierarchical sequences found in any document")
+            return None, None, None
+            
+        except Exception as e:
+            self.logger.error(f"Error in _find_hierarchical_sequence: {e}")
+            return None, None, None
     
     def _get_node_content(self, node_id: str, granularity: GranularityLevel) -> str:
         """Get text content for a node at specific granularity."""

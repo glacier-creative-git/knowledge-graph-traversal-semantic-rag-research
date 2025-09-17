@@ -1,0 +1,26 @@
+2025-09-17 15:20:41,828 - RAGBenchmark - INFO - 🚀 RAG Algorithm Benchmarking System Starting...
+2025-09-17 15:20:41,828 - RAGBenchmark - INFO - 🚀 RAG Benchmark Orchestrator initialized
+2025-09-17 15:20:41,829 - RAGBenchmark - INFO -    Questions: 25
+2025-09-17 15:20:41,829 - RAGBenchmark - INFO -    Algorithms: ['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid']
+2025-09-17 15:20:41,829 - RAGBenchmark - INFO -    K-value: 10
+2025-09-17 15:20:41,829 - RAGBenchmark - INFO -    Output: benchmark_results
+2025-09-17 15:20:41,829 - RAGBenchmark - INFO -    Visualizations: enabled
+2025-09-17 15:20:41,829 - RAGBenchmark - INFO - 🔧 Initializing SemanticRAGPipeline...
+2025-09-17 15:20:41,838 - RAGBenchmark - ERROR - ❌ Failed to initialize pipeline: [Errno 2] No such file or directory: '/Users/eric/Documents/Development/semantic-rag-chunking-research/logs/semantic_rag_pipeline_20250917_152041_340d388c.log'
+2025-09-17 15:20:41,838 - RAGBenchmark - ERROR - 💥 Benchmark failed: [Errno 2] No such file or directory: '/Users/eric/Documents/Development/semantic-rag-chunking-research/logs/semantic_rag_pipeline_20250917_152041_340d388c.log'
+2025-09-17 15:20:41,839 - RAGBenchmark - ERROR - Traceback (most recent call last):
+  File "/Users/eric/Documents/Development/semantic-rag-chunking-research/benchmark.py", line 599, in run
+    self.initialize_pipeline()
+  File "/Users/eric/Documents/Development/semantic-rag-chunking-research/benchmark.py", line 173, in initialize_pipeline
+    self.pipeline._initialize_logging()
+  File "/Users/eric/Documents/Development/semantic-rag-chunking-research/utils/pipeline.py", line 730, in _initialize_logging
+    file_handler = logging.FileHandler(log_file)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/logging/__init__.py", line 1231, in __init__
+    StreamHandler.__init__(self, self._open())
+                                 ^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.12/lib/python3.12/logging/__init__.py", line 1263, in _open
+    return open_func(self.baseFilename, self.mode,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/eric/Documents/Development/semantic-rag-chunking-research/logs/semantic_rag_pipeline_20250917_152041_340d388c.log'
+

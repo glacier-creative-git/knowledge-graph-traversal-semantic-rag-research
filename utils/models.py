@@ -620,6 +620,35 @@ class MultiGranularityEmbeddingEngine:
             stats[model_name] = model_stats
         
         return stats
+    
+    def load_model_embeddings(self, model_name: str) -> Optional[Dict[str, List[Any]]]:
+        """Load cached embeddings for a specific model.
+        
+        Args:
+            model_name: Name of the embedding model
+            
+        Returns:
+            Dictionary with granularity embeddings or None if not found
+        """
+        try:
+            cache_path = self._get_cache_path(model_name)
+            
+            if not cache_path.exists():
+                self.logger.info(f"No cached embeddings found for model: {model_name}")
+                return None
+            
+            self.logger.info(f"Loading cached embeddings for model: {model_name}")
+            embeddings = self._load_cached_embeddings(cache_path)
+            
+            self.logger.info(f"Successfully loaded {len(embeddings)} granularity types")
+            for granularity_type, emb_list in embeddings.items():
+                self.logger.info(f"  {granularity_type}: {len(emb_list)} embeddings")
+            
+            return embeddings
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load model embeddings for {model_name}: {e}")
+            return None
 
 
 # Backwards compatibility: Alias the new class as EmbeddingEngine

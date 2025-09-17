@@ -6,4 +6,5 @@
 /embeddings/
 /visualizations/
 /.ropeproject/
-/.claude
+/.claude/
+/benchmark_results/

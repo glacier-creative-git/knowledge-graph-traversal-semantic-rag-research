@@ -62,12 +62,10 @@ models:
 wikipedia:
   use_cached_articles: true
   topics:
-    - "Machine learning"
+    - "Neuroscience"
     - "Psychology"
-    - "Neural networks"
-    - "Artifical intelligence"
-    - "History of computers"
-  articles_per_topic: 3
+    - "Cognition"
+  articles_per_topic: 10
   max_article_length: 5000000
   min_article_length: 1000
   language: "en"
