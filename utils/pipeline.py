@@ -15,6 +15,7 @@ import platform
 import psutil
 import shutil
 import uuid
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -67,6 +68,10 @@ class SemanticRAGPipeline:
         # Phase 5: Theme extraction storage (entity extraction removed)
         self.theme_data = {}
         self.theme_stats = {}
+        
+        # Phase 7: Question generation storage
+        self.evaluation_dataset = None
+        self.question_stats = {}
 
     # Update the main pipe() method to include Phase 5
     def pipe(self) -> Dict[str, Any]:
@@ -110,7 +115,14 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 6: Knowledge Graph Construction")
 
-            self.logger.info("🎉 Enhanced pipeline with entity/theme extraction completed successfully!")
+            # Phase 7: Traversal-Based Question Generation
+            if self.config['execution']['mode'] in ['full_pipeline']:
+                if 'question_generation' not in self.config['execution']['skip_phases']:
+                    self._phase_7_question_generation()
+                else:
+                    self.logger.info("⏭️  Skipping Phase 7: Question Generation")
+
+            self.logger.info("🎉 Enhanced pipeline with question generation completed successfully!")
             return {
                 "experiment_id": self.experiment_id,
                 "status": "completed",
@@ -502,6 +514,132 @@ class SemanticRAGPipeline:
         except Exception as e:
             self.logger.error(f"❌ Phase 6 failed: {e}")
             raise
+
+    def _phase_7_question_generation(self):
+        """Phase 7: Traversal-Based Question Generation using validated paths."""
+        self.logger.info("📝 Starting Phase 7: Traversal-Based Question Generation")
+
+        # Check if we have required data from previous phases
+        if not self.knowledge_graph:
+            self.logger.warning("No knowledge graph available from Phase 6.")
+            raise RuntimeError("No knowledge graph available. Please run Phase 6 first.")
+
+        try:
+            # Import the traversal question generator
+            from utils.traversal_question_generator import create_traversal_question_generator
+            
+            # Check if we should force recompute
+            force_recompute = 'questions' in self.config['execution'].get('force_recompute', [])
+            
+            # Get question generation parameters from config
+            qgen_config = self.config.get('question_generation', {})
+            num_questions = qgen_config.get('num_questions', 50)  # Default 50 questions
+            cache_name = f"{self.experiment_id}_questions"
+            
+            # Check for cached questions
+            questions_dir = Path(self.config['directories']['data']) / "questions"
+            cache_path = questions_dir / f"{cache_name}.json"
+            
+            if not force_recompute and cache_path.exists():
+                self.logger.info("📂 Loading cached evaluation dataset")
+                from utils.questions import EvaluationDataset
+                self.evaluation_dataset = EvaluationDataset.load(str(cache_path), self.logger)
+                
+                # Create stats from loaded dataset
+                self.question_stats = {
+                    'total_questions': len(self.evaluation_dataset.questions),
+                    'load_time': 0.0,
+                    'cached': True,
+                    'cache_file': str(cache_path),
+                    'question_distribution': self.evaluation_dataset.dataset_metadata.get('questions_by_type', {})
+                }
+            else:
+                # Generate fresh questions
+                self.logger.info("🎯 Generating traversal-based evaluation questions")
+                start_time = time.time()
+                
+                # Initialize question generator
+                question_generator = create_traversal_question_generator(
+                    knowledge_graph=self.knowledge_graph,
+                    config=self.config,
+                    logger=self.logger
+                )
+                
+                # Generate dataset
+                self.evaluation_dataset = question_generator.generate_dataset(
+                    num_questions=num_questions,
+                    cache_name=cache_name
+                )
+                
+                generation_time = time.time() - start_time
+                
+                # Create generation statistics
+                self.question_stats = {
+                    'total_questions': len(self.evaluation_dataset.questions),
+                    'generation_time': generation_time,
+                    'cached': False,
+                    'question_distribution': self.evaluation_dataset.dataset_metadata.get('questions_by_type', {}),
+                    'generator_model': qgen_config.get('generator_model_type', 'ollama'),
+                    'critic_model': qgen_config.get('critic_model_type', 'ollama')
+                }
+            
+            # Log question generation statistics
+            self.logger.info("📊 Question Generation Statistics:")
+            self.logger.info(f"   Total questions: {self.question_stats['total_questions']:,}")
+            
+            if 'question_distribution' in self.question_stats:
+                self.logger.info("   Question type distribution:")
+                for q_type, count in self.question_stats['question_distribution'].items():
+                    self.logger.info(f"      {q_type}: {count}")
+            
+            if self.question_stats.get('cached', False):
+                self.logger.info(f"   Loaded from cache: {self.question_stats['cache_file']}")
+            else:
+                self.logger.info(f"   Generation time: {self.question_stats['generation_time']:.2f}s")
+                self.logger.info(f"   Generator model: {self.question_stats.get('generator_model', 'unknown')}")
+                self.logger.info(f"   Critic model: {self.question_stats.get('critic_model', 'unknown')}")
+            
+            # Validate question quality
+            self.logger.info("🔍 Validating question quality...")
+            validation_stats = self._validate_generated_questions()
+            self.question_stats.update(validation_stats)
+            
+            self.logger.info(f"   Valid questions: {validation_stats['valid_questions']}/{validation_stats['total_questions']}")
+            self.logger.info(f"   Validity rate: {validation_stats['validity_rate']:.2%}")
+            
+            self.logger.info("✅ Phase 7 Traversal-Based Question Generation completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Phase 7 failed: {e}")
+            raise
+    
+    def _validate_generated_questions(self) -> Dict[str, Any]:
+        """Validate that generated questions have valid traversal paths."""
+        if not self.evaluation_dataset:
+            return {'valid_questions': 0, 'total_questions': 0, 'validity_rate': 0.0}
+        
+        valid_count = 0
+        total_count = len(self.evaluation_dataset.questions)
+        validation_errors = []
+        
+        for question in self.evaluation_dataset.questions:
+            if question.ground_truth_path.is_valid:
+                valid_count += 1
+            else:
+                validation_errors.append({
+                    'question_id': question.question_id,
+                    'question_type': question.question_type,
+                    'errors': question.ground_truth_path.validation_errors
+                })
+        
+        validity_rate = valid_count / total_count if total_count > 0 else 0.0
+        
+        return {
+            'valid_questions': valid_count,
+            'total_questions': total_count,
+            'validity_rate': validity_rate,
+            'validation_errors': validation_errors[:5]  # Show first 5 errors
+        }
 
     def _load_config(self):
         """Load configuration from YAML file."""

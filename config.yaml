@@ -210,14 +210,50 @@ knowledge_graph:
       enabled: true
       max_sentences: 2
 
-# Ollama Configuration (unchanged)
+# Question Generation Models Configuration (Phase 7)
+question_generation:
+  # Model selection: "ollama" or "openai"
+  generator_model_type: "ollama"  # Primary model for question generation
+  critic_model_type: "ollama"     # Secondary model for question critique
+  
+  # Question type distribution (must sum to 1.0)
+  question_distribution:
+    single_hop: 0.3        # Same document, raw similarity
+    sequential_flow: 0.25  # Same document, 1-10 chunks
+    multi_hop: 0.2         # 3 documents, raw KG similarity
+    theme_hop: 0.15        # 3 documents, theme similarity  
+    hierarchical: 0.1      # doc_summary → chunk → sentence
+  
+  # Generation parameters
+  num_questions: 50        # Total number of questions to generate
+  max_hops: 3              # Maximum hops for multi-hop questions
+  max_sentences: 10        # Maximum sentences to pull
+  enable_early_stopping: false  # Disabled for now
+  cache_questions: true    # Cache generated questions
+  
+  # Quality control
+  retry_failed_questions: true
+  max_retries: 3
+  min_question_length: 20
+  max_question_length: 200
+
+# Ollama Configuration
 ollama:
   model: "llama3.1:8b"
   base_url: "http://localhost:11434"
   options:
     temperature: 0.1
-    num_predict: 100
+    num_predict: 150
     stop: ["\n\n", "Text:", "Summary:", "Topics:"]
+
+# OpenAI Configuration (for interchangeable use)
+openai:
+  generator_model: "gpt-4o-mini"     # Cheaper model for generation
+  critic_model: "gpt-4o"             # More expensive model for critique
+  api_key: ""  # Set via environment variable OPENAI_API_KEY
+  options:
+    temperature: 0.1
+    max_tokens: 150
 
 # Evaluation Configuration (unchanged)
 evaluation:
