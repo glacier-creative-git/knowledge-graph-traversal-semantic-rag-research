@@ -52,35 +52,38 @@ class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
         
         self.logger.info(f"   Found {chunks_with_cache} chunks with cached similarities")
         
-        # Step 2: Select top-k most similar chunks
-        chunk_similarities.sort(key=lambda x: x[1], reverse=True)
-        top_chunks = chunk_similarities[:self.top_k_chunks]
-        
-        self.logger.info(f"   Selected top {len(top_chunks)} chunks")
-        
-        # Step 3: Extract sentences from selected chunks
+        # Step 2: Select chunks until we have enough sentences
         extracted_sentences = []
         selected_chunks = []
         extraction_metadata = {}
+        chunk_index = 0
         
-        for chunk_id, similarity in top_chunks:
+        # Keep selecting chunks until we reach target sentence count
+        while len(extracted_sentences) < self.max_results and chunk_index < len(chunk_similarities):
+            chunk_id, similarity = chunk_similarities[chunk_index]
+            
             chunk_sentences = self.get_chunk_sentences(chunk_id)
             newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
             
-            extracted_sentences.extend(newly_extracted)
-            selected_chunks.append(chunk_id)
-            extraction_metadata[chunk_id] = {
-                'similarity_score': similarity,
-                'sentences_extracted': len(newly_extracted),
-                'total_chunk_sentences': len(chunk_sentences)
-            }
+            if newly_extracted:  # Only add chunk if it contributes new sentences
+                extracted_sentences.extend(newly_extracted)
+                selected_chunks.append(chunk_id)
+                extraction_metadata[chunk_id] = {
+                    'similarity_score': similarity,
+                    'sentences_extracted': len(newly_extracted),
+                    'total_chunk_sentences': len(chunk_sentences)
+                }
+                
+                self.logger.debug(f"     Chunk {chunk_id}: {len(newly_extracted)} new sentences (sim: {similarity:.3f})")
             
-            self.logger.debug(f"     Chunk {chunk_id}: {len(newly_extracted)} new sentences (sim: {similarity:.3f})")
+            chunk_index += 1
         
-        # Step 4: Apply result limit
+        self.logger.info(f"   Selected {len(selected_chunks)} chunks to get {len(extracted_sentences)} sentences")
+        
+        # Step 3: Apply result limit
         final_sentences = extracted_sentences[:self.max_results]
         
-        # Step 5: Calculate confidence scores and metadata
+        # Step 4: Calculate confidence scores and metadata
         confidence_scores = self.calculate_confidence_scores(final_sentences)
         sentence_sources = self.create_sentence_sources_mapping(final_sentences)
         
@@ -94,8 +97,14 @@ class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
             validation_errors=[]
         )
         
-        # Calculate final score as average of top chunk similarities
-        final_score = sum(sim for _, sim in top_chunks) / len(top_chunks) if top_chunks else 0.0
+        # Calculate final score as average of selected chunk similarities
+        if selected_chunks:
+            # Get similarities for selected chunks
+            selected_similarities = [extraction_metadata[chunk_id]['similarity_score'] 
+                                   for chunk_id in selected_chunks]
+            final_score = sum(selected_similarities) / len(selected_similarities)
+        else:
+            final_score = 0.0
         
         processing_time = time.time() - start_time
         
@@ -111,10 +120,11 @@ class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
             final_score=final_score,
             processing_time=processing_time,
             metadata={
-                'top_k_chunks': self.top_k_chunks,
                 'chunks_processed': len(chunk_similarities),
-                'chunks_selected': len(top_chunks),
-                'extraction_metadata': extraction_metadata
+                'chunks_selected': len(selected_chunks),
+                'extraction_metadata': extraction_metadata,
+                'target_sentences': self.max_results,
+                'adaptive_selection': True
             },
             extraction_metadata={
                 'total_extracted': len(extracted_sentences),

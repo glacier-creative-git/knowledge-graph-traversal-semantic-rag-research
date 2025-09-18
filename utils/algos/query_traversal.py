@@ -80,9 +80,27 @@ class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
                            f"query_sim={best_similarity:.3f}")
             
             if best_node_type == "sentence":
-                # TERMINATION: Best node is sentence - no better chunks to explore
-                self.logger.info(f"🎯 TERMINATION: Best node is sentence - optimal extraction point reached")
-                break
+                # SENTENCE FOCUS: Best node is sentence - extract it but continue searching for more content
+                sentence_text = self.get_sentence_text(best_node_id)
+                if sentence_text and sentence_text not in extracted_sentences:
+                    extracted_sentences.append(sentence_text)
+                    path_nodes.append(best_node_id)
+                    connection_types.append(ConnectionType.RAW_SIMILARITY)
+                    granularity_levels.append(GranularityLevel.SENTENCE)
+                    self.logger.info(f"📝 EXTRACTED: High-similarity sentence (sim: {best_similarity:.3f})")
+                
+                # Continue traversal - look for next best chunk to explore
+                next_chunk = self.find_next_chunk(hybrid_nodes, visited_chunks)
+                if next_chunk:
+                    self.logger.info(f"🚶 TRAVERSE: Moving to chunk {next_chunk} for more content")
+                    current_chunk = next_chunk
+                    visited_chunks.add(next_chunk)
+                    path_nodes.append(next_chunk)
+                    connection_types.append(ConnectionType.RAW_SIMILARITY)
+                    granularity_levels.append(GranularityLevel.CHUNK)
+                else:
+                    self.logger.debug("   No more unvisited chunks available")
+                    break
             
             elif best_node_type == "chunk":
                 # TRAVERSE: Move to the best connected chunk (with stronger revisit prevention)

@@ -86,26 +86,49 @@ class TFIDFReranker(BaseReranker):
         self.vectorizer = TfidfVectorizer(
             stop_words='english',
             max_features=config.get('max_features', 5000),
-            ngram_range=config.get('ngram_range', (1, 2))
+            ngram_range=tuple(config.get('ngram_range', [1, 2]))  # Convert list to tuple
         )
     
     def rerank(self, sentences: List[str], query: str, metadata: Optional[Dict] = None) -> List[RankedSentence]:
-        """Rerank using TF-IDF cosine similarity."""
+        """Rerank using TF-IDF cosine similarity with comprehensive error handling."""
         if not sentences:
+            self.logger.warning("TF-IDF reranking: No sentences provided")
             return []
+        
+        self.logger.debug(f"TF-IDF reranking: Processing {len(sentences)} sentences")
         
         # Prepare documents (query + sentences)
         documents = [query] + sentences
         
+        # Log document preparation
+        self.logger.debug(f"TF-IDF reranking: Prepared {len(documents)} documents (1 query + {len(sentences)} sentences)")
+        
         try:
             # Fit TF-IDF on all documents
             tfidf_matrix = self.vectorizer.fit_transform(documents)
+            self.logger.debug(f"TF-IDF reranking: Created matrix shape {tfidf_matrix.shape}")
+            
+            # Validate matrix dimensions
+            if tfidf_matrix.shape[0] < 2:
+                raise ValueError(f"TF-IDF matrix has insufficient rows: {tfidf_matrix.shape[0]} (need ≥2)")
             
             # Calculate similarity between query (index 0) and all sentences
-            query_vector = tfidf_matrix[0:1]
-            sentence_vectors = tfidf_matrix[1:]
+            query_vector = tfidf_matrix[0:1]  # Shape: (1, n_features)
+            sentence_vectors = tfidf_matrix[1:]  # Shape: (n_sentences, n_features)
+            
+            self.logger.debug(f"TF-IDF reranking: Query vector shape {query_vector.shape}, sentence vectors shape {sentence_vectors.shape}")
+            
+            # Validate vector dimensions
+            if sentence_vectors.shape[0] == 0:
+                raise ValueError("No sentence vectors available for similarity calculation")
             
             similarities = cosine_similarity(query_vector, sentence_vectors)[0]
+            
+            self.logger.debug(f"TF-IDF reranking: Calculated {len(similarities)} similarity scores")
+            
+            # Validate similarity array length
+            if len(similarities) != len(sentences):
+                raise ValueError(f"Similarity array length ({len(similarities)}) != sentences length ({len(sentences)})")
             
             # Create ranked sentences
             ranked_sentences = []
@@ -123,17 +146,21 @@ class TFIDFReranker(BaseReranker):
                     original_rank=i,
                     rerank_score=final_score,
                     score_components=score_components,
-                    source_chunk=metadata.get('chunks', [f"chunk_{i}"])[i] if metadata else f"chunk_{i}"
+                    source_chunk=metadata.get('chunks', [f"chunk_{i}"])[i] if metadata and 'chunks' in metadata and i < len(metadata['chunks']) else f"chunk_{i}"
                 )
                 ranked_sentences.append(ranked_sentence)
             
             # Sort by rerank score (descending)
             ranked_sentences.sort(key=lambda x: x.rerank_score, reverse=True)
             
-            return self._ensure_target_count(ranked_sentences, self.config.get('target_count', 10))
+            result = self._ensure_target_count(ranked_sentences, self.config.get('target_count', 10))
+            self.logger.debug(f"TF-IDF reranking: Returning {len(result)} ranked sentences")
+            
+            return result
             
         except Exception as e:
             self.logger.error(f"TF-IDF reranking failed: {e}")
+            self.logger.debug(f"TF-IDF reranking debug info: sentences={len(sentences)}, query_len={len(query)}")
             # Fallback: return original order
             return self._create_fallback_ranking(sentences, metadata)
     

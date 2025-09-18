@@ -137,6 +137,10 @@ class BenchmarkOrchestrator:
         self.logger = logger
         self.start_time = datetime.now()
         
+        # Temporarily enable debug logging for reranking diagnosis
+        reranking_logger = logging.getLogger("RAGBenchmark")
+        reranking_logger.setLevel(logging.DEBUG)
+        
         # Setup output directories
         self.output_dir = Path(args.output_dir)
         self.visualization_dir = self.output_dir / "visualizations"
