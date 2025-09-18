@@ -696,14 +696,68 @@ Write only the question (no explanations or labels):"""
         question = self._parse_question_response(raw_response)
         
         # Validate the question
-        if not question or len(question) < 10:
-            # Fallback question generation
+        if not question:
+            self.logger.warning(f"Failed to parse valid question from LLM response for {question_type}")
             question = self._generate_fallback_question(path_content, question_type)
+        else:
+            # Additional validation
+            validation = self._validate_question_quality(question)
+            if not validation['is_valid']:
+                self.logger.warning(f"Generated question failed validation: {validation['errors']}")
+                question = self._generate_fallback_question(path_content, question_type)
         
         return question
     
+    def _validate_question_quality(self, question: str) -> Dict[str, Any]:
+        """Comprehensive question quality validation."""
+        validation_result = {
+            'is_valid': True,
+            'errors': [],
+            'warnings': [],
+            'quality_score': 1.0
+        }
+        
+        # Check basic structure
+        if not question or len(question.strip()) < 10:
+            validation_result['is_valid'] = False
+            validation_result['errors'].append("Question too short or empty")
+            return validation_result
+        
+        question = question.strip()
+        
+        # Check if it's actually a question
+        if not question.endswith('?'):
+            validation_result['warnings'].append("Missing question mark")
+            validation_result['quality_score'] -= 0.2
+        
+        # Check for incomplete sentences or fragments
+        if len(question.split()) < 5:
+            validation_result['is_valid'] = False
+            validation_result['errors'].append("Question appears to be a fragment")
+            return validation_result
+        
+        # Check for common question words
+        question_words = ['how', 'what', 'why', 'when', 'where', 'which', 'who', 'does', 'can', 'is', 'are', 'will']
+        has_question_word = any(word.lower() in question.lower() for word in question_words)
+        
+        if not has_question_word:
+            validation_result['warnings'].append("No clear question words found")
+            validation_result['quality_score'] -= 0.3
+        
+        # Check for weird artifacts (single words, awards without context, etc.)
+        if len(question.split()) <= 3 and '?' in question:
+            validation_result['is_valid'] = False
+            validation_result['errors'].append("Question appears to be malformed fragment")
+        
+        # Check for award/title fragments without proper question structure
+        if any(word in question.lower() for word in ['award', 'prize', 'medal']) and len(question.split()) < 6:
+            validation_result['is_valid'] = False
+            validation_result['errors'].append("Question appears to be incomplete award/title reference")
+        
+        return validation_result
+    
     def _parse_question_response(self, raw_response: str) -> str:
-        """Parse and clean the raw LLM response to extract just the question."""
+        """Parse and clean the raw LLM response to extract just the question with validation."""
         if not raw_response:
             return ""
         
@@ -731,20 +785,27 @@ Write only the question (no explanations or labels):"""
         for sentence in sentences:
             sentence = sentence.strip()
             if sentence.endswith('?'):
-                return sentence
+                # Validate this potential question
+                validation = self._validate_question_quality(sentence)
+                if validation['is_valid']:
+                    return sentence
+                else:
+                    self.logger.warning(f"Invalid question candidate: {sentence}. Errors: {validation['errors']}")
         
-        # If no question mark found, look for the first complete sentence
+        # If no valid question mark sentence found, try to construct one
         if sentences and len(sentences[0].strip()) > 10:
             question = sentences[0].strip()
             if not question.endswith('?'):
                 question += "?"
-            return question
+            
+            # Validate the constructed question
+            validation = self._validate_question_quality(question)
+            if validation['is_valid']:
+                return question
         
-        # Return the cleaned response, ensuring it ends with a question mark
-        if cleaned and not cleaned.endswith('?'):
-            cleaned += "?"
-        
-        return cleaned
+        # Return empty string if no valid question can be constructed
+        self.logger.error(f"Could not extract valid question from: {raw_response[:100]}...")
+        return ""
     
     def _generate_fallback_question(self, path_content: List[str], question_type: str) -> str:
         """Generate a simple fallback question if LLM generation fails."""

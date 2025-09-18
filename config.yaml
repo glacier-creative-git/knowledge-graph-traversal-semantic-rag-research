@@ -65,6 +65,8 @@ wikipedia:
     - "Neuroscience"
     - "Psychology"
     - "Cognition"
+    - "Neural Networks"
+    - "Carl Jung"
   articles_per_topic: 10
   max_article_length: 5000000
   min_article_length: 1000
@@ -109,6 +111,25 @@ retrieval:
   baseline_vector:
     top_k: 10
     similarity_threshold: 0.5
+
+# Reranking Configuration - Standardizes Output and Optimizes Relevance
+reranking:
+  strategy: "hybrid"  # Options: "tfidf", "semantic", "hybrid"
+  target_count: 10    # Standardized output: exactly 10 sentences per algorithm
+  
+  # TF-IDF reranking parameters
+  max_features: 5000
+  ngram_range: [1, 2]
+  
+  # Hybrid reranking weights
+  hybrid_weights:
+    tfidf: 0.6           # Primary relevance signal
+    length: 0.2          # Moderate-length sentence preference
+    question_overlap: 0.2 # Bonus for question keyword overlap
+  
+  # Quality control
+  enable_fallback: true
+  log_reranking_decisions: false  # Set to true for debugging
 
 # Enhanced Similarity Matrix Configuration - Multi-Granularity
 similarities:
@@ -253,7 +274,7 @@ openai:
     temperature: 0.1
     max_tokens: 150
 
-# Evaluation Configuration (unchanged)
+# Evaluation Configuration
 evaluation:
   include_custom_metrics: true
   include_baseline_comparison: true
@@ -264,6 +285,13 @@ evaluation:
   metrics:
     standard: ["f1", "exact_match", "mrr", "ndcg"]
     custom: ["traversal_efficiency", "multi_hop_success", "semantic_coherence"]
+  
+  # Benchmarking configuration
+  benchmarking:
+    enable_reranking: true     # Apply reranking before evaluation
+    standardize_output: true   # Ensure all algorithms produce same output count
+    include_content_preview: true  # Add content previews to YAML output
+    detailed_logging: true     # Enhanced logging for algorithm behavior analysis
 
 # Visualization Configuration (unchanged)
 visualization:

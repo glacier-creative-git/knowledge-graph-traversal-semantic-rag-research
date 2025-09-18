@@ -41,6 +41,7 @@ from utils.benchmarking import BenchmarkEvaluator, CompleteBenchmarkResult, Algo
 from utils.retrieval import RetrievalOrchestrator
 from utils.knowledge_graph import KnowledgeGraph
 from utils.matplotlib_visualizer import create_global_visualization, create_sequential_visualization
+from utils.reranking import create_reranker_orchestrator
 
 
 def setup_logging() -> logging.Logger:
@@ -214,6 +215,9 @@ class BenchmarkOrchestrator:
             # Initialize benchmark evaluator
             self.benchmark_evaluator = BenchmarkEvaluator(self.logger)
             
+            # Initialize reranker orchestrator
+            self.reranker = create_reranker_orchestrator(self.pipeline.config, self.logger)
+            
             self.logger.info(f"✅ Pipeline initialized successfully")
             self.logger.info(f"   Knowledge graph: {len(self.knowledge_graph.chunks)} chunks, "
                            f"{len(self.knowledge_graph.sentences)} sentences")
@@ -310,30 +314,48 @@ class BenchmarkOrchestrator:
             raise
     
     def run_algorithm_benchmark(self, question: Any, algorithm_name: str) -> AlgorithmBenchmarkResult:
-        """Run a single algorithm on a single question and calculate all metrics."""
+        """Run a single algorithm on a single question with reranking and calculate all metrics."""
         self.logger.debug(f"🔍 Running {algorithm_name} on question {question.question_id}")
         
         try:
-            # Execute retrieval
-            retrieval_result = self.retrieval_orchestrator.retrieve(
+            # Execute retrieval (raw traversal)
+            raw_retrieval_result = self.retrieval_orchestrator.retrieve(
                 query=question.question_text,
                 algorithm_name=algorithm_name
             )
             
-            # Calculate comprehensive metrics
+            # Apply reranking to standardize output and optimize relevance
+            reranked_sentences, reranking_metadata = self.reranker.rerank_retrieval_result(
+                raw_retrieval_result, 
+                question.question_text
+            )
+            
+            # Create enhanced retrieval result with reranked content
+            enhanced_result = self._create_enhanced_result(
+                raw_retrieval_result, 
+                reranked_sentences, 
+                reranking_metadata
+            )
+            
+            # Calculate comprehensive metrics on reranked result
             benchmark_result = self.benchmark_evaluator.evaluate_single_result(
-                retrieval_result=retrieval_result,
+                retrieval_result=enhanced_result,
                 question=question,
                 algorithm_name=algorithm_name,
                 k=self.args.k_value
             )
             
-            self.logger.debug(f"   ✅ {algorithm_name}: "
+            # Add reranking metadata to benchmark result
+            if not hasattr(benchmark_result, 'reranking_metadata'):
+                benchmark_result.reranking_metadata = reranking_metadata
+            
+            self.logger.debug(f"   ✅ {algorithm_name} (reranked): "
                             f"P@{self.args.k_value}={benchmark_result.traditional_metrics['precision_at_k'].value:.3f}, "
                             f"R@{self.args.k_value}={benchmark_result.traditional_metrics['recall_at_k'].value:.3f}, "
-                            f"Node_overlap={benchmark_result.path_metrics['node_overlap_ratio'].value:.3f}")
+                            f"Node_overlap={benchmark_result.path_metrics['node_overlap_ratio'].value:.3f}, "
+                            f"Sentences: {len(reranked_sentences)}")
             
-            return benchmark_result, retrieval_result
+            return benchmark_result, enhanced_result
             
         except Exception as e:
             self.logger.error(f"❌ {algorithm_name} failed on question {question.question_id}: {e}")
@@ -538,6 +560,21 @@ class BenchmarkOrchestrator:
             q_type = question.question_type
             type_counts[q_type] = type_counts.get(q_type, 0) + 1
         return type_counts
+    
+    def _create_enhanced_result(self, raw_result: Any, reranked_sentences: List[str], reranking_metadata: Dict) -> Any:
+        """Create enhanced retrieval result with reranked content for fair evaluation."""
+        # Create a copy of the original result with reranked content
+        enhanced_result = raw_result
+        
+        # Update the retrieved content with reranked sentences
+        enhanced_result.retrieved_content = reranked_sentences
+        enhanced_result.reranking_applied = True
+        enhanced_result.reranking_metadata = reranking_metadata
+        
+        # Preserve original metadata while ensuring standardized output
+        enhanced_result.final_sentence_count = len(reranked_sentences)
+        
+        return enhanced_result
     
     def _analyze_question_difficulties(self, questions: List[Any]) -> Dict[str, int]:
         """Analyze distribution of question difficulties."""

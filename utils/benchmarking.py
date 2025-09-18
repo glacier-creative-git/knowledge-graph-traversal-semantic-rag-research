@@ -70,6 +70,12 @@ class AlgorithmBenchmarkResult:
     processing_time: float
     total_hops: int
     
+    def _get_content_preview(self) -> List[str]:
+        """Get a preview of the actual retrieved content for human analysis."""
+        # This is a placeholder - you'll need to implement based on your knowledge graph structure
+        # The goal is to show the first ~50 chars of each retrieved chunk's content
+        return [f"Preview of {node_id}..." for node_id in self.retrieved_nodes[:3]]
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for YAML serialization with clean numpy handling and human-readable format."""
         return {
@@ -103,10 +109,11 @@ class AlgorithmBenchmarkResult:
                 name: metric.to_dict() for name, metric in self.performance_metrics.items()
             },
             'raw_data': {
-                'retrieved_nodes': self.retrieved_nodes,
-                'ground_truth_nodes': self.ground_truth_nodes,
+                'retrieved_nodes': list(self.retrieved_nodes),  # Ensure it's a clean list
+                'ground_truth_nodes': list(self.ground_truth_nodes),  # Ensure it's a clean list
                 'processing_time': float(self.processing_time),
-                'total_hops': self.total_hops
+                'total_hops': self.total_hops,
+                'retrieved_content_preview': self._get_content_preview()  # Add content preview
             }
         }
 
