@@ -675,15 +675,17 @@ class DatasetGenerator:
     
     def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any], 
                  logger: Optional[logging.Logger] = None):
-        """Initialize dataset generator with caching support."""
+        """Initialize dataset generator with standardized caching approach."""
         self.kg = knowledge_graph
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.question_generator = QuestionGenerator(knowledge_graph, config, logger)
         
-        # Create questions directory for caching
-        self.questions_dir = Path(config['directories']['data']) / "questions"
-        self.questions_dir.mkdir(parents=True, exist_ok=True)
+        # FIXED: Store questions directly in data directory, not subdirectory
+        # This eliminates the data/questions/ vs data/questions.json confusion
+        self.questions_dir = Path(config['directories']['data'])
+        
+        # No explicit mkdir needed - data directory already exists from pipeline setup
     
     def create_dataset(self, num_questions: int, difficulty_levels: List[str] = None, 
                       cache_name: Optional[str] = None, force_regenerate: bool = False) -> EvaluationDataset:

@@ -536,9 +536,8 @@ class SemanticRAGPipeline:
             num_questions = qgen_config.get('num_questions', 50)  # Default 50 questions
             cache_name = f"{self.experiment_id}_questions"
             
-            # Check for cached questions
-            questions_dir = Path(self.config['directories']['data']) / "questions"
-            cache_path = questions_dir / f"{cache_name}.json"
+            # Check for cached questions using standardized path structure
+            cache_path = Path(self.config['directories']['data']) / f"{cache_name}.json"
             
             if not force_recompute and cache_path.exists():
                 self.logger.info("📂 Loading cached evaluation dataset")
@@ -667,40 +666,44 @@ class SemanticRAGPipeline:
         print(f"🔬 Enhanced Experiment ID: {self.experiment_id}")
 
     def _create_output_directories(self):
-        """Create all necessary output directories."""
+        """Create only essential output directories, eliminating unused path creation."""
         directories = self.config['directories']
 
+        # Essential base directories - these are actually used
         base_dirs = [
             directories['data'],
-            directories['embeddings'],
+            directories['embeddings'], 
             directories['visualizations'],
             directories['logs']
         ]
 
-        # Create subdirectories (enhanced for multi-granularity)
-        subdirs = [
-            f"{directories['embeddings']}/raw",
-            f"{directories['embeddings']}/similarities",
-            f"{directories['embeddings']}/cross_document",
-            f"{directories['visualizations']}/experiments",
-            f"{directories['data']}/datasets",
-            f"{directories['data']}/experiments",
-            f"{directories['data']}/questions"  # Added for question generation
+        # Essential subdirectories - verified usage in codebase
+        essential_subdirs = [
+            f"{directories['embeddings']}/raw",           # Used by embedding engine for caching
+            f"{directories['embeddings']}/similarities",  # Used by similarity engine for matrices
+            f"{directories['visualizations']}/experiments" # Used by visualization components
+            # REMOVED: cross_document, datasets, experiments subdirectories (unused)
+            # REMOVED: data/questions subdirectory (creates path confusion)
         ]
 
-        all_dirs = base_dirs + subdirs
+        all_dirs = base_dirs + essential_subdirs
 
+        # Create directories with error handling
         for dir_path in all_dirs:
-            Path(dir_path).mkdir(parents=True, exist_ok=True)
+            try:
+                Path(dir_path).mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                self.logger.error(f"Failed to create directory {dir_path}: {e}")
+                raise
 
-        # Create experiment-specific directories
-        exp_viz_dir = Path(directories['visualizations']) / "experiments" / self.experiment_id
-        exp_data_dir = Path(directories['data']) / "experiments" / self.experiment_id
+        # REMOVED: Experiment-specific subdirectory creation
+        # These were creating unused data/experiments/{experiment_id} directories
+        # exp_viz_dir = Path(directories['visualizations']) / "experiments" / self.experiment_id  
+        # exp_data_dir = Path(directories['data']) / "experiments" / self.experiment_id
 
-        exp_viz_dir.mkdir(parents=True, exist_ok=True)
-        exp_data_dir.mkdir(parents=True, exist_ok=True)
-
-        print(f"📁 Created enhanced directory structure")
+        self.logger.info(f"📁 Created {len(all_dirs)} essential directories")
+        self.logger.debug(f"Directory structure: {[str(d) for d in all_dirs]}")
+        print(f"📁 Created essential directory structure")
 
     def _initialize_logging(self):
         """Initialize logging configuration."""

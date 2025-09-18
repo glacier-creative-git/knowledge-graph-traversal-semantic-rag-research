@@ -318,9 +318,13 @@ class TraversalQuestionGenerator:
             generation_config=self.qgen_config
         )
         
-        # Cache dataset if enabled
+        # Cache dataset if enabled with standardized path structure
         if self.qgen_config.get('cache_questions', True):
-            cache_path = Path(self.config['directories']['data']) / "questions" / f"{metadata['cache_name']}.json"
+            # FIXED: Cache directly in data directory, not questions subdirectory
+            # This ensures benchmark.py and question generators use the same location
+            cache_path = Path(self.config['directories']['data']) / f"{metadata['cache_name']}.json"
+            
+            # Ensure parent directory exists (data directory always exists)
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             dataset.save(str(cache_path), self.logger)
         

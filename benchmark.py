@@ -41,7 +41,7 @@ from utils.benchmarking import BenchmarkEvaluator, CompleteBenchmarkResult, Algo
 from utils.retrieval import RetrievalOrchestrator
 from utils.knowledge_graph import KnowledgeGraph
 from utils.matplotlib_visualizer import create_global_visualization, create_sequential_visualization
-from utils.reranking import create_reranker_orchestrator
+from utils.reranker import create_reranker_orchestrator
 
 
 def setup_logging() -> logging.Logger:
@@ -231,7 +231,9 @@ class BenchmarkOrchestrator:
             raise
     
     def load_or_generate_questions(self) -> EvaluationDataset:
-        """Load questions from cache or generate new ones with simplified caching approach."""
+        """Load questions from canonical location or generate new ones."""
+        # Using data/questions.json as canonical location for all question storage
+        # This eliminates confusion between data/questions.json and data/questions/benchmark_questions.json
         questions_file = Path("data/questions.json")
         
         # Check if cached questions exist and should be used

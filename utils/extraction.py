@@ -246,9 +246,9 @@ class ThemeExtractionEngine:
         # Initialize theme extractor only
         self.theme_extractor = OllamaThemeExtractor(config, self.logger)
 
-        # Create theme data directory
-        self.theme_dir = self.data_dir / "themes"
-        self.theme_dir.mkdir(parents=True, exist_ok=True)
+        # REFACTORED: Store theme extraction data directly in data directory
+        # This eliminates the themes/ subdirectory and simplifies path management
+        # No directory creation needed - data directory already exists
 
         self.logger.info("🎨 Phase 5: Theme Extraction Engine initialized")
         self._log_extractor_status()
@@ -278,11 +278,12 @@ class ThemeExtractionEngine:
         # Generate config hash for cache validation
         config_hash = self._generate_config_hash(multi_granularity_embeddings, articles)
 
-        # Check cache
+        # Check cache with backward compatibility support
         cache_path = self._get_cache_path()
         if not force_recompute and self._is_cache_valid(cache_path, config_hash):
             self.logger.info("📂 Loading cached theme data")
-            return self._load_cached_data(cache_path)
+            cached_data = self._load_cached_data_with_migration(cache_path, config_hash)
+            return cached_data
 
         self.logger.info("⚡ Extracting fresh theme data")
 
@@ -369,26 +370,36 @@ class ThemeExtractionEngine:
         return hashlib.md5(config_str.encode()).hexdigest()
 
     def _get_cache_path(self) -> Path:
-        """Get cache path for theme data."""
-        return self.theme_dir / "theme_extraction.json"
+        """Get cache path for theme data with backward compatibility."""
+        # REFACTORED: Use simplified path directly in data directory
+        return self.data_dir / "theme_extraction.json"
+        
+    def _get_legacy_cache_path(self) -> Path:
+        """Get legacy cache path for backward compatibility during loading."""
+        return self.data_dir / "themes" / "theme_extraction.json"
 
     def _is_cache_valid(self, cache_path: Path, expected_hash: str) -> bool:
-        """Check if cached theme data is valid."""
-        if not cache_path.exists():
-            return False
+        """Check if cached theme data is valid with backward compatibility."""
+        # REFACTORED: Check new location first, then legacy location
+        paths_to_check = [cache_path, self._get_legacy_cache_path()]
+        
+        for path in paths_to_check:
+            if path.exists():
+                try:
+                    with open(path, 'r', encoding='utf-8') as f:
+                        cache_data = json.load(f)
 
-        try:
-            with open(cache_path, 'r', encoding='utf-8') as f:
-                cache_data = json.load(f)
+                    metadata = cache_data.get('metadata', {})
+                    cached_hash = metadata.get('config_hash', '')
 
-            metadata = cache_data.get('metadata', {})
-            cached_hash = metadata.get('config_hash', '')
-
-            return cached_hash == expected_hash
-
-        except Exception as e:
-            self.logger.warning(f"Failed to validate theme cache: {e}")
-            return False
+                    if cached_hash == expected_hash:
+                        self.logger.debug(f"Valid cache found at: {path}")
+                        return True
+                except Exception as e:
+                    self.logger.warning(f"Failed to validate theme cache at {path}: {e}")
+                    continue
+                    
+        return False
 
     def _cache_data(self, cache_path: Path, theme_data: Dict[str, Any]):
         """Cache theme data to disk."""
@@ -412,6 +423,46 @@ class ThemeExtractionEngine:
         except Exception as e:
             self.logger.error(f"Failed to cache theme data: {e}")
             raise
+
+    def _load_cached_data_with_migration(self, cache_path: Path, expected_hash: str) -> Dict[str, Any]:
+        """Load cached theme data with automatic migration from legacy location."""
+        # Try new location first
+        if cache_path.exists() and self._validate_single_cache(cache_path, expected_hash):
+            self.logger.debug(f"Loading from new location: {cache_path}")
+            return self._load_cached_data(cache_path)
+        
+        # Try legacy location
+        legacy_path = self._get_legacy_cache_path()
+        if legacy_path.exists() and self._validate_single_cache(legacy_path, expected_hash):
+            self.logger.info(f"🔄 Migrating theme data from legacy location: {legacy_path}")
+            
+            # Load from legacy location
+            cached_data = self._load_cached_data(legacy_path)
+            
+            # Save to new location for future use
+            try:
+                self._cache_data(cache_path, cached_data)
+                self.logger.info(f"✅ Successfully migrated theme data to: {cache_path}")
+            except Exception as e:
+                self.logger.warning(f"⚠️  Migration save failed, but data loaded: {e}")
+            
+            return cached_data
+        
+        # This shouldn't happen if _is_cache_valid returned True
+        raise RuntimeError("Cache validation succeeded but no valid cache file found")
+    
+    def _validate_single_cache(self, path: Path, expected_hash: str) -> bool:
+        """Validate a single cache file."""
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                cache_data = json.load(f)
+            
+            metadata = cache_data.get('metadata', {})
+            cached_hash = metadata.get('config_hash', '')
+            
+            return cached_hash == expected_hash
+        except Exception:
+            return False
 
     def _load_cached_data(self, cache_path: Path) -> Dict[str, Any]:
         """Load cached theme data from disk."""
