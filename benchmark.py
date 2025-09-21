@@ -35,9 +35,13 @@ project_root = Path(__file__).parent
 sys.path.append(str(project_root))
 
 # Import our components
-from utils.pipeline import SemanticRAGPipeline
+from utils.kg_pipeline import KnowledgeGraphPipeline
+
+""" Depreciated:
 from utils.questions import EvaluationDataset, DatasetGenerator
 from utils.benchmarking import BenchmarkEvaluator, CompleteBenchmarkResult, AlgorithmBenchmarkResult
+"""
+
 from utils.retrieval import RetrievalOrchestrator
 from utils.knowledge_graph import KnowledgeGraph
 from utils.matplotlib_visualizer import create_global_visualization, create_sequential_visualization
@@ -165,22 +169,25 @@ class BenchmarkOrchestrator:
         self.logger.info(f"   Visualizations: {'enabled' if not args.skip_visualizations else 'disabled'}")
     
     def initialize_pipeline(self) -> None:
-        """Initialize the semantic RAG pipeline and load necessary components."""
-        self.logger.info("🔧 Initializing SemanticRAGPipeline...")
+        """Initialize the knowledge graph pipeline and load necessary components."""
+        self.logger.info("🔧 Initializing Knowledge Graph Pipeline...")
         
         try:
             # Initialize pipeline
-            self.pipeline = SemanticRAGPipeline()
+            self.pipeline = KnowledgeGraphPipeline()
             
             # Load configuration
             self.pipeline._load_config()
             self.pipeline._initialize_experiment_tracker()
             self.pipeline._initialize_logging()
             
-            # Load existing knowledge graph
+            # Load existing knowledge graph, or build it if it doesn't exist
             kg_path = Path(self.pipeline.config['directories']['data']) / "knowledge_graph.json"
             if not kg_path.exists():
-                raise FileNotFoundError(f"Knowledge graph not found at {kg_path}. Please run the full pipeline first.")
+                self.logger.info("🏗️  Knowledge graph not found. Building it now...")
+                self.pipeline.build()
+                if not kg_path.exists():
+                    raise FileNotFoundError(f"Knowledge graph still not found after building at {kg_path}.")
             
             self.logger.info(f"📂 Loading knowledge graph from {kg_path}")
             self.knowledge_graph = KnowledgeGraph.load(str(kg_path))

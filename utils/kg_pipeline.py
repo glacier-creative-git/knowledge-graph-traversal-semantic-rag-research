@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """
-Enhanced Multi-Granularity Semantic RAG Pipeline
-===============================================
+Knowledge Graph Construction Pipeline
+====================================
 
-Main orchestrator for the enhanced semantic graph traversal RAG system.
-Handles multi-granularity embedding generation, similarity computation, and knowledge graph construction.
+Specialized pipeline orchestrator for building knowledge graphs from raw data.
+Handles data acquisition, embedding generation, similarity computation, theme extraction,
+and knowledge graph construction (Phases 1-6).
+
+This pipeline is focused exclusively on knowledge graph construction and does not
+include question generation or evaluation - those concerns are handled separately
+by deepeval integration.
 """
 
 import os
@@ -31,11 +36,11 @@ from utils.retrieval import create_retrieval_engine
 from utils.knowledge_graph import KnowledgeGraph
 from utils.extraction import ThemeExtractionEngine
 
-class SemanticRAGPipeline:
-    """Enhanced main pipeline orchestrator for multi-granularity semantic RAG system."""
+class KnowledgeGraphPipeline:
+    """Knowledge graph construction pipeline - Phases 1-6 only."""
 
     def __init__(self, config_path: str = "/Users/eric/Documents/Development/semantic-rag-chunking-research/config.yaml"):
-        """Initialize the pipeline with configuration."""
+        """Initialize the knowledge graph construction pipeline with configuration."""
         self.config_path = config_path
         self.config = None
         self.experiment_id = None
@@ -62,20 +67,18 @@ class SemanticRAGPipeline:
         self.kg_stats = {}
         self.retrieval_engine = None  # RetrievalEngine instance
         self.retrieval_stats = {}
-        self.questions = []  # List[EvaluationQuestion] from QuestionEngine
-        self.question_stats = {}
 
         # Phase 5: Theme extraction storage (entity extraction removed)
         self.theme_data = {}
         self.theme_stats = {}
-        
-        # Phase 7: Question generation storage
-        self.evaluation_dataset = None
-        self.question_stats = {}
 
-    # Update the main pipe() method to include Phase 5
-    def pipe(self) -> Dict[str, Any]:
-        """Enhanced pipeline execution function with entity/theme extraction."""
+    def build(self) -> Dict[str, Any]:
+        """
+        Build knowledge graph through phases 1-6.
+        
+        Returns:
+            Dict containing experiment metadata and knowledge graph construction results
+        """
         try:
             # Phase 1: Setup & Initialization
             self._phase_1_setup_and_initialization()
@@ -108,39 +111,38 @@ class SemanticRAGPipeline:
                 else:
                     self.logger.info("⏭️  Skipping Phase 5: Theme Extraction")
 
-            # Phase 6: Knowledge Graph Construction will be updated to use Phase 4 + Phase 5 data
+            # Phase 6: Knowledge Graph Construction
             if self.config['execution']['mode'] in ['full_pipeline']:
                 if 'knowledge_graph_construction' not in self.config['execution']['skip_phases']:
-                    self._phase_6_knowledge_graph_construction()  # This will be renamed/updated
+                    self._phase_6_knowledge_graph_construction()
                 else:
                     self.logger.info("⏭️  Skipping Phase 6: Knowledge Graph Construction")
 
-            # Phase 7: Traversal-Based Question Generation
-            if self.config['execution']['mode'] in ['full_pipeline']:
-                if 'question_generation' not in self.config['execution']['skip_phases']:
-                    self._phase_7_question_generation()
-                else:
-                    self.logger.info("⏭️  Skipping Phase 7: Question Generation")
-
-            self.logger.info("🎉 Enhanced pipeline with question generation completed successfully!")
+            self.logger.info("🎉 Knowledge graph construction pipeline completed successfully!")
+            self.logger.info("💡 Knowledge graph is ready for use with retrieval algorithms and evaluation frameworks.")
+            
             return {
                 "experiment_id": self.experiment_id,
                 "status": "completed",
                 "execution_time": datetime.now() - self.start_time,
-                "architecture": "multi_granularity_entity_theme_extraction"
+                "architecture": "multi_granularity_knowledge_graph",
+                "knowledge_graph_path": str(Path(self.config['directories']['data']) / "knowledge_graph.json"),
+                "phases_completed": 6,
+                "next_steps": "Use retrieval algorithms for evaluation or integrate with deepeval"
             }
 
         except Exception as e:
             if self.logger:
-                self.logger.error(f"Pipeline failed: {str(e)}")
+                self.logger.error(f"Knowledge graph construction pipeline failed: {str(e)}")
             else:
-                print(f"Pipeline failed: {str(e)}")
+                print(f"Knowledge graph construction pipeline failed: {str(e)}")
             raise
 
     def _phase_1_setup_and_initialization(self):
         """Phase 1: Setup & Initialization"""
-        print("🚀 Starting Enhanced Multi-Granularity Semantic RAG Pipeline")
+        print("🚀 Starting Knowledge Graph Construction Pipeline")
         print("🌟 Architecture: Three-Tier Hierarchy (Document → Chunk → Sentence)")
+        print("🎯 Scope: Phases 1-6 (Knowledge Graph Construction Only)")
         print("=" * 70)
 
         # Record start time
@@ -167,8 +169,8 @@ class SemanticRAGPipeline:
         # 7. Validate config parameters
         self._validate_config()
 
-        self.logger.info(f"🎯 Phase 1 completed - Enhanced Experiment ID: {self.experiment_id}")
-        self.logger.info(f"🏗️  Architecture: {self.config.get('experiment', {}).get('description', 'Multi-granularity system')}")
+        self.logger.info(f"🎯 Phase 1 completed - Knowledge Graph Experiment ID: {self.experiment_id}")
+        self.logger.info(f"🏗️  Architecture: {self.config.get('experiment', {}).get('description', 'Multi-granularity knowledge graph system')}")
 
     def _phase_2_data_acquisition(self):
         """Phase 2: Data Acquisition (unchanged from original)"""
@@ -352,7 +354,6 @@ class SemanticRAGPipeline:
             self.logger.error(f"❌ Phase 4 failed: {e}")
             raise
 
-    # Updated phase method for theme-only extraction
     def _phase_5_theme_extraction(self):
         """Phase 5: Theme Extraction (entity extraction removed for quality)"""
         self.logger.info("🎨 Starting Phase 5: Theme Extraction")
@@ -488,7 +489,7 @@ class SemanticRAGPipeline:
             # Test retrieval engine with a simple query
             try:
                 test_query = "What is machine learning?"
-                test_result = self.retrieval_engine.retrieve(test_query, strategy="baseline_vector")
+                test_result = self.retrieval_engine.retrieve(test_query, algorithm_name="basic_retrieval")
                 
                 self.retrieval_stats = {
                     'status': 'initialized_successfully',
@@ -510,135 +511,11 @@ class SemanticRAGPipeline:
                 }
 
             self.logger.info("✅ Phase 6 Knowledge Graph Assembly completed successfully")
+            self.logger.info("🚀 Knowledge graph is ready for retrieval and evaluation!")
 
         except Exception as e:
             self.logger.error(f"❌ Phase 6 failed: {e}")
             raise
-
-    def _phase_7_question_generation(self):
-        """Phase 7: Traversal-Based Question Generation using validated paths."""
-        self.logger.info("📝 Starting Phase 7: Traversal-Based Question Generation")
-
-        # Check if we have required data from previous phases
-        if not self.knowledge_graph:
-            self.logger.warning("No knowledge graph available from Phase 6.")
-            raise RuntimeError("No knowledge graph available. Please run Phase 6 first.")
-
-        try:
-            # Import the traversal question generator
-            from utils.traversal_question_generator import create_traversal_question_generator
-            
-            # Check if we should force recompute
-            force_recompute = 'questions' in self.config['execution'].get('force_recompute', [])
-            
-            # Get question generation parameters from config
-            qgen_config = self.config.get('question_generation', {})
-            num_questions = qgen_config.get('num_questions', 50)  # Default 50 questions
-            cache_name = f"{self.experiment_id}_questions"
-            
-            # Check for cached questions using standardized path structure
-            cache_path = Path(self.config['directories']['data']) / f"{cache_name}.json"
-            
-            if not force_recompute and cache_path.exists():
-                self.logger.info("📂 Loading cached evaluation dataset")
-                from utils.questions import EvaluationDataset
-                self.evaluation_dataset = EvaluationDataset.load(str(cache_path), self.logger)
-                
-                # Create stats from loaded dataset
-                self.question_stats = {
-                    'total_questions': len(self.evaluation_dataset.questions),
-                    'load_time': 0.0,
-                    'cached': True,
-                    'cache_file': str(cache_path),
-                    'question_distribution': self.evaluation_dataset.dataset_metadata.get('questions_by_type', {})
-                }
-            else:
-                # Generate fresh questions
-                self.logger.info("🎯 Generating traversal-based evaluation questions")
-                start_time = time.time()
-                
-                # Initialize question generator
-                question_generator = create_traversal_question_generator(
-                    knowledge_graph=self.knowledge_graph,
-                    config=self.config,
-                    logger=self.logger
-                )
-                
-                # Generate dataset
-                self.evaluation_dataset = question_generator.generate_dataset(
-                    num_questions=num_questions,
-                    cache_name=cache_name
-                )
-                
-                generation_time = time.time() - start_time
-                
-                # Create generation statistics
-                self.question_stats = {
-                    'total_questions': len(self.evaluation_dataset.questions),
-                    'generation_time': generation_time,
-                    'cached': False,
-                    'question_distribution': self.evaluation_dataset.dataset_metadata.get('questions_by_type', {}),
-                    'generator_model': qgen_config.get('generator_model_type', 'ollama'),
-                    'critic_model': qgen_config.get('critic_model_type', 'ollama')
-                }
-            
-            # Log question generation statistics
-            self.logger.info("📊 Question Generation Statistics:")
-            self.logger.info(f"   Total questions: {self.question_stats['total_questions']:,}")
-            
-            if 'question_distribution' in self.question_stats:
-                self.logger.info("   Question type distribution:")
-                for q_type, count in self.question_stats['question_distribution'].items():
-                    self.logger.info(f"      {q_type}: {count}")
-            
-            if self.question_stats.get('cached', False):
-                self.logger.info(f"   Loaded from cache: {self.question_stats['cache_file']}")
-            else:
-                self.logger.info(f"   Generation time: {self.question_stats['generation_time']:.2f}s")
-                self.logger.info(f"   Generator model: {self.question_stats.get('generator_model', 'unknown')}")
-                self.logger.info(f"   Critic model: {self.question_stats.get('critic_model', 'unknown')}")
-            
-            # Validate question quality
-            self.logger.info("🔍 Validating question quality...")
-            validation_stats = self._validate_generated_questions()
-            self.question_stats.update(validation_stats)
-            
-            self.logger.info(f"   Valid questions: {validation_stats['valid_questions']}/{validation_stats['total_questions']}")
-            self.logger.info(f"   Validity rate: {validation_stats['validity_rate']:.2%}")
-            
-            self.logger.info("✅ Phase 7 Traversal-Based Question Generation completed successfully")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Phase 7 failed: {e}")
-            raise
-    
-    def _validate_generated_questions(self) -> Dict[str, Any]:
-        """Validate that generated questions have valid traversal paths."""
-        if not self.evaluation_dataset:
-            return {'valid_questions': 0, 'total_questions': 0, 'validity_rate': 0.0}
-        
-        valid_count = 0
-        total_count = len(self.evaluation_dataset.questions)
-        validation_errors = []
-        
-        for question in self.evaluation_dataset.questions:
-            if question.ground_truth_path.is_valid:
-                valid_count += 1
-            else:
-                validation_errors.append({
-                    'question_id': question.question_id,
-                    'question_type': question.question_type,
-                    'errors': question.ground_truth_path.validation_errors
-                })
-        
-        validity_rate = valid_count / total_count if total_count > 0 else 0.0
-        
-        return {
-            'valid_questions': valid_count,
-            'total_questions': total_count,
-            'validity_rate': validity_rate,
-            'validation_errors': validation_errors[:5]  # Show first 5 errors
-        }
 
     def _load_config(self):
         """Load configuration from YAML file."""
@@ -650,7 +527,7 @@ class SemanticRAGPipeline:
             with open(config_path, 'r') as f:
                 self.config = yaml.safe_load(f)
 
-            print(f"✅ Enhanced Config loaded from {config_path}")
+            print(f"✅ Configuration loaded from {config_path}")
 
         except Exception as e:
             print(f"❌ Failed to load config: {e}")
@@ -661,9 +538,9 @@ class SemanticRAGPipeline:
         # Generate experiment ID
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         short_uuid = str(uuid.uuid4())[:8]
-        self.experiment_id = f"{self.config['experiment']['name']}_{timestamp}_{short_uuid}"
+        self.experiment_id = f"kg_{self.config['experiment']['name']}_{timestamp}_{short_uuid}"
 
-        print(f"🔬 Enhanced Experiment ID: {self.experiment_id}")
+        print(f"🔬 Knowledge Graph Experiment ID: {self.experiment_id}")
 
     def _create_output_directories(self):
         """Create only essential output directories, eliminating unused path creation."""
@@ -682,8 +559,6 @@ class SemanticRAGPipeline:
             f"{directories['embeddings']}/raw",           # Used by embedding engine for caching
             f"{directories['embeddings']}/similarities",  # Used by similarity engine for matrices
             f"{directories['visualizations']}/experiments" # Used by visualization components
-            # REMOVED: cross_document, datasets, experiments subdirectories (unused)
-            # REMOVED: data/questions subdirectory (creates path confusion)
         ]
 
         all_dirs = base_dirs + essential_subdirs
@@ -693,16 +568,15 @@ class SemanticRAGPipeline:
             try:
                 Path(dir_path).mkdir(parents=True, exist_ok=True)
             except Exception as e:
-                self.logger.error(f"Failed to create directory {dir_path}: {e}")
+                if self.logger:
+                    self.logger.error(f"Failed to create directory {dir_path}: {e}")
+                else:
+                    print(f"Failed to create directory {dir_path}: {e}")
                 raise
 
-        # REMOVED: Experiment-specific subdirectory creation
-        # These were creating unused data/experiments/{experiment_id} directories
-        # exp_viz_dir = Path(directories['visualizations']) / "experiments" / self.experiment_id  
-        # exp_data_dir = Path(directories['data']) / "experiments" / self.experiment_id
-
-        self.logger.info(f"📁 Created {len(all_dirs)} essential directories")
-        self.logger.debug(f"Directory structure: {[str(d) for d in all_dirs]}")
+        if self.logger:
+            self.logger.info(f"📁 Created {len(all_dirs)} essential directories")
+            self.logger.debug(f"Directory structure: {[str(d) for d in all_dirs]}")
         print(f"📁 Created essential directory structure")
 
     def _initialize_logging(self):
@@ -710,7 +584,7 @@ class SemanticRAGPipeline:
         log_config = self.config['logging']
 
         # Create logger
-        self.logger = logging.getLogger('semantic_rag_pipeline')
+        self.logger = logging.getLogger('knowledge_graph_pipeline')
         self.logger.setLevel(getattr(logging, log_config['level']))
 
         # Clear any existing handlers
@@ -735,10 +609,10 @@ class SemanticRAGPipeline:
             self.logger.addHandler(file_handler)
 
         # Log initial info
-        self.logger.info(f"Enhanced multi-granularity logging initialized for experiment: {self.experiment_id}")
+        self.logger.info(f"Knowledge graph construction logging initialized for experiment: {self.experiment_id}")
         self.logger.info(f"Config: {self.config['experiment']}")
 
-        print(f"📝 Enhanced logging initialized")
+        print(f"📝 Logging initialized")
 
     def _check_system_resources(self):
         """Check system resources and warn if insufficient."""
@@ -842,13 +716,13 @@ class SemanticRAGPipeline:
             # Validate multi-granularity configuration
             if 'granularity_types' in self.config['models']:
                 granularity_config = self.config['models']['granularity_types']
-                for granularity_type, enabled in granularity_config.items():
-                    if not isinstance(enabled, dict):
+                for granularity_type, config_dict in granularity_config.items():
+                    if not isinstance(config_dict, dict):
                         raise ValueError(f"Invalid granularity configuration for {granularity_type}")
 
-            print(f"✅ Enhanced configuration validated")
+            print(f"✅ Configuration validated")
             if self.logger:
-                self.logger.info("Enhanced configuration validation passed")
+                self.logger.info("Configuration validation passed")
 
         except Exception as e:
             error_msg = f"Configuration validation failed: {e}"
@@ -859,21 +733,23 @@ class SemanticRAGPipeline:
 
 
 def main():
-    """Main entry point for the enhanced pipeline."""
+    """Main entry point for the knowledge graph construction pipeline."""
     try:
-        # Initialize and run enhanced pipeline
-        pipeline = SemanticRAGPipeline()
-        results = pipeline.pipe()
+        # Initialize and run knowledge graph construction pipeline
+        pipeline = KnowledgeGraphPipeline()
+        results = pipeline.build()
 
         print("\n" + "=" * 70)
-        print("🎉 Enhanced Multi-Granularity Pipeline completed successfully!")
-        print(f"🌟 Architecture: {results.get('architecture', 'multi_granularity_three_tier')}")
+        print("🎉 Knowledge Graph Construction Pipeline completed successfully!")
+        print(f"🌟 Architecture: {results.get('architecture', 'multi_granularity_knowledge_graph')}")
         print(f"📋 Experiment ID: {results['experiment_id']}")
         print(f"⏱️  Execution time: {results['execution_time']}")
-        print(f"📁 Results saved in experiments directory")
+        print(f"📁 Knowledge graph saved: {results['knowledge_graph_path']}")
+        print(f"🔍 Phases completed: {results['phases_completed']}")
+        print(f"➡️  Next steps: {results['next_steps']}")
 
     except Exception as e:
-        print(f"\n❌ Enhanced pipeline failed: {e}")
+        print(f"\n❌ Knowledge graph construction pipeline failed: {e}")
         sys.exit(1)
 
 
