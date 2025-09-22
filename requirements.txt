@@ -42,8 +42,14 @@ plotly>=5.0.0
 # Logging and utilities
 tqdm>=4.62.0
 
+# DeepEval Integration Dependencies
+deepeval>=1.0.0        # LLM evaluation framework
+python-dotenv>=1.0.0   # Environment variable management
+pydantic>=2.0.0        # Data validation for configurations
+openai>=1.0.0          # For OpenAI models (evaluation judge)
+anthropic>=0.3.0       # For Anthropic models (optional)
+
 # Future dependencies (will be needed for later phases)
-# openai>=1.0.0       # For OpenAI embeddings
 # ragas>=0.1.0        # For RAG evaluation
 
 # Note: To use spaCy NER, download the English model:

@@ -317,3 +317,108 @@ cleanup:
 # Notifications (unchanged)
 notifications:
   enabled: false
+
+# DeepEval Configuration - Synthetic Dataset Generation and Evaluation
+# ==================================================================
+deepeval:
+  models:
+    # Model provider for question generation
+    question_generation:
+      provider: "openrouter"              # ollama, openai, anthropic, openrouter
+      model_name: "meta-llama/llama-3.3-70b-instruct"      # Provider-specific model identifier
+      temperature: 0.1
+      max_tokens: 2000
+    
+    # Model provider for evaluation (LLM-as-a-judge)
+    evaluation_judge:
+      provider: "openrouter"              # Using Ollama for local evaluation
+      model_name: "meta-llama/llama-3.3-70b-instruct"      # Same model as question generation for consistency
+      temperature: 0.0                # Low temperature for consistent evaluation
+      max_tokens: 5000
+
+  # Project configuration for DeepEval dashboard organization
+  project:
+    name: "semantic-rag-chunking-research"
+    description: "Benchmarking semantic RAG chunking strategies using knowledge graph traversal algorithms"
+    version: "1.0.0"
+    tags: ["rag", "knowledge-graph", "semantic-chunking", "retrieval"]
+
+  dataset:
+    generation:
+      num_goldens: 5                # Number of synthetic questions to generate
+      max_goldens_per_context: 1     # Questions per knowledge graph chunk group
+      include_expected_output: true   # Generate ideal answers
+      
+    evolution:
+      enabled: true
+      num_evolutions: 2               # Number of evolution steps per question
+      evolution_types:                # Specific evolution strategies
+        - "REASONING"                 # Multi-step logical reasoning
+        - "COMPARATIVE"               # Comparison-based questions  
+        - "IN_BREADTH"                # Broader scope questions
+        - "MULTICONTEXT"              # Multi-chunk questions
+      evolution_distribution:
+        REASONING: 0.4                # 40% reasoning questions
+        COMPARATIVE: 0.3              # 30% comparison questions
+        IN_BREADTH: 0.2               # 20% broad questions  
+        MULTICONTEXT: 0.1             # 10% multi-context questions
+    
+    output:
+      save_path: "data/synthetic_dataset.json"
+      cache_enabled: true
+      force_regenerate: false         # Set to true to regenerate existing datasets
+  
+  evaluation:
+    metrics:
+      # Core RAG metrics for retrieval quality assessment
+      rag_metrics:
+        - "answer_relevancy"          # Output relevance to input
+        - "contextual_recall"         # Context completeness  
+        - "contextual_precision"      # Context ranking quality
+        - "contextual_relevancy"      # Context relevance to input
+        - "faithfulness"              # Hallucination detection
+      
+      # Custom G-Eval metrics for semantic traversal assessment
+      custom_metrics:
+        - name: "semantic_coherence"
+          criteria: "Evaluate whether the retrieved content demonstrates logical semantic connections and coherent reasoning flow across knowledge graph nodes"
+          evaluation_params: ["ACTUAL_OUTPUT", "RETRIEVAL_CONTEXT"]
+          threshold: 0.7
+        
+        - name: "traversal_efficiency" 
+          criteria: "Assess whether the retrieval strategy efficiently navigates the knowledge graph to find relevant information without excessive or irrelevant hops"
+          evaluation_params: ["ACTUAL_OUTPUT", "RETRIEVAL_CONTEXT", "INPUT"]
+          threshold: 0.6
+    
+    algorithms:
+      # List of retrieval algorithms to benchmark
+      test_algorithms:
+        - "basic_retrieval"
+        - "query_traversal" 
+        - "kg_traversal"
+        - "triangulation_centroid"
+      
+      # Algorithm hyperparameters (configurable for dashboard visibility)
+      algorithm_hyperparameters:
+        basic_retrieval:
+          top_k: 10
+          similarity_threshold: 0.5
+        query_traversal:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+        kg_traversal:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+        triangulation_centroid:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+          max_results: 10
+    
+    output:
+      results_directory: "benchmark_results"
+      save_individual_results: true   # Save per-algorithm results
+      save_comparison_report: true    # Generate comparison across algorithms
+      include_visualizations: true    # Generate existing matplotlib/plotly visualizations

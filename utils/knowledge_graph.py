@@ -107,7 +107,7 @@ class KnowledgeGraph:
         """
         for model_name, granularity_embeddings in embeddings_data.items():
             if model_name not in self._embedding_cache:
-                self._embedding_cache[model_name] = {}
+                self._embedding_cache[model_name] = {'chunks': {}, 'sentences': {}}
 
             # Load chunk embeddings
             chunk_embeddings = granularity_embeddings.get('chunks', [])
@@ -121,8 +121,8 @@ class KnowledgeGraph:
                     # Dictionary format (from JSON cache)
                     chunk_id = chunk_emb['chunk_id']
                     embedding = chunk_emb['embedding']
-                
-                self._embedding_cache[model_name][chunk_id] = np.array(embedding)
+
+                self._embedding_cache[model_name]['chunks'][chunk_id] = np.array(embedding)
 
             # Load sentence embeddings
             sentence_embeddings = granularity_embeddings.get('sentences', [])
@@ -137,9 +137,13 @@ class KnowledgeGraph:
                     sentence_id = sent_emb['sentence_id']
                     embedding = sent_emb['embedding']
                 
-                self._embedding_cache[model_name][sentence_id] = np.array(embedding)
+                self._embedding_cache[model_name]['sentences'][sentence_id] = np.array(embedding)
 
-        total_embeddings = sum(len(model_cache) for model_cache in self._embedding_cache.values())
+        # Count total embeddings across all models and granularities
+        total_embeddings = 0
+        for model_cache in self._embedding_cache.values():
+            total_embeddings += len(model_cache.get('chunks', {}))
+            total_embeddings += len(model_cache.get('sentences', {}))
         print(f"✅ Loaded {total_embeddings} embeddings into cache for {len(self._embedding_cache)} models")
 
     def get_chunk_connections(self, chunk_id: str) -> List[str]:
@@ -158,7 +162,16 @@ class KnowledgeGraph:
         model_name = chunk.embedding_ref["model"]
         chunk_ref_id = chunk.embedding_ref["id"]
 
-        return self._embedding_cache.get(model_name, {}).get(chunk_ref_id)
+        # Debug: Check the first lookup to see model name mismatch
+        if not hasattr(self, '_debug_logged'):
+            available_models = list(self._embedding_cache.keys())
+            print(f"🔍 DEBUG: Looking for model '{model_name}', available: {available_models}")
+            if model_name in self._embedding_cache:
+                chunk_cache_size = len(self._embedding_cache[model_name].get('chunks', {}))
+                print(f"🔍 DEBUG: Model '{model_name}' has {chunk_cache_size} chunks in cache")
+            self._debug_logged = True
+
+        return self._embedding_cache.get(model_name, {}).get('chunks', {}).get(chunk_ref_id)
 
     def get_sentence_embedding(self, sentence_id: str) -> Optional[np.ndarray]:
         """Get embedding for a sentence using reference system."""
@@ -169,7 +182,7 @@ class KnowledgeGraph:
         model_name = sentence.embedding_ref["model"]
         sentence_ref_id = sentence.embedding_ref["id"]
 
-        return self._embedding_cache.get(model_name, {}).get(sentence_ref_id)
+        return self._embedding_cache.get(model_name, {}).get('sentences', {}).get(sentence_ref_id)
 
     def get_chunk_sentences(self, chunk_id: str) -> List[Sentence]:
         """Get all sentences in a chunk."""
