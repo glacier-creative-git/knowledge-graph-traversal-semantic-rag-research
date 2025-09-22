@@ -94,17 +94,41 @@ class DatasetBuilder:
         if knowledge_graph is None:
             knowledge_graph = self._load_knowledge_graph()
         
-        # Check for cached dataset
+        # Check dataset loading configuration
         dataset_config = self.deepeval_config.get('dataset', {})
-        save_path = Path(dataset_config.get('output', {}).get('save_path', 'data/synthetic_dataset.json'))
+        output_config = dataset_config.get('output', {})
+        save_path = Path(output_config.get('save_path', 'data/synthetic_dataset.json'))
+        pull_from_dashboard = output_config.get('pull_from_dashboard', False)
+        dataset_alias = output_config.get('dataset_alias', 'semantic-rag-benchmark')
         
-        if not force_regenerate and save_path.exists():
-            self.logger.info(f"📂 Found cached dataset at {save_path}")
+        # Conditional loading: dashboard vs local file
+        if pull_from_dashboard:
+            self.logger.info(f"🌐 Loading dataset from DeepEval dashboard with alias '{dataset_alias}'")
             try:
-                # Try to load using add_goldens_from_json_file method
+                dataset = EvaluationDataset()
+                dataset.pull(alias=dataset_alias)
+                self.logger.info(f"✅ Loaded {len(dataset.goldens)} questions from dashboard")
+                self.logger.info(f"   Dataset alias: {dataset_alias}")
+                self.logger.info(f"   ✨ Evaluation runs will properly link to this uploaded dataset")
+                return dataset
+            except Exception as e:
+                self.logger.error(f"❌ Failed to load dataset from dashboard: {e}")
+                self.logger.info(f"   Verify dataset '{dataset_alias}' exists on dashboard")
+                self.logger.info(f"   Falling back to local dataset generation...")
+        
+        elif not force_regenerate and save_path.exists():
+            self.logger.info(f"📂 Found cached local dataset at {save_path}")
+            try:
+                # Load from local JSON file
                 dataset = EvaluationDataset()
                 dataset.add_goldens_from_json_file(str(save_path))
-                self.logger.info(f"✅ Loaded {len(dataset.goldens)} cached questions")
+                self.logger.info(f"✅ Loaded {len(dataset.goldens)} cached questions from local file")
+                self.logger.info(f"   💡 Set 'pull_from_dashboard: true' to use uploaded dataset instead")
+
+                # Push to DeepEval dashboard if configured (even for cached datasets)
+                if output_config.get('push_to_dashboard', False):
+                    self._push_dataset_to_dashboard(dataset, dataset_alias)
+
                 return dataset
             except Exception as e:
                 self.logger.warning(f"⚠️ Failed to load cached dataset: {e}. Generating new dataset.")
@@ -132,11 +156,21 @@ class DatasetBuilder:
         # Save dataset with metadata
         if dataset_config.get('output', {}).get('cache_enabled', True):
             self._save_dataset_with_metadata(dataset, save_path)
-        
+
+        # Push to DeepEval dashboard if configured
+        output_config = dataset_config.get('output', {})
+        if output_config.get('push_to_dashboard', False):
+            dataset_alias = output_config.get('dataset_alias', 'semantic-rag-benchmark')
+            self._push_dataset_to_dashboard(dataset, dataset_alias)
+
+        # Generate CSV for manual upload if configured
+        if output_config.get('generate_csv', False):
+            self._generate_csv_for_upload(save_path, output_config)
+
         # Log comprehensive generation statistics
         self.generation_stats['end_time'] = time.time()
         self._log_generation_statistics()
-        
+
         return dataset
     
     def _load_knowledge_graph(self) -> KnowledgeGraph:
@@ -569,3 +603,77 @@ class DatasetBuilder:
             self.logger.info(f"   Average quality score: {avg_quality:.3f}")
         
         self.logger.info("✅ Synthetic dataset ready for semantic traversal algorithm evaluation")
+
+    def _push_dataset_to_dashboard(self, dataset: EvaluationDataset, alias: str) -> None:
+        """
+        Push dataset to DeepEval dashboard for centralized storage and sharing.
+
+        Uploads the generated synthetic dataset to DeepEval's cloud platform,
+        making it accessible for team collaboration and reproducible benchmarks.
+
+        Args:
+            dataset: The EvaluationDataset to upload
+            alias: Unique name for the dataset on the dashboard
+        """
+        try:
+            self.logger.info(f"📤 Pushing dataset to DeepEval dashboard with alias '{alias}'...")
+
+            # Push dataset to DeepEval cloud
+            dataset.push(alias=alias)
+
+            self.logger.info(f"✅ Dataset successfully pushed to dashboard as '{alias}'")
+            self.logger.info(f"   Questions uploaded: {len(dataset.goldens)}")
+            self.logger.info(f"🌐 Access dataset at: https://app.confident-ai.com/datasets")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to push dataset to dashboard: {e}")
+            self.logger.warning(f"💾 Dataset still available locally - evaluation can continue")
+            # Don't raise exception to avoid breaking the build process
+
+    def _generate_csv_for_upload(self, json_path: Path, output_config: Dict[str, Any]) -> None:
+        """
+        Generate CSV file for manual upload to DeepEval dashboard.
+
+        Creates a CSV version of the dataset that can be manually uploaded
+        to bypass free tier API limitations while maintaining dataset linking.
+
+        Args:
+            json_path: Path to the JSON dataset file
+            output_config: Output configuration dictionary
+        """
+        try:
+            csv_path = json_path.with_suffix('.csv')
+            delimiter = output_config.get('csv_context_delimiter', ' | ')
+            dataset_alias = output_config.get('dataset_alias', 'semantic-rag-benchmark')
+
+            self.logger.info(f"📄 Generating CSV for manual upload: {csv_path}")
+
+            # Import conversion script functionality
+            import subprocess
+            import sys
+
+            # Run the conversion script
+            conversion_script = Path(__file__).parent / "conversion.py"
+            cmd = [
+                sys.executable,
+                str(conversion_script),
+                "--input", str(json_path),
+                "--output", str(csv_path),
+                "--context-delimiter", delimiter
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode == 0:
+                self.logger.info(f"✅ CSV generated successfully: {csv_path}")
+                self.logger.info(f"📋 Upload Instructions:")
+                self.logger.info(f"   1. Go to DeepEval dashboard")
+                self.logger.info(f"   2. Upload CSV with alias: '{dataset_alias}'")
+                self.logger.info(f"   3. Set context delimiter: '{delimiter}'")
+                self.logger.info(f"   4. Set config 'pull_from_dashboard: true' to use uploaded dataset")
+            else:
+                self.logger.error(f"❌ CSV generation failed: {result.stderr}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to generate CSV: {e}")
+            self.logger.warning(f"💾 JSON dataset still available for local use")

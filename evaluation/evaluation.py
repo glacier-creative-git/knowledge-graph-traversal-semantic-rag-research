@@ -148,39 +148,107 @@ class EvaluationOrchestrator:
         self.logger.info(f"🔍 Evaluating {len(test_cases)} test cases with {len(metrics)} metrics")
         
         try:
-            # Run deepeval evaluation with dashboard integration
+            # Evaluate each metric individually to capture scores
+            self.logger.info(f"🔍 Running individual metric evaluations to capture scores...")
+
+            # Store scores for each metric per test case
+            metric_results = {}
+
+            for metric in metrics:
+                metric_name = getattr(metric, 'name', None) or getattr(metric, '__name__', None) or metric.__class__.__name__
+                metric_results[metric_name] = []
+
+                for i, test_case in enumerate(test_cases):
+                    try:
+                        # Evaluate this metric on this test case
+                        metric.measure(test_case)
+
+                        # Extract the score
+                        score = getattr(metric, 'score', None)
+                        success = getattr(metric, 'success', None)
+                        if success is None and hasattr(metric, 'is_successful'):
+                            try:
+                                success = metric.is_successful()
+                            except:
+                                success = False
+
+                        metric_results[metric_name].append({
+                            'score': score,
+                            'success': success,
+                            'test_case_index': i
+                        })
+
+                        self.logger.debug(f"Metric {metric_name}, test case {i}: score={score}, success={success}")
+
+                    except Exception as e:
+                        self.logger.error(f"Failed to evaluate {metric_name} on test case {i}: {e}")
+                        metric_results[metric_name].append({
+                            'score': None,
+                            'success': False,
+                            'test_case_index': i
+                        })
+
+            # Now run the full evaluation for dashboard upload
             project_config = self.deepeval_config.get('project', {})
             project_name = project_config.get('name', 'semantic-rag-research')
-
-            # Create unique identifier for this evaluation run
+            project_id = project_config.get('id', 'cmfpz4kpj03i62ad3v3a098kv')
             identifier = f"{project_name}_{algorithm_name}"
 
-            # Prepare hyperparameters for dashboard tracking
             hyperparameters = {
                 'algorithm': algorithm_name,
                 'project_version': project_config.get('version', '1.0.0'),
                 'project_description': project_config.get('description', ''),
-                'project_tags': project_config.get('tags', []),
-                **final_params  # Include algorithm-specific hyperparameters
+                'project_tags': ', '.join(project_config.get('tags', [])),
+                'project_id': project_id,
+                **final_params
             }
 
-            self.logger.info(f"📊 Uploading to DeepEval dashboard - Project: {project_name}, ID: {identifier}")
+            self.logger.info(f"📊 Uploading to DeepEval dashboard - Project: {project_name} (ID: {project_id}), Run: {identifier}")
 
-            evaluate(
-                test_cases=test_cases,
-                metrics=metrics,
-                identifier=identifier,
-                hyperparameters=hyperparameters
-            )
-            
+            # Add generated test cases to the dataset for proper linkage
+            if self.evaluation_dataset:
+                for test_case in test_cases:
+                    self.evaluation_dataset.add_test_case(test_case)
+
+                self.logger.info(f"📊 Added {len(test_cases)} test cases to dataset for evaluation")
+
+                # Use dataset.test_cases in evaluate() call to maintain dataset linkage
+                evaluate(
+                    test_cases=self.evaluation_dataset.test_cases,  # Use dataset's test_cases
+                    metrics=metrics,
+                    identifier=identifier,
+                    hyperparameters=hyperparameters
+                )
+                self.logger.info("✅ Evaluation completed using dataset.test_cases (maintains dataset linkage)")
+            else:
+                # Fallback to manually created test cases
+                evaluate(
+                    test_cases=test_cases,
+                    metrics=metrics,
+                    identifier=identifier,
+                    hyperparameters=hyperparameters
+                )
+                self.logger.info("✅ Evaluation completed via manually created test cases")
+
         except Exception as e:
             self.logger.error(f"❌ DeepEval execution failed: {e}")
             raise RuntimeError(f"Evaluation execution failed: {e}")
         
         # Process and aggregate results
         evaluation_time = time.time() - start_time
+
+        # Debug: Log what's available after evaluation
+        self.logger.debug(f"Post-evaluation debug:")
+        for i, tc in enumerate(test_cases):
+            self.logger.debug(f"  Test case {i}: {dir(tc)}")
+            if hasattr(tc, 'metrics_metadata'):
+                self.logger.debug(f"    metrics_metadata: {tc.metrics_metadata}")
+
+        for i, metric in enumerate(metrics):
+            self.logger.debug(f"  Metric {i} ({metric.__class__.__name__}): score={getattr(metric, 'score', 'None')}")
+
         result = self._process_evaluation_results(
-            algorithm_name, final_params, test_cases, metrics, evaluation_time
+            algorithm_name, final_params, test_cases, metrics, evaluation_time, metric_results
         )
         
         # Save results to configured output directory
@@ -296,18 +364,26 @@ class EvaluationOrchestrator:
         )
         
         # Load evaluation dataset
-        if dataset_path:
-            dataset_file = Path(dataset_path)
+        dataset_config = self.deepeval_config.get('dataset', {}).get('output', {})
+
+        # Check if we should pull from dashboard
+        if dataset_config.get('pull_from_dashboard', False) and not dataset_path:
+            dataset_alias = dataset_config.get('dataset_alias', 'semantic-rag-benchmark')
+            self._load_dataset_from_dashboard(dataset_alias)
         else:
-            dataset_file = Path(self.deepeval_config.get('dataset', {}).get('output', {}).get('save_path', 'data/synthetic_dataset.json'))
-        
-        if not dataset_file.exists():
-            raise FileNotFoundError(f"Dataset not found at {dataset_file}. Run dataset.build() first.")
-        
-        # Load dataset using add_goldens_from_json_file method since .load() doesn't exist
-        self.evaluation_dataset = EvaluationDataset()
-        self.evaluation_dataset.add_goldens_from_json_file(str(dataset_file))
-        self.logger.info(f"✅ Dataset loaded: {len(self.evaluation_dataset.goldens)} test questions")
+            # Load from local file
+            if dataset_path:
+                dataset_file = Path(dataset_path)
+            else:
+                dataset_file = Path(dataset_config.get('save_path', 'data/synthetic_dataset.json'))
+
+            if not dataset_file.exists():
+                raise FileNotFoundError(f"Dataset not found at {dataset_file}. Run dataset.build() first.")
+
+            # Load dataset using add_goldens_from_json_file method
+            self.evaluation_dataset = EvaluationDataset()
+            self.evaluation_dataset.add_goldens_from_json_file(str(dataset_file))
+            self.logger.info(f"✅ Dataset loaded: {len(self.evaluation_dataset.goldens)} test questions")
     
     def _prepare_algorithm_hyperparameters(self, algorithm_name: str, 
                                          custom_params: Optional[Dict[str, Any]]) -> Dict[str, Any]:
@@ -449,7 +525,7 @@ class EvaluationOrchestrator:
     
     def _process_evaluation_results(self, algorithm_name: str, algorithm_params: Dict[str, Any],
                                   test_cases: List[LLMTestCase], metrics: List[Any],
-                                  evaluation_time: float) -> EvaluationResult:
+                                  evaluation_time: float, metric_results: Dict = None) -> EvaluationResult:
         """
         Process deepeval results into structured format with comprehensive analysis.
         
@@ -459,34 +535,62 @@ class EvaluationOrchestrator:
         # Aggregate metric scores and success rates
         metric_scores = {}
         metric_success_rates = {}
-        
-        for metric in metrics:
-            try:
-                # Handle metric score
-                if hasattr(metric, 'score') and metric.score is not None:
-                    metric_scores[metric.name] = float(metric.score)
-                elif hasattr(metric, 'scores') and metric.scores:
-                    # Handle case where metric has multiple scores
-                    metric_scores[metric.name] = float(sum(metric.scores) / len(metric.scores))
 
-                # Handle metric success rate
-                if hasattr(metric, 'is_successful'):
-                    try:
-                        success_result = metric.is_successful()
-                        if isinstance(success_result, bool):
-                            metric_success_rates[metric.name] = float(success_result)
-                        elif isinstance(success_result, (int, float)):
-                            metric_success_rates[metric.name] = float(success_result)
-                    except Exception as e:
-                        self.logger.warning(f"Failed to get success rate for {metric.name}: {e}")
-                        metric_success_rates[metric.name] = 0.0
+        # Use captured metric results if available
+        if metric_results:
+            for metric_name, results in metric_results.items():
+                # Calculate average score across all test cases for this metric
+                scores = [r['score'] for r in results if r['score'] is not None]
+                if scores:
+                    metric_scores[metric_name] = sum(scores) / len(scores)
+                    self.logger.debug(f"Calculated average score for {metric_name}: {metric_scores[metric_name]}")
 
-            except Exception as e:
-                self.logger.error(f"Error processing metric {getattr(metric, 'name', 'unknown')}: {e}")
-                # Set default values to avoid breaking the evaluation
-                if hasattr(metric, 'name'):
-                    metric_scores[metric.name] = 0.0
-                    metric_success_rates[metric.name] = 0.0
+                # Calculate success rate
+                successes = [r['success'] for r in results if r['success'] is not None]
+                if successes:
+                    metric_success_rates[metric_name] = sum(successes) / len(successes)
+                    self.logger.debug(f"Calculated success rate for {metric_name}: {metric_success_rates[metric_name]}")
+
+        # Fallback: Try to extract from metric objects if no captured results
+        if not metric_results:
+            for metric in metrics:
+                try:
+                    # Get metric name using proper attribute
+                    metric_name = getattr(metric, 'name', None) or getattr(metric, '__name__', None) or metric.__class__.__name__
+
+                    # Debug: Log metric attributes
+                    self.logger.debug(f"Processing metric {metric_name}: score={getattr(metric, 'score', 'None')}, has_scores={hasattr(metric, 'scores')}")
+
+                    # Handle metric score
+                    if hasattr(metric, 'score') and metric.score is not None:
+                        metric_scores[metric_name] = float(metric.score)
+                        self.logger.debug(f"Added score for {metric_name}: {metric.score}")
+                    elif hasattr(metric, 'scores') and metric.scores:
+                        # Handle case where metric has multiple scores
+                        avg_score = float(sum(metric.scores) / len(metric.scores))
+                        metric_scores[metric_name] = avg_score
+                        self.logger.debug(f"Added average score for {metric_name}: {avg_score}")
+                    else:
+                        self.logger.warning(f"No score found for metric {metric_name}")
+
+                    # Handle metric success rate
+                    if hasattr(metric, 'is_successful'):
+                        try:
+                            success_result = metric.is_successful()
+                            if isinstance(success_result, bool):
+                                metric_success_rates[metric_name] = float(success_result)
+                            elif isinstance(success_result, (int, float)):
+                                metric_success_rates[metric_name] = float(success_result)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to get success rate for {metric_name}: {e}")
+                            metric_success_rates[metric_name] = 0.0
+
+                except Exception as e:
+                    metric_name = getattr(metric, 'name', None) or getattr(metric, '__name__', None) or metric.__class__.__name__
+                    self.logger.error(f"Error processing metric {metric_name}: {e}")
+                    # Set default values to avoid breaking the evaluation
+                    metric_scores[metric_name] = 0.0
+                    metric_success_rates[metric_name] = 0.0
         
         # Count successful test cases (at least one metric passed)
         successful_test_cases = 0
@@ -517,11 +621,19 @@ class EvaluationOrchestrator:
             }
             
             # Add individual metric scores if available
-            for metric in metrics:
-                if hasattr(metric, 'scores') and metric.scores and i < len(metric.scores):
-                    case_result['metric_scores'][metric.name] = metric.scores[i]
-                elif hasattr(metric, 'score'):
-                    case_result['metric_scores'][metric.name] = metric.score
+            if metric_results:
+                # Use captured metric results
+                for metric_name, results in metric_results.items():
+                    if i < len(results):
+                        case_result['metric_scores'][metric_name] = results[i]['score']
+            else:
+                # Fallback to metric objects
+                for metric in metrics:
+                    metric_name = getattr(metric, 'name', None) or getattr(metric, '__name__', None) or metric.__class__.__name__
+                    if hasattr(metric, 'scores') and metric.scores and i < len(metric.scores):
+                        case_result['metric_scores'][metric_name] = metric.scores[i]
+                    elif hasattr(metric, 'score'):
+                        case_result['metric_scores'][metric_name] = metric.score
             
             individual_results.append(case_result)
         
@@ -682,3 +794,37 @@ class EvaluationOrchestrator:
         mean = sum(scores) / len(scores)
         variance = sum((score - mean) ** 2 for score in scores) / len(scores)
         return variance ** 0.5
+
+    def _load_dataset_from_dashboard(self, alias: str) -> None:
+        """
+        Load evaluation dataset from DeepEval dashboard.
+
+        Pulls the synthetic dataset from DeepEval's cloud platform for
+        distributed benchmarking and reproducible evaluation workflows.
+
+        Args:
+            alias: The unique name of the dataset on the dashboard
+        """
+        try:
+            self.logger.info(f"📥 Loading dataset from DeepEval dashboard: '{alias}'...")
+
+            # Pull dataset from DeepEval cloud
+            self.evaluation_dataset = EvaluationDataset()
+            self.evaluation_dataset.pull(alias=alias)
+
+            self.logger.info(f"✅ Dataset successfully loaded from dashboard")
+            self.logger.info(f"   Questions loaded: {len(self.evaluation_dataset.goldens)}")
+
+        except Exception as e:
+            self.logger.error(f"❌ Failed to load dataset from dashboard: {e}")
+            self.logger.warning(f"💾 Falling back to local dataset file...")
+            # Fallback to local file loading
+            dataset_config = self.deepeval_config.get('dataset', {}).get('output', {})
+            dataset_file = Path(dataset_config.get('save_path', 'data/synthetic_dataset.json'))
+
+            if dataset_file.exists():
+                self.evaluation_dataset = EvaluationDataset()
+                self.evaluation_dataset.add_goldens_from_json_file(str(dataset_file))
+                self.logger.info(f"✅ Fallback successful: {len(self.evaluation_dataset.goldens)} questions")
+            else:
+                raise FileNotFoundError(f"No dataset available locally at {dataset_file} and dashboard pull failed")

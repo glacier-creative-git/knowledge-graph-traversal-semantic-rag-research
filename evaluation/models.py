@@ -81,6 +81,11 @@ class OpenRouterModel(DeepEvalBaseLLM):
         # Add structured output if schema provided
         if schema:
             request_kwargs["response_format"] = {"type": "json_object"}
+            # Also add a system message to encourage proper JSON formatting
+            request_kwargs["messages"] = [
+                {"role": "system", "content": "Always respond with valid JSON only. Do not include any text outside the JSON structure."},
+                {"role": "user", "content": prompt}
+            ]
 
         try:
             response = client.chat.completions.create(**request_kwargs)
@@ -89,22 +94,21 @@ class OpenRouterModel(DeepEvalBaseLLM):
             # If schema provided, validate and return structured output
             if schema:
                 try:
-                    # For DeepEval's Response schema, handle specially
-                    if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
-                        # Try to parse as JSON first
-                        try:
-                            return schema.model_validate_json(content)
-                        except:
+                    # First try to parse as JSON directly
+                    return schema.model_validate_json(content)
+                except:
+                    try:
+                        # For DeepEval's Response schema, handle specially
+                        if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
                             # If JSON parsing fails, clean the content before wrapping
-                            # Remove excessive whitespace, newlines, and malformed text
                             clean_content = self._clean_response_content(content)
                             return schema(response=clean_content)
-                    else:
-                        # For other schemas, try normal JSON validation
-                        return schema.model_validate_json(content)
-                except Exception as e:
-                    # Fallback: return raw content if JSON parsing fails
-                    return content
+                        else:
+                            # For other schemas, return raw content without aggressive cleaning
+                            return content
+                    except Exception as e:
+                        # Final fallback: return raw content
+                        return content
 
             return content
 
@@ -160,14 +164,26 @@ class OpenRouterModel(DeepEvalBaseLLM):
                             return parsed["rewritten_input"]
                         elif "input" in parsed:
                             return parsed["input"]
+                        elif "question" in parsed:
+                            return parsed["question"]
+                        elif "expected_output" in parsed:
+                            return parsed["expected_output"]
                         elif len(parsed) == 1:
                             # Single key-value pair, return the value
-                            return list(parsed.values())[0]
+                            value = list(parsed.values())[0]
+                            # Don't return empty values
+                            if value and str(value).strip() != "{}":
+                                return value
 
-                    # If we can't extract meaningful content, return the JSON as-is
-                    return potential_json
+                    # If we can't extract meaningful content but JSON is valid, return as-is
+                    if potential_json.strip() != "{}":
+                        return potential_json
                 except:
                     pass  # Not valid JSON, continue with cleaning
+
+        # If we end up with just "{}", return the original uncleaned content
+        if cleaned.strip() == "{}":
+            return content
 
         # Limit length to prevent excessively long responses
         if len(cleaned) > 500:

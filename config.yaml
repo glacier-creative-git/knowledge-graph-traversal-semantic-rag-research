@@ -339,13 +339,14 @@ deepeval:
   # Project configuration for DeepEval dashboard organization
   project:
     name: "semantic-rag-chunking-research"
+    id: "cmfpz4kpj03i62ad3v3a098kv"  # DeepEval Project ID for dashboard integration
     description: "Benchmarking semantic RAG chunking strategies using knowledge graph traversal algorithms"
     version: "1.0.0"
     tags: ["rag", "knowledge-graph", "semantic-chunking", "retrieval"]
 
   dataset:
     generation:
-      num_goldens: 5                # Number of synthetic questions to generate
+      num_goldens: 1                # Number of synthetic questions to generate
       max_goldens_per_context: 1     # Questions per knowledge graph chunk group
       include_expected_output: true   # Generate ideal answers
       
@@ -367,6 +368,15 @@ deepeval:
       save_path: "data/synthetic_dataset.json"
       cache_enabled: true
       force_regenerate: false         # Set to true to regenerate existing datasets
+
+      # DeepEval dashboard integration
+      push_to_dashboard: false        # Push dataset to DeepEval dashboard (disabled due to free plan limits)
+      dataset_alias: "semantic-rag-v3"  # Unique name for dataset on dashboard
+      pull_from_dashboard: true      # Load dataset from dashboard instead of local file
+
+      # CSV conversion for manual upload (free tier workaround)
+      generate_csv: true               # Generate CSV file for manual dashboard upload
+      csv_context_delimiter: " | "    # Delimiter for context arrays in CSV
   
   evaluation:
     metrics:
