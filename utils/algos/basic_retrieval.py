@@ -51,31 +51,55 @@ class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
                 chunk_similarities.append((chunk_id, similarity))
         
         self.logger.info(f"   Found {chunks_with_cache} chunks with cached similarities")
-        
-        # Step 2: Select chunks until we have enough sentences
+
+        # Sort chunks by similarity (highest first)
+        chunk_similarities.sort(key=lambda x: x[1], reverse=True)
+
+        # Step 2: Content-quality-anchored early stopping
+        early_stop_triggered = False
+
+        # Step 3: Select chunks with content-quality-anchored early stopping
         extracted_sentences = []
         selected_chunks = []
         extraction_metadata = {}
         chunk_index = 0
-        
+        best_sentence_similarity = 0.0  # Track best sentence found so far
+
         # Keep selecting chunks until we reach target sentence count
         while len(extracted_sentences) < self.max_results and chunk_index < len(chunk_similarities):
-            chunk_id, similarity = chunk_similarities[chunk_index]
-            
+            chunk_id, chunk_similarity = chunk_similarities[chunk_index]
+
+            # Content-quality-anchored early stopping check
+            if self.enable_early_stopping and len(extracted_sentences) >= 5:  # Need some sentences to compare
+                if chunk_similarity < best_sentence_similarity:
+                    early_stop_triggered = True
+                    self.logger.info(f"🎯 CONTENT-QUALITY EARLY STOPPING: Next chunk similarity ({chunk_similarity:.3f}) < "
+                                   f"best extracted sentence similarity ({best_sentence_similarity:.3f}). "
+                                   f"Stopping with {len(extracted_sentences)} sentences.")
+                    break
+
             chunk_sentences = self.get_chunk_sentences(chunk_id)
             newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
-            
+
             if newly_extracted:  # Only add chunk if it contributes new sentences
                 extracted_sentences.extend(newly_extracted)
                 selected_chunks.append(chunk_id)
                 extraction_metadata[chunk_id] = {
-                    'similarity_score': similarity,
+                    'similarity_score': chunk_similarity,
                     'sentences_extracted': len(newly_extracted),
                     'total_chunk_sentences': len(chunk_sentences)
                 }
-                
-                self.logger.debug(f"     Chunk {chunk_id}: {len(newly_extracted)} new sentences (sim: {similarity:.3f})")
-            
+
+                # Update best sentence similarity from newly extracted sentences
+                for sentence in newly_extracted:
+                    sentence_id = self._find_sentence_id(sentence)
+                    if sentence_id and sentence_id in self.query_similarity_cache:
+                        sentence_sim = self.query_similarity_cache[sentence_id]
+                        best_sentence_similarity = max(best_sentence_similarity, sentence_sim)
+
+                self.logger.debug(f"     Chunk {chunk_id}: {len(newly_extracted)} new sentences (chunk_sim: {chunk_similarity:.3f}, "
+                                f"best_sentence_sim: {best_sentence_similarity:.3f})")
+
             chunk_index += 1
         
         self.logger.info(f"   Selected {len(selected_chunks)} chunks to get {len(extracted_sentences)} sentences")
@@ -124,7 +148,8 @@ class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
                 'chunks_selected': len(selected_chunks),
                 'extraction_metadata': extraction_metadata,
                 'target_sentences': self.max_results,
-                'adaptive_selection': True
+                'adaptive_selection': True,
+                'early_stop_triggered': early_stop_triggered
             },
             extraction_metadata={
                 'total_extracted': len(extracted_sentences),

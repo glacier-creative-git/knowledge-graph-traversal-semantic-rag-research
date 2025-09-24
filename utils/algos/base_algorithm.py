@@ -63,6 +63,7 @@ class BaseRetrievalAlgorithm(ABC):
         self.similarity_threshold = self.traversal_config.get('similarity_threshold', 0.3)
         self.min_sentence_threshold = self.traversal_config.get('min_sentence_threshold', 10)
         self.max_results = self.traversal_config.get('max_results', 10)
+        self.enable_early_stopping = self.traversal_config.get('enable_early_stopping', True)
     
     @abstractmethod
     def retrieve(self, query: str, anchor_chunk: str) -> RetrievalResult:

@@ -64,10 +64,10 @@ wikipedia:
   topics:
     - "Neuroscience"
     - "Psychology"
-    - "Cognition"
+    - "Computer"
     - "Neural Networks"
-    - "Carl Jung"
-  articles_per_topic: 10
+    - "Machine Learning"
+  articles_per_topic: 20
   max_article_length: 5000000
   min_article_length: 1000
   language: "en"
@@ -107,6 +107,12 @@ retrieval:
     max_safety_hops: 20  # Safety limit to prevent infinite traversal
     enable_reranking: true  # Enable reranking of extracted content
     single_anchor_mode: true  # Use single anchor for efficiency
+
+    # KG Algorithm
+    causal_threshold: 0.6
+    path_coherence_threshold: 0.7
+    mst_max_edges: 5
+    cot_segment_length: 3
 
   baseline_vector:
     top_k: 10
@@ -346,13 +352,13 @@ deepeval:
 
   dataset:
     generation:
-      num_goldens: 1                # Number of synthetic questions to generate
+      num_goldens: 10                # Number of synthetic questions to generate
       max_goldens_per_context: 1     # Questions per knowledge graph chunk group
       include_expected_output: true   # Generate ideal answers
       
     evolution:
       enabled: true
-      num_evolutions: 2               # Number of evolution steps per question
+      num_evolutions: 1               # Number of evolution steps per question
       evolution_types:                # Specific evolution strategies
         - "REASONING"                 # Multi-step logical reasoning
         - "COMPARATIVE"               # Comparison-based questions  
@@ -361,18 +367,18 @@ deepeval:
       evolution_distribution:
         REASONING: 0.4                # 40% reasoning questions
         COMPARATIVE: 0.3              # 30% comparison questions
-        IN_BREADTH: 0.2               # 20% broad questions  
+        IN_BREADTH: 0.2               # 20% broad questions
         MULTICONTEXT: 0.1             # 10% multi-context questions
     
     output:
       save_path: "data/synthetic_dataset.json"
       cache_enabled: true
-      force_regenerate: false         # Set to true to regenerate existing datasets
+      force_regenerate: true         # Set to true to regenerate existing datasets
 
       # DeepEval dashboard integration
-      push_to_dashboard: false        # Push dataset to DeepEval dashboard (disabled due to free plan limits)
+      push_to_dashboard: true        # Push dataset to DeepEval dashboard (must be on paid plan for this to work)
       dataset_alias: "semantic-rag-v3"  # Unique name for dataset on dashboard
-      pull_from_dashboard: true      # Load dataset from dashboard instead of local file
+      pull_from_dashboard: false      # Load dataset from dashboard instead of local file
 
       # CSV conversion for manual upload (free tier workaround)
       generate_csv: true               # Generate CSV file for manual dashboard upload
@@ -432,3 +438,52 @@ deepeval:
       save_individual_results: true   # Save per-algorithm results
       save_comparison_report: true    # Generate comparison across algorithms
       include_visualizations: true    # Generate existing matplotlib/plotly visualizations
+
+# Advanced Context Grouping Strategies Configuration
+# =================================================
+# Configurable strategies for generating semantically coherent context groups
+# that mirror retrieval algorithm capabilities for self-validating benchmarks.
+context_strategies:
+  # Strategy 1: Intra-Document Semantic Traversal
+  # Creates context groups by traversing semantically similar chunks within documents
+  intra_document:
+    enabled: false
+    weight: 0.2                    # 20% of context groups
+    max_sentences: 10              # Maximum sentences per context group
+    description: "Semantic coherence within single documents using similarity-based chunk traversal"
+  
+  # Strategy 2: Inter-Document Cross-Domain Navigation  
+  # Creates context groups by traversing across document boundaries using similarity
+  inter_document:
+    enabled: false
+    weight: 0.2                    # 30% of context groups (primary focus for triangulation testing)
+    max_sentences: 10              # Slightly larger for cross-domain contexts
+    description: "Cross-document similarity navigation perfect for testing triangulation algorithms"
+  
+  # Strategy 3: Theme-Based Cross-Document Traversal
+  # Creates context groups using theme overlap with similarity-based fallback
+  theme_based:
+    enabled: false
+    weight: 0.2                    # 20% of context groups
+    max_sentences: 10              # Larger for thematic reasoning
+    fallback_to_inter_document: true # Use inter-document strategy if no theme overlap
+    description: "Cross-document theme overlap traversal with semantic fallback"
+  
+  # Strategy 4: Sequential Multi-Hop Structured Reading
+  # Creates predictable reading patterns with configurable cross-document hops
+  sequential_multi_hop:
+    enabled: true
+    weight: 0.2                    # 20% of context groups
+    num_reading_hops: 3            # Sequential reading steps within documents
+    num_paragraph_sentences: 5     # Target sentences per paragraph/document
+    num_cross_doc_hops: 3          # Number of cross-document jumps
+    description: "Structured reading simulation: 3 docs × 5 sentences = 15-sentence narratives"
+  
+  # Strategy 5: Knowledge Graph Similarity Exploration
+  # Pure similarity-based traversal without constraints
+  knowledge_graph_similarity:
+    enabled: false
+    weight: 0.2                    # 10% of context groups
+    max_sentences: 10              # Larger for unrestricted exploration
+    allow_cross_document: true     # Enable cross-document traversal
+    description: "Unrestricted similarity-based exploration across entire knowledge graph"

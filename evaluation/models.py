@@ -93,21 +93,29 @@ class OpenRouterModel(DeepEvalBaseLLM):
 
             # If schema provided, validate and return structured output
             if schema:
-                try:
-                    # First try to parse as JSON directly
-                    return schema.model_validate_json(content)
-                except:
-                    try:
-                        # For DeepEval's Response schema, handle specially
-                        if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
+                # Special handling for DeepEval's Response schema
+                if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
+                    # Handle case where content is already a dict/object but we need a string
+                    if isinstance(content, dict):
+                        # Convert dict to string for Response schema
+                        import json
+                        clean_content = json.dumps(content)
+                        return schema(response=clean_content)
+                    else:
+                        # For string content, try JSON parsing first, then clean if needed
+                        try:
+                            # First try to parse as JSON directly for validation
+                            return schema.model_validate_json(content)
+                        except:
                             # If JSON parsing fails, clean the content before wrapping
                             clean_content = self._clean_response_content(content)
                             return schema(response=clean_content)
-                        else:
-                            # For other schemas, return raw content without aggressive cleaning
-                            return content
-                    except Exception as e:
-                        # Final fallback: return raw content
+                else:
+                    # For non-Response schemas, try normal JSON validation
+                    try:
+                        return schema.model_validate_json(content)
+                    except:
+                        # For other schemas, return raw content
                         return content
 
             return content

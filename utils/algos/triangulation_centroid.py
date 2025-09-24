@@ -33,10 +33,7 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
     def __init__(self, knowledge_graph, config: Dict[str, Any], 
                  query_similarity_cache: Dict[str, float], logger=None):
         super().__init__(knowledge_graph, config, query_similarity_cache, logger)
-        
-        # Algorithm-specific parameters
-        self.enable_early_stopping = self.traversal_config.get('enable_early_stopping', True)
-        
+
         self.logger.info(f"TriangulationCentroidAlgorithm initialized: max_hops={self.max_hops}, "
                         f"min_sentences={self.min_sentence_threshold}, "
                         f"early_stopping={self.enable_early_stopping}")
@@ -66,12 +63,24 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
         triangle_metrics_history = []
         hop_count = 0
         early_stop_triggered = False
-        
+        best_triangle_quality = 0.0  # Track best triangle centroid position found so far
+
         # Extract sentences from anchor chunk initially
         anchor_sentences = self.get_chunk_sentences(anchor_chunk)
         extracted_sentences.extend(anchor_sentences)
-        
-        self.logger.info(f"   Extracted {len(anchor_sentences)} sentences from anchor")
+
+        # Track best triangle quality from anchor sentences
+        for sentence in anchor_sentences:
+            sentence_id = self._find_sentence_id(sentence)
+            if sentence_id and sentence_id in self.query_similarity_cache:
+                # Calculate triangle for this sentence within anchor
+                query_to_current = self.query_similarity_cache.get(anchor_chunk, 0.0)
+                query_to_sentence = self.query_similarity_cache[sentence_id]
+                current_to_sentence = query_to_sentence  # Sentence is within current chunk
+                triangle_centroid = (query_to_current + query_to_sentence + current_to_sentence) / 3.0
+                best_triangle_quality = max(best_triangle_quality, triangle_centroid)
+
+        self.logger.info(f"   Extracted {len(anchor_sentences)} sentences from anchor (best_triangle_quality: {best_triangle_quality:.3f})")
         
         # Main traversal loop
         while len(extracted_sentences) < self.min_sentence_threshold and hop_count < self.max_hops:
@@ -84,7 +93,20 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
                 chunk_sentences = self.get_chunk_sentences(current_chunk)
                 newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
                 extracted_sentences.extend(newly_extracted)
-                self.logger.info(f"📦 EXTRACTED: {len(newly_extracted)} new sentences from {current_chunk}")
+
+                # Update best triangle quality from newly extracted sentences
+                for sentence in newly_extracted:
+                    sentence_id = self._find_sentence_id(sentence)
+                    if sentence_id and sentence_id in self.query_similarity_cache:
+                        # Calculate triangle for this sentence within current chunk
+                        query_to_current = self.query_similarity_cache.get(current_chunk, 0.0)
+                        query_to_sentence = self.query_similarity_cache[sentence_id]
+                        current_to_sentence = query_to_sentence  # Sentence is within current chunk
+                        triangle_centroid = (query_to_current + query_to_sentence + current_to_sentence) / 3.0
+                        best_triangle_quality = max(best_triangle_quality, triangle_centroid)
+
+                self.logger.info(f"📦 EXTRACTED: {len(newly_extracted)} new sentences from {current_chunk} "
+                               f"(best_triangle_quality: {best_triangle_quality:.3f})")
             
             # Get hybrid connections (chunks + sentences within current chunk)
             hybrid_nodes = self.get_hybrid_connections(current_chunk)
@@ -105,19 +127,40 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
             
             best_triangle = triangle_metrics[0]
             triangle_metrics_history.append(best_triangle)
-            
+
             self.logger.info(f"   Best triangle: {best_triangle.node_id[:30]}... ({best_triangle.node_type}) "
                            f"centroid={best_triangle.centroid_position:.3f}, "
                            f"distance_to_query={best_triangle.centroid_to_query_distance:.3f}")
-            
-            # Enhanced early stopping check (optional - can be triggered mid-traversal)
-            if self.enable_early_stopping and best_triangle.node_type == "sentence":
-                should_early_stop = self._should_early_stop_sentence(best_triangle, current_chunk)
-                
-                if should_early_stop:
-                    self.logger.info(f"🎯 EARLY STOP triggered: Sentence has best triangle AND high chunk similarity")
-                    early_stop_triggered = True
-                    break
+
+            # Multi-vector triangulation anchoring early stopping check
+            if self.enable_early_stopping and len(extracted_sentences) >= 8:  # Need some sentences to compare
+                # Calculate triangles between query, current_chunk, and each extracted sentence (multi-vector anchoring)
+                extracted_sentence_triangles = []
+                for sentence in extracted_sentences:
+                    sentence_id = self._find_sentence_id(sentence)
+                    if sentence_id and sentence_id in self.query_similarity_cache:
+                        query_to_current = self.query_similarity_cache.get(current_chunk, 0.0)
+                        query_to_sentence = self.query_similarity_cache[sentence_id]
+                        # Estimate current_chunk to sentence similarity (cross-chunk semantic similarity)
+                        current_to_sentence = self.calculate_chunk_similarity(current_chunk, self._find_sentence_chunk(sentence)) if self._find_sentence_chunk(sentence) else query_to_sentence * 0.8
+                        triangle_centroid = (query_to_current + query_to_sentence + current_to_sentence) / 3.0
+                        extracted_sentence_triangles.append(triangle_centroid)
+
+                # Get best triangle quality from extracted sentences (multi-vector anchor constellation)
+                best_extracted_triangle_quality = max(extracted_sentence_triangles) if extracted_sentence_triangles else 0.0
+
+                # Get best chunk triangle option from potential destinations
+                chunk_triangles = [t for t in triangle_metrics if t.node_type == "chunk"]
+                if chunk_triangles and extracted_sentence_triangles:
+                    best_chunk_triangle_quality = chunk_triangles[0].centroid_position  # Already sorted
+
+                    # Multi-vector anchoring early stopping: extracted sentence constellation vs potential chunks
+                    if best_extracted_triangle_quality > best_chunk_triangle_quality:
+                        early_stop_triggered = True
+                        self.logger.info(f"🎯 MULTI-VECTOR ANCHORING EARLY STOPPING: Best extracted triangle ({best_extracted_triangle_quality:.3f}) > "
+                                       f"best potential chunk triangle ({best_chunk_triangle_quality:.3f}). "
+                                       f"Stopping with {len(extracted_sentences)} sentences ({len(extracted_sentence_triangles)} anchor triangles).")
+                        break
             
             if best_triangle.node_type == "sentence":
                 # TERMINATION: Best triangle is sentence - no better chunks to explore
@@ -125,6 +168,8 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
                 break
             
             elif best_triangle.node_type == "chunk":
+                # Update best triangle quality as we explore
+                best_triangle_quality = max(best_triangle_quality, best_triangle.centroid_position)
                 # TRAVERSE: Move to the chunk with the best triangle centroid (with stronger revisit prevention)
                 if best_triangle.node_id not in visited_chunks:
                     self.logger.info(f"🚶 TRAVERSE: Moving to chunk {best_triangle.node_id}")
@@ -138,6 +183,11 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
                     # Find next best unvisited chunk using triangle metrics
                     next_chunk = self._find_next_chunk_by_triangle(triangle_metrics, visited_chunks)
                     if next_chunk:
+                        # Update triangle quality for alternative chunk too
+                        for t in triangle_metrics:
+                            if t.node_id == next_chunk:
+                                best_triangle_quality = max(best_triangle_quality, t.centroid_position)
+                                break
                         self.logger.info(f"🚶 TRAVERSE: Moving to alternative chunk {next_chunk}")
                         current_chunk = next_chunk
                         visited_chunks.add(next_chunk)
@@ -271,4 +321,12 @@ class TriangulationCentroidAlgorithm(BaseRetrievalAlgorithm):
         for triangle in triangle_metrics:
             if triangle.node_type == "chunk" and triangle.node_id not in visited_chunks:
                 return triangle.node_id
+        return None
+
+    def _find_sentence_chunk(self, sentence: str) -> Optional[str]:
+        """Find which chunk a sentence belongs to."""
+        for chunk_id, chunk in self.kg.chunks.items():
+            chunk_sentences = self.get_chunk_sentences(chunk_id)
+            if sentence in chunk_sentences:
+                return chunk_id
         return None

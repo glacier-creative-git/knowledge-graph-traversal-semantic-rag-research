@@ -30,6 +30,7 @@ from deepeval.dataset import EvaluationDataset
 # Local imports
 from utils.knowledge_graph import KnowledgeGraph
 from .models import ModelManager
+from .context_grouping import ContextGroupingOrchestrator
 
 
 class DatasetBuilder:
@@ -65,6 +66,9 @@ class DatasetBuilder:
             'evolution_distribution': {},
             'quality_scores': []
         }
+        
+        # Store golden metadata separately since Golden objects are immutable
+        self.golden_metadata_store = []
         
         self.logger.info("DatasetBuilder initialized")
     
@@ -198,126 +202,75 @@ class DatasetBuilder:
     
     def _prepare_contexts_from_kg(self, kg: KnowledgeGraph) -> List[List[str]]:
         """
-        Convert knowledge graph chunks into optimized context groups for synthesis.
+        Create context groups using sophisticated semantic traversal strategies.
         
-        Groups chunks strategically to enable evolution techniques that require
-        semantic navigation across document boundaries - crucial for testing
-        triangulation algorithm superiority.
+        Replaces the previous basic positional grouping with advanced strategies that
+        mirror retrieval algorithm capabilities, creating self-validating benchmarks.
         
         Args:
-            kg: Knowledge graph instance with chunks and documents
+            kg: Knowledge graph instance with chunks, documents, and similarities
             
         Returns:
-            List of context groups, each containing related chunk texts
+            List of context groups (each containing related chunk texts)
         """
-        self.logger.info("📋 Preparing contexts from knowledge graph for evolution-based generation")
+        self.logger.info("📋 Preparing contexts using advanced semantic traversal strategies")
         
-        contexts = []
-        
-        # Group chunks by document for document-aware evolution
-        chunks_by_doc = self._group_chunks_by_document(kg)
-        
-        # Create intra-document context groups (for MULTICONTEXT evolution)
-        intra_doc_contexts = self._create_intra_document_contexts(chunks_by_doc)
-        contexts.extend(intra_doc_contexts)
-        
-        # Create cross-document context groups (for COMPARATIVE and IN_BREADTH evolution)
-        cross_doc_contexts = self._create_cross_document_contexts(kg, chunks_by_doc)
-        contexts.extend(cross_doc_contexts)
-        
-        # Create theme-based context groups if themes are available
-        if hasattr(kg, 'chunks') and any(hasattr(chunk, 'inherited_themes') for chunk in kg.chunks.values()):
-            theme_contexts = self._create_theme_based_contexts(kg)
-            contexts.extend(theme_contexts)
-        
-        self.logger.info(
-            f"📊 Prepared {len(contexts)} context groups: "
-            f"{len(intra_doc_contexts)} intra-document, "
-            f"{len(cross_doc_contexts)} cross-document"
+        # Initialize context grouping orchestrator
+        context_orchestrator = ContextGroupingOrchestrator(
+            kg=kg,
+            config=self.config,
+            logger=self.logger
         )
         
-        return contexts
-    
-    def _group_chunks_by_document(self, kg: KnowledgeGraph) -> Dict[str, List[str]]:
-        """Group chunk texts by their source document."""
-        chunks_by_doc = {}
+        # Determine number of context groups to generate
+        generation_config = self.deepeval_config.get('dataset', {}).get('generation', {})
+        num_goldens = generation_config.get('num_goldens', 100)
+        max_goldens_per_context = generation_config.get('max_goldens_per_context', 3)
         
-        for chunk_id, chunk in kg.chunks.items():
-            doc_id = chunk.source_document
-            if doc_id not in chunks_by_doc:
-                chunks_by_doc[doc_id] = []
-            chunks_by_doc[doc_id].append(chunk.chunk_text)
+        # Calculate desired number of context groups
+        # Only generate what's actually needed for efficiency
+        base_contexts_needed = min(len(kg.chunks), num_goldens // max_goldens_per_context + 1)
+        total_context_groups = base_contexts_needed  # Generate exactly what's needed
         
-        return chunks_by_doc
-    
-    def _create_intra_document_contexts(self, chunks_by_doc: Dict[str, List[str]]) -> List[List[str]]:
-        """
-        Create context groups within individual documents.
+        # Generate context groups using all enabled strategies
+        context_groups = context_orchestrator.generate_context_groups(total_context_groups)
         
-        Optimized for MULTICONTEXT and REASONING evolution types that benefit
-        from related chunks within the same conceptual domain.
-        """
+        # Convert ContextGroup objects to List[List[str]] format expected by downstream code
         contexts = []
-        max_chunks_per_context = 4  # Optimal for focused question generation
+        strategy_distribution = {}
+        context_metadata = []  # Store metadata for each context group
         
-        for doc_id, chunk_texts in chunks_by_doc.items():
-            # Split large documents into manageable context groups
-            for i in range(0, len(chunk_texts), max_chunks_per_context):
-                context_group = chunk_texts[i:i + max_chunks_per_context]
-                if len(context_group) >= 2:  # Need at least 2 chunks for meaningful contexts
-                    contexts.append(context_group)
+        for context_group in context_groups:
+            # Add chunk texts as context group
+            contexts.append(context_group.chunks)
+            
+            # Store metadata for later association with generated questions
+            context_metadata.append({
+                'strategy': context_group.strategy,
+                'traversal_path': context_group.traversal_path,
+                'metadata': context_group.metadata,
+                'chunk_count': len(context_group.chunks),
+                'sentence_count': len(context_group.sentences)
+            })
+            
+            # Track strategy usage for logging
+            strategy = context_group.strategy
+            strategy_distribution[strategy] = strategy_distribution.get(strategy, 0) + 1
         
-        return contexts
-    
-    def _create_cross_document_contexts(self, kg: KnowledgeGraph, 
-                                       chunks_by_doc: Dict[str, List[str]]) -> List[List[str]]:
-        """
-        Create context groups spanning multiple documents.
+        # Log comprehensive statistics
+        strategy_stats = context_orchestrator.get_strategy_statistics()
         
-        Essential for COMPARATIVE and IN_BREADTH evolution types that create
-        questions requiring semantic navigation across document boundaries.
-        This is where triangulation algorithms will demonstrate superiority.
-        """
-        contexts = []
-        doc_ids = list(chunks_by_doc.keys())
+        self.logger.info(f"📊 Generated {len(contexts)} context groups using semantic traversal strategies")
+        self.logger.info(f"   Strategy distribution: {strategy_distribution}")
+        self.logger.info(f"   Enabled strategies: {strategy_stats['enabled_strategies']}")
         
-        # Create pairs and triplets of documents for cross-document questions
-        for i in range(len(doc_ids)):
-            for j in range(i + 1, min(i + 3, len(doc_ids))):  # Limit to 2-3 documents per context
-                doc1_chunks = chunks_by_doc[doc_ids[i]][:2]  # Take top 2 chunks from each doc
-                doc2_chunks = chunks_by_doc[doc_ids[j]][:2]
-                
-                # Combine chunks from different documents
-                cross_doc_context = doc1_chunks + doc2_chunks
-                contexts.append(cross_doc_context)
-        
-        return contexts
-    
-    def _create_theme_based_contexts(self, kg: KnowledgeGraph) -> List[List[str]]:
-        """
-        Create context groups based on semantic themes.
-        
-        Leverages knowledge graph theme information to create contexts that
-        enable sophisticated thematic questions requiring semantic reasoning.
-        """
-        contexts = []
-        theme_to_chunks = {}
-        
-        # Group chunks by their inherited themes
-        for chunk_id, chunk in kg.chunks.items():
-            if hasattr(chunk, 'inherited_themes') and chunk.inherited_themes:
-                for theme in chunk.inherited_themes[:3]:  # Use top 3 themes
-                    if theme not in theme_to_chunks:
-                        theme_to_chunks[theme] = []
-                    theme_to_chunks[theme].append(chunk.chunk_text)
-        
-        # Create contexts from theme-related chunks
-        for theme, chunk_texts in theme_to_chunks.items():
-            if len(chunk_texts) >= 2:  # Need multiple chunks for theme-based questions
-                # Limit context size for focused questions
-                contexts.append(chunk_texts[:4])
+        # Store context group metadata for analysis
+        self.generation_stats['context_strategy_distribution'] = strategy_distribution
+        self.generation_stats['strategy_configuration'] = strategy_stats
+        self.generation_stats['context_metadata'] = context_metadata  # Store for golden association
         
         return contexts
+
     
     def _create_evolution_config(self) -> EvolutionConfig:
         """
@@ -417,8 +370,13 @@ class DatasetBuilder:
         if contexts_needed > num_goldens:
             contexts_needed = num_goldens
 
-        # Limit contexts to only what we need
-        limited_contexts = contexts[:contexts_needed]
+        # Randomly select contexts for diversity (instead of always taking first ones)
+        import random
+        if contexts_needed < len(contexts):
+            limited_contexts = random.sample(contexts, contexts_needed)
+            self.logger.info(f"🎲 Randomly selected {contexts_needed} contexts from {len(contexts)} available")
+        else:
+            limited_contexts = contexts
 
         # Deduplicate and truncate contexts to ensure manageable size
         deduplicated_contexts = []
@@ -492,6 +450,9 @@ class DatasetBuilder:
 
             self.logger.info(f"🎯 Generation completed, produced {len(goldens)} goldens")
             
+            # Associate each golden with its source context metadata
+            self._associate_goldens_with_context_metadata(goldens, limited_contexts)
+            
             # Track evolution statistics from generated goldens
             self._track_evolution_statistics(goldens)
             
@@ -531,21 +492,181 @@ class DatasetBuilder:
         self.generation_stats['evolution_distribution'] = evolution_counts
         self.generation_stats['quality_scores'] = quality_scores
     
+    def _associate_goldens_with_context_metadata(self, goldens: List, limited_contexts: List[List[str]]) -> None:
+        """
+        Associate each generated golden with metadata from its source context group.
+        
+        Stores metadata separately since Golden objects are immutable dataclasses.
+        Metadata is retrieved during JSON serialization using index-based association.
+        
+        Args:
+            goldens: List of generated golden objects from DeepEval
+            limited_contexts: List of context groups that were actually used
+        """
+        try:
+            # Clear existing metadata store
+            self.golden_metadata_store = []
+            
+            # Get context metadata from generation stats
+            context_metadata = self.generation_stats.get('context_metadata', [])
+            
+            # Associate each golden with its source context metadata
+            for i, golden in enumerate(goldens):
+                if i < len(context_metadata) and i < len(limited_contexts):
+                    # Get metadata for this context
+                    source_context_metadata = context_metadata[i]
+                    
+                    # Extract evolution strategies applied to this golden
+                    applied_evolutions = self._extract_evolution_strategies(golden)
+                    
+                    # Create comprehensive metadata for this golden
+                    golden_metadata = {
+                        'grouping_method': source_context_metadata['strategy'],
+                        'evolutions': applied_evolutions,
+                        'context_traversal_path': source_context_metadata['traversal_path'],
+                        'context_chunk_count': source_context_metadata['chunk_count'],
+                        'context_sentence_count': source_context_metadata['sentence_count'],
+                        'context_strategy_metadata': source_context_metadata['metadata']
+                    }
+                    
+                    # Store metadata in separate store using index association
+                    self.golden_metadata_store.append(golden_metadata)
+                    
+                    self.logger.debug(f"📝 Stored metadata for golden {i} with strategy '{source_context_metadata['strategy']}'")
+                else:
+                    # Store fallback metadata for missing associations
+                    fallback_metadata = {
+                        'grouping_method': 'unknown',
+                        'evolutions': ['unknown'],
+                        'context_traversal_path': [],
+                        'context_chunk_count': 0,
+                        'context_sentence_count': 0,
+                        'context_strategy_metadata': {}
+                    }
+                    self.golden_metadata_store.append(fallback_metadata)
+                    self.logger.warning(f"⚠️ Created fallback metadata for golden {i} (metadata length: {len(context_metadata)})")
+            
+            self.logger.info(f"💾 Stored metadata for {len(self.golden_metadata_store)} goldens")
+                    
+        except Exception as e:
+            self.logger.error(f"❌ Error storing golden metadata: {e}")
+            # Create fallback metadata for all goldens
+            self.golden_metadata_store = []
+            for i in range(len(goldens)):
+                self.golden_metadata_store.append({
+                    'grouping_method': 'error',
+                    'evolutions': ['error'],
+                    'context_traversal_path': [],
+                    'context_chunk_count': 0,
+                    'context_sentence_count': 0,
+                    'context_strategy_metadata': {}
+                })
+    
+    def _extract_evolution_strategies(self, golden) -> List[str]:
+        """
+        Extract evolution strategies applied to a golden from its metadata.
+        
+        Args:
+            golden: Generated golden object from DeepEval
+            
+        Returns:
+            List of evolution strategy names applied to this golden
+        """
+        try:
+            applied_evolutions = []
+            
+            # Check if golden has evolution metadata
+            if hasattr(golden, 'additional_metadata') and golden.additional_metadata:
+                evolution_sequence = golden.additional_metadata.get('evolution_sequence', [])
+                
+                for evolution in evolution_sequence:
+                    # Handle both enum and string representations
+                    if hasattr(evolution, 'value'):
+                        evolution_name = evolution.value
+                    elif hasattr(evolution, 'name'):
+                        evolution_name = evolution.name
+                    else:
+                        evolution_name = str(evolution)
+                    
+                    applied_evolutions.append(evolution_name)
+            
+            # If no evolution metadata found, try to infer from configured distributions
+            if not applied_evolutions:
+                evolution_config = self.deepeval_config.get('dataset', {}).get('evolution', {})
+                if evolution_config.get('enabled', True):
+                    # Return configured evolution types as fallback
+                    applied_evolutions = evolution_config.get('evolution_types', ['UNKNOWN'])
+            
+            return applied_evolutions
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Could not extract evolution strategies: {e}")
+            return ['UNKNOWN']
+    
     def _save_dataset_with_metadata(self, dataset: EvaluationDataset, save_path: Path) -> None:
         """
         Save dataset with comprehensive metadata for reproducibility and analysis.
         
-        Includes generation statistics, configuration snapshots, and quality metrics
-        for thorough documentation of the synthetic dataset creation process.
+        Creates custom JSON format that includes context grouping strategy and evolution
+        metadata for each generated question, enabling detailed analysis of dataset generation.
+        
+        Args:
+            dataset: The EvaluationDataset containing generated goldens
+            save_path: Path where to save the enhanced dataset JSON
         """
         # Ensure parent directory exists
         save_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Save the dataset using save_as method (requires file_type and directory)
-        # Remove .json extension since save_as will add it
-        file_name = save_path.stem  # Gets filename without extension
-        directory = str(save_path.parent)
-        dataset.save_as(file_type='json', directory=directory, file_name=file_name)
+        try:
+            # Create custom dataset structure with enhanced metadata
+            enhanced_dataset = []
+            
+            for i, golden in enumerate(dataset.goldens):
+                # Create base golden structure
+                golden_dict = {
+                    'input': golden.input,
+                    'expected_output': golden.expected_output if hasattr(golden, 'expected_output') else None,
+                    'actual_output': golden.actual_output if hasattr(golden, 'actual_output') else None,
+                    'context': golden.context if hasattr(golden, 'context') else None,
+                    'retrieval_context': golden.retrieval_context if hasattr(golden, 'retrieval_context') else None
+                }
+                
+                # Add enhanced metadata at the bottom using index-based lookup
+                if i < len(self.golden_metadata_store):
+                    stored_metadata = self.golden_metadata_store[i]
+                    golden_dict['grouping_method'] = stored_metadata.get('grouping_method', 'unknown')
+                    golden_dict['evolutions'] = stored_metadata.get('evolutions', ['unknown'])
+                    
+                    # Optional: Add detailed context metadata for debugging
+                    if self.logger.level <= logging.DEBUG:
+                        golden_dict['context_metadata'] = {
+                            'traversal_path': stored_metadata.get('context_traversal_path', []),
+                            'chunk_count': stored_metadata.get('context_chunk_count', 0),
+                            'sentence_count': stored_metadata.get('context_sentence_count', 0),
+                            'strategy_metadata': stored_metadata.get('context_strategy_metadata', {})
+                        }
+                else:
+                    # Fallback metadata if no stored metadata found
+                    golden_dict['grouping_method'] = 'missing'
+                    golden_dict['evolutions'] = ['missing']
+                    self.logger.warning(f"⚠️ No stored metadata found for golden {i}")
+                
+                enhanced_dataset.append(golden_dict)
+            
+            # Save enhanced dataset as JSON
+            with open(save_path, 'w', encoding='utf-8') as f:
+                json.dump(enhanced_dataset, f, indent=2, ensure_ascii=False)
+            
+            self.logger.info(f"💾 Enhanced dataset saved: {save_path}")
+            self.logger.info(f"   Questions with metadata: {len(enhanced_dataset)}")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to save enhanced dataset: {e}")
+            # Fallback to standard DeepEval saving
+            self.logger.info("📄 Falling back to standard DeepEval dataset saving")
+            file_name = save_path.stem
+            directory = str(save_path.parent)
+            dataset.save_as(file_type='json', directory=directory, file_name=file_name)
         
         # Save metadata separately for analysis
         metadata_path = save_path.with_suffix('.metadata.json')
@@ -569,7 +690,7 @@ class DatasetBuilder:
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2, default=str)
         
-        self.logger.info(f"💾 Dataset and metadata saved: {save_path}")
+        self.logger.info(f"📊 Dataset metadata saved: {metadata_path}")
     
     def _calculate_average_question_length(self, goldens: List) -> float:
         """Calculate average question length for quality metrics."""

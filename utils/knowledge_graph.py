@@ -469,8 +469,10 @@ class KnowledgeGraphBuilder:
             # Inherit themes from document
             inherited_themes = doc_themes_lookup.get(source_document, [])
 
-            # Find source chunk (first containing chunk)
-            source_chunk = sent_emb.containing_chunks[0] if sent_emb.containing_chunks else ""
+            # Store all containing chunks for proper sliding window overlap handling
+            containing_chunks = sent_emb.containing_chunks if sent_emb.containing_chunks else []
+            # Use first chunk as primary source for backwards compatibility
+            source_chunk = containing_chunks[0] if containing_chunks else ""
 
             sentence_node = Sentence(
                 sentence_id=sent_emb.sentence_id,
@@ -481,16 +483,23 @@ class KnowledgeGraphBuilder:
                 inherited_themes=inherited_themes,
                 embedding_ref={"model": model_name, "id": sent_emb.sentence_id}  # Reference instead of full embedding
             )
+            # Store containing chunks for population logic
+            sentence_node._containing_chunks = containing_chunks
             sentence_nodes.append(sentence_node)
 
         return sentence_nodes
 
     def _populate_chunk_sentence_relationships(self, kg: KnowledgeGraph):
-        """Populate sentence_ids in chunks based on sentence data."""
+        """Populate sentence_ids in chunks based on ALL containing chunks for proper sliding window overlap."""
         for sentence in kg.sentences.values():
-            source_chunk = kg.chunks.get(sentence.source_chunk)
-            if source_chunk and sentence.sentence_id not in source_chunk.sentence_ids:
-                source_chunk.sentence_ids.append(sentence.sentence_id)
+            # Get all containing chunks for this sentence (handles sliding window overlap)
+            containing_chunks = getattr(sentence, '_containing_chunks', [sentence.source_chunk])
+
+            # Add this sentence to ALL chunks that contain it
+            for chunk_id in containing_chunks:
+                chunk = kg.chunks.get(chunk_id)
+                if chunk and sentence.sentence_id not in chunk.sentence_ids:
+                    chunk.sentence_ids.append(sentence.sentence_id)
 
 
 # Factory function for backward compatibility
