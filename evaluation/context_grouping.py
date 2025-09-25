@@ -464,33 +464,82 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
             
             while len(sentences) < self.max_sentences and safety_counter < max_safety_hops:
                 safety_counter += 1
-                
-                # Get chunks with theme overlap from other documents
-                theme_candidates = self._get_theme_overlap_candidates(
-                    current_chunk, visited_chunks, anchor_themes
-                )
-                
-                if not theme_candidates and self.fallback_to_inter_document:
-                    # Fallback to regular inter-document similarity
-                    theme_candidates = self._get_most_similar_chunks(
+
+                # Get current document for theme similarity lookup
+                current_doc = self.kg.chunks[current_chunk].source_document
+
+                # Get theme-similar documents using new embedding-based approach
+                theme_similar_docs = self.kg.get_theme_similar_documents_by_title(current_doc)
+
+                next_chunk = None
+                theme_candidates_found = False
+
+                # Try each theme-similar document in order of theme similarity
+                for target_doc_id in theme_similar_docs:
+                    # Convert doc_id back to document title for chunk matching
+                    target_doc = self.kg.get_document_title_by_id(target_doc_id)
+                    if target_doc == current_doc:
+                        continue  # Skip same document
+
+                    # Get existing connections from current chunk (both intra and inter)
+                    current_chunk_obj = self.kg.chunks[current_chunk]
+                    all_connections = current_chunk_obj.intra_doc_connections + current_chunk_obj.inter_doc_connections
+
+                    # Filter connections to only include chunks from the target document
+                    target_doc_connections = [
+                        chunk_id for chunk_id in all_connections
+                        if (chunk_id in self.kg.chunks and
+                            self.kg.chunks[chunk_id].source_document == target_doc and
+                            chunk_id not in visited_chunks)
+                    ]
+
+                    if not target_doc_connections:
+                        continue  # No existing connections to this theme-similar document
+
+                    # Find best connected chunk without sentence overlap
+                    best_connected_chunk = None
+                    best_similarity = 0.0
+
+                    for connected_chunk_id in target_doc_connections:
+                        if not self._has_sentence_overlap(connected_chunk_id, sentences):
+                            # Get pre-computed similarity score from connection_scores
+                            similarity = current_chunk_obj.connection_scores.get(connected_chunk_id, 0.0)
+                            if similarity > best_similarity:
+                                best_similarity = similarity
+                                best_connected_chunk = connected_chunk_id
+
+                    if best_connected_chunk:
+                        next_chunk = best_connected_chunk
+                        theme_candidates_found = True
+
+                        # Convert current_doc title to doc_id for theme similarity score lookup
+                        current_doc_id = None
+                        for doc_id, doc in self.kg.documents.items():
+                            if doc.title == current_doc:
+                                current_doc_id = doc_id
+                                break
+                        theme_sim_score = self.kg.get_theme_similarity_score(current_doc_id, target_doc_id) if current_doc_id else 0.0
+
+                        self.logger.debug(f"🎯 Theme bridge: {current_doc} -> {target_doc} "
+                                        f"(theme_sim: {theme_sim_score:.3f}, chunk_sim: {best_similarity:.3f}, connected: True)")
+                        break
+
+                # Fallback to inter-document similarity if no theme candidates found
+                if not next_chunk and self.fallback_to_inter_document:
+                    fallback_candidates = self._get_most_similar_chunks(
                         current_chunk, visited_chunks, cross_document_only=True
                     )
-                    theme_fallback_used = True
-                    self.logger.debug(f"🔄 Falling back to inter-document similarity")
-                
-                if not theme_candidates:
-                    self.logger.debug(f"🔚 No more theme-based candidates at {len(sentences)} sentences")
-                    break
-                
-                # Find next chunk without sentence overlap
-                next_chunk = None
-                for chunk_id, score in theme_candidates:
-                    if not self._has_sentence_overlap(chunk_id, sentences):
-                        next_chunk = chunk_id
-                        break
-                
+
+                    if fallback_candidates:
+                        for chunk_id, similarity in fallback_candidates:
+                            if not self._has_sentence_overlap(chunk_id, sentences):
+                                next_chunk = chunk_id
+                                theme_fallback_used = True
+                                self.logger.debug(f"🔄 Theme fallback: chunk similarity {similarity:.3f}")
+                                break
+
                 if not next_chunk:
-                    self.logger.debug(f"🔚 No theme-based chunks without overlap at {len(sentences)} sentences")
+                    self.logger.debug(f"🔚 No more theme or fallback candidates at {len(sentences)} sentences")
                     break
                 
                 # Add sentences from next chunk
@@ -537,48 +586,26 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
         return context_groups
     
     def _get_chunk_themes(self, chunk_id: str) -> List[str]:
-        """Get themes associated with a chunk (from document themes)."""
+        """Get themes associated with a chunk (inherited from document)."""
         if chunk_id not in self.kg.chunks:
             return []
-        
+
         chunk = self.kg.chunks[chunk_id]
+
+        # First try to get themes from chunk's inherited themes
+        if hasattr(chunk, 'inherited_themes') and chunk.inherited_themes:
+            return chunk.inherited_themes
+
+        # Fallback to document themes if chunk doesn't have inherited themes
         doc_id = chunk.source_document
-        
-        # Get themes from document (themes are typically document-level)
         if hasattr(self.kg, 'documents') and doc_id in self.kg.documents:
             doc = self.kg.documents[doc_id]
-            if hasattr(doc, 'themes'):
-                return doc.themes
-        
+            if hasattr(doc, 'doc_themes') and doc.doc_themes:
+                return doc.doc_themes
+
         return []
     
-    def _get_theme_overlap_candidates(self, current_chunk_id: str, 
-                                    visited_chunks: Set[str],
-                                    anchor_themes: List[str]) -> List[Tuple[str, float]]:
-        """
-        Get chunks from other documents ranked by theme overlap then similarity.
-        
-        Returns list of (chunk_id, combined_score) tuples.
-        """
-        candidates = []
-        current_doc = self.kg.chunks[current_chunk_id].source_document
-        
-        for chunk_id, chunk in self.kg.chunks.items():
-            if chunk_id in visited_chunks or chunk.source_document == current_doc:
-                continue
-            
-            # Calculate theme overlap
-            chunk_themes = self._get_chunk_themes(chunk_id)
-            theme_overlap = len(set(anchor_themes) & set(chunk_themes))
-            
-            if theme_overlap > 0:
-                # Calculate similarity as tiebreaker
-                similarity = self._calculate_chunk_similarity(current_chunk_id, chunk_id)
-                # Combine theme overlap (primary) with similarity (secondary)
-                combined_score = theme_overlap * 1000 + similarity  # Theme overlap dominates
-                candidates.append((chunk_id, combined_score))
-        
-        return sorted(candidates, key=lambda x: x[1], reverse=True)
+    # Note: Old theme overlap method removed - now using embedding-based theme similarity
 
 
 class SequentialMultiHopStrategy(ContextGroupingStrategy):
@@ -600,36 +627,56 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
         """Generate sequential multi-hop context groups."""
         context_groups = []
         
-        for _ in range(num_groups):
+        for group_idx in range(num_groups):
             # Get random anchor chunk
             anchor_chunk_id = self._get_random_anchor_chunk()
             if not anchor_chunk_id:
                 break
-            
+
             sentences = []
             traversal_path = [anchor_chunk_id]
             chunk_texts = []
             current_chunk = anchor_chunk_id
+
+            # Log anchor selection with themes
+            anchor_themes = self._get_chunk_themes(anchor_chunk_id)
+            anchor_doc = self.kg.chunks[anchor_chunk_id].source_document
+            self.logger.debug(f"🏁 Sequential multi-hop anchor {anchor_chunk_id}: "
+                            f"doc='{anchor_doc}', themes: {anchor_themes}")
             
             # Perform cross-document hops
             for hop in range(self.num_cross_doc_hops):
                 if hop > 0:
-                    # Cross-document hop to most similar chunk
-                    similar_chunks = self._get_most_similar_chunks(
-                        current_chunk, set(traversal_path), cross_document_only=True
-                    )
-                    if similar_chunks:
-                        current_chunk = similar_chunks[0][0]
+                    # Theme-based cross-document hop with similarity fallback
+                    next_chunk = self._theme_based_cross_document_hop(current_chunk, set(traversal_path))
+                    if next_chunk:
+                        current_chunk = next_chunk
                         traversal_path.append(current_chunk)
                 
                 # Sequential reading within current document
+                current_doc = self.kg.chunks[current_chunk].source_document
                 paragraph_sentences = self._sequential_reading_within_document(
                     current_chunk, self.num_reading_hops, self.num_paragraph_sentences
                 )
-                
+
+                # Log sequential reading progress
+                sentences_before = len(sentences)
                 sentences.extend(paragraph_sentences['sentences'])
                 chunk_texts.extend(paragraph_sentences['chunk_texts'])
-                traversal_path.extend(paragraph_sentences['chunk_ids'])
+
+                # Add chunk IDs, but skip the first one if it's already in our path (prevents duplication)
+                sequential_chunk_ids = paragraph_sentences['chunk_ids']
+                if sequential_chunk_ids and sequential_chunk_ids[0] == current_chunk:
+                    # Skip the first chunk since it's the starting chunk we already have
+                    traversal_path.extend(sequential_chunk_ids[1:])
+                else:
+                    # Add all chunks if no duplication
+                    traversal_path.extend(sequential_chunk_ids)
+
+                sentences_added = len(sentences) - sentences_before
+                self.logger.debug(f"📖 Sequential reading in '{current_doc}': "
+                                f"{len(paragraph_sentences['chunk_ids'])} chunks, "
+                                f"+{sentences_added} sentences (total: {len(sentences)})")
                 
                 # Update current chunk to last chunk in reading sequence
                 if paragraph_sentences['chunk_ids']:
@@ -649,7 +696,12 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
                 },
                 traversal_path=traversal_path
             )
-            
+
+            # Summary log for this group
+            final_sentence_count = len(sentences[:self.max_sentences])
+            unique_chunks = len(set(traversal_path))  # Count unique chunks in case of duplicates
+            self.logger.debug(f"✅ Sequential multi-hop group {group_idx}: {unique_chunks} chunks, {final_sentence_count} sentences")
+
             context_groups.append(context_group)
         
         return context_groups
@@ -715,6 +767,105 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
             'chunk_texts': chunk_texts,
             'chunk_ids': chunk_ids
         }
+
+    def _theme_based_cross_document_hop(self, current_chunk: str, visited_chunks: Set[str]) -> Optional[str]:
+        """
+        Perform theme-based cross-document hop with similarity fallback.
+
+        Uses the same logic as ThemeBasedStrategy for consistent cross-document navigation:
+        1. Get theme-similar documents for current chunk's document
+        2. Find existing connections to chunks in those theme-similar documents
+        3. Select best connection based on similarity scores
+        4. Fallback to raw similarity if no theme-based connections found
+
+        Args:
+            current_chunk: Current chunk ID
+            visited_chunks: Set of already visited chunk IDs to avoid
+
+        Returns:
+            Next chunk ID or None if no suitable chunk found
+        """
+        # Get current document for theme similarity lookup
+        current_doc = self.kg.chunks[current_chunk].source_document
+
+        # Get theme-similar documents using embedding-based approach
+        theme_similar_docs = self.kg.get_theme_similar_documents_by_title(current_doc)
+
+        next_chunk = None
+        theme_candidates_found = False
+
+        # Try each theme-similar document in order of theme similarity
+        for target_doc_id in theme_similar_docs:
+            # Convert doc_id back to document title for chunk matching
+            target_doc = self.kg.get_document_title_by_id(target_doc_id)
+            if target_doc == current_doc:
+                continue  # Skip same document
+
+            # Get existing connections from current chunk
+            current_chunk_obj = self.kg.chunks[current_chunk]
+            all_connections = current_chunk_obj.intra_doc_connections + current_chunk_obj.inter_doc_connections
+
+            # Filter connections to only include chunks from the target theme-similar document
+            target_doc_connections = [
+                chunk_id for chunk_id in all_connections
+                if (chunk_id in self.kg.chunks and
+                    self.kg.chunks[chunk_id].source_document == target_doc and
+                    chunk_id not in visited_chunks)
+            ]
+
+            if not target_doc_connections:
+                continue  # No existing connections to this theme-similar document
+
+            # Find best connected chunk using pre-computed similarity scores
+            best_connected_chunk = None
+            best_similarity = 0.0
+
+            for connected_chunk_id in target_doc_connections:
+                # Get pre-computed similarity score from connection_scores
+                similarity = current_chunk_obj.connection_scores.get(connected_chunk_id, 0.0)
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_connected_chunk = connected_chunk_id
+
+            if best_connected_chunk:
+                next_chunk = best_connected_chunk
+                theme_candidates_found = True
+                self.logger.debug(f"🎯 Sequential multi-hop: theme-based hop {current_doc} -> {target_doc} "
+                                f"(chunk: {next_chunk}, chunk_sim: {best_similarity:.3f})")
+                break
+
+        # Fallback to raw cross-document similarity if no theme candidates found
+        if not next_chunk:
+            fallback_candidates = self._get_most_similar_chunks(
+                current_chunk, visited_chunks, cross_document_only=True
+            )
+            if fallback_candidates:
+                next_chunk = fallback_candidates[0][0]
+                target_doc = self.kg.chunks[next_chunk].source_document
+                self.logger.debug(f"🔄 Sequential multi-hop: fallback hop {current_doc} -> {target_doc} "
+                                f"(chunk: {next_chunk}, similarity: {fallback_candidates[0][1]:.3f})")
+
+        return next_chunk
+
+    def _get_chunk_themes(self, chunk_id: str) -> List[str]:
+        """Get themes associated with a chunk (inherited from document)."""
+        if chunk_id not in self.kg.chunks:
+            return []
+
+        chunk = self.kg.chunks[chunk_id]
+
+        # First try to get themes from chunk's inherited themes
+        if hasattr(chunk, 'inherited_themes') and chunk.inherited_themes:
+            return chunk.inherited_themes
+
+        # Fallback to document themes if chunk doesn't have inherited themes
+        doc_id = chunk.source_document
+        if hasattr(self.kg, 'documents') and doc_id in self.kg.documents:
+            doc = self.kg.documents[doc_id]
+            if hasattr(doc, 'doc_themes') and doc.doc_themes:
+                return doc.doc_themes
+
+        return []
 
 
 class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
@@ -870,10 +1021,10 @@ class ContextGroupingOrchestrator:
         
         strategy_classes = {
             'intra_document': IntraDocumentStrategy,
-            'inter_document': InterDocumentStrategy,
             'theme_based': ThemeBasedStrategy,
-            'sequential_multi_hop': SequentialMultiHopStrategy,
-            'knowledge_graph_similarity': KnowledgeGraphSimilarityStrategy
+            'sequential_multi_hop': SequentialMultiHopStrategy
+            # 'inter_document': InterDocumentStrategy  # DEPRECATED: Redundant with ThemeBasedStrategy fallback
+            # 'knowledge_graph_similarity': KnowledgeGraphSimilarityStrategy  # DEPRECATED: Redundant with inter_document
         }
         
         for strategy_name, strategy_class in strategy_classes.items():

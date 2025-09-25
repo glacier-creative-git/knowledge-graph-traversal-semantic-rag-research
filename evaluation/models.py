@@ -95,21 +95,25 @@ class OpenRouterModel(DeepEvalBaseLLM):
             if schema:
                 # Special handling for DeepEval's Response schema
                 if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
-                    # Handle case where content is already a dict/object but we need a string
-                    if isinstance(content, dict):
-                        # Convert dict to string for Response schema
-                        import json
-                        clean_content = json.dumps(content)
+                    # First, try to parse content as JSON to see if it's a dict-in-string
+                    parsed_content = None
+                    if isinstance(content, str):
+                        try:
+                            import json
+                            parsed_content = json.loads(content)
+                        except:
+                            parsed_content = None
+
+                    # Handle case where content is a dict (either directly or parsed from JSON string)
+                    if isinstance(content, dict) or isinstance(parsed_content, dict):
+                        dict_to_process = content if isinstance(content, dict) else parsed_content
+                        # Extract the actual content from the dict
+                        clean_content = self._extract_content_from_dict(dict_to_process)
                         return schema(response=clean_content)
                     else:
-                        # For string content, try JSON parsing first, then clean if needed
-                        try:
-                            # First try to parse as JSON directly for validation
-                            return schema.model_validate_json(content)
-                        except:
-                            # If JSON parsing fails, clean the content before wrapping
-                            clean_content = self._clean_response_content(content)
-                            return schema(response=clean_content)
+                        # For regular string content, clean and wrap in Response
+                        clean_content = self._clean_response_content(content)
+                        return schema(response=clean_content)
                 else:
                     # For non-Response schemas, try normal JSON validation
                     try:
@@ -140,6 +144,54 @@ class OpenRouterModel(DeepEvalBaseLLM):
     def get_model_name(self):
         """Return descriptive model name for logging."""
         return f"OpenRouter: {self.model_name}"
+
+    def _extract_content_from_dict(self, parsed_dict: dict) -> str:
+        """
+        Extract the actual content from a parsed dict response.
+        This mirrors the logic in _clean_response_content for consistency.
+        """
+        if isinstance(parsed_dict, dict):
+            # Common evolution patterns
+            if "rewritten_input" in parsed_dict:
+                return str(parsed_dict["rewritten_input"])
+            elif "input" in parsed_dict:
+                return str(parsed_dict["input"])
+            elif "question" in parsed_dict:
+                return str(parsed_dict["question"])
+            elif "expected_output" in parsed_dict:
+                return str(parsed_dict["expected_output"])
+            elif "comparison" in parsed_dict:
+                return str(parsed_dict["comparison"])
+            elif "reasoning" in parsed_dict:
+                return str(parsed_dict["reasoning"])
+            elif "breadth" in parsed_dict:
+                return str(parsed_dict["breadth"])
+            elif "multicontext" in parsed_dict:
+                return str(parsed_dict["multicontext"])
+            elif "volatile" in parsed_dict:
+                return str(parsed_dict["volatile"])
+            elif len(parsed_dict) == 1:
+                # Single key-value pair, return the value
+                value = list(parsed_dict.values())[0]
+                # Don't return empty values
+                if value and str(value).strip() != "{}":
+                    return str(value)
+            else:
+                # Multiple keys - try to find the most likely content key
+                # Look for keys that contain actual content (longer values)
+                best_key = None
+                best_value = ""
+                for key, value in parsed_dict.items():
+                    if isinstance(value, str) and len(str(value)) > len(best_value):
+                        best_key = key
+                        best_value = str(value)
+
+                if best_key and best_value.strip():
+                    return best_value
+
+        # Fallback: convert entire dict to JSON string
+        import json
+        return json.dumps(parsed_dict)
 
     def _clean_response_content(self, content: str) -> str:
         """
@@ -176,6 +228,14 @@ class OpenRouterModel(DeepEvalBaseLLM):
                             return parsed["question"]
                         elif "expected_output" in parsed:
                             return parsed["expected_output"]
+                        elif "comparison" in parsed:
+                            return parsed["comparison"]
+                        elif "reasoning" in parsed:
+                            return parsed["reasoning"]
+                        elif "breadth" in parsed:
+                            return parsed["breadth"]
+                        elif "multicontext" in parsed:
+                            return parsed["multicontext"]
                         elif len(parsed) == 1:
                             # Single key-value pair, return the value
                             value = list(parsed.values())[0]

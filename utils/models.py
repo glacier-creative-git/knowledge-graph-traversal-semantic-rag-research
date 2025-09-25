@@ -297,6 +297,8 @@ class MultiGranularityEmbeddingEngine:
             granularity_embeddings['doc_summaries'] = self._generate_document_summary_embeddings(
                 embedding_model, articles
             )
+
+        # Note: Theme embeddings will be generated later in Phase 6 when theme data is available
         
         processing_time = time.time() - start_time
         

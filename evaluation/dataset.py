@@ -372,11 +372,20 @@ class DatasetBuilder:
 
         # Randomly select contexts for diversity (instead of always taking first ones)
         import random
+        context_index_mapping = []  # Track original indices for metadata alignment
+
         if contexts_needed < len(contexts):
-            limited_contexts = random.sample(contexts, contexts_needed)
+            # Create list of (context, original_index) pairs
+            indexed_contexts = [(contexts[i], i) for i in range(len(contexts))]
+            # Randomly sample the pairs
+            selected_pairs = random.sample(indexed_contexts, contexts_needed)
+            # Split back into contexts and index mapping
+            limited_contexts = [pair[0] for pair in selected_pairs]
+            context_index_mapping = [pair[1] for pair in selected_pairs]
             self.logger.info(f"🎲 Randomly selected {contexts_needed} contexts from {len(contexts)} available")
         else:
             limited_contexts = contexts
+            context_index_mapping = list(range(len(contexts)))
 
         # Deduplicate and truncate contexts to ensure manageable size
         deduplicated_contexts = []
@@ -451,7 +460,7 @@ class DatasetBuilder:
             self.logger.info(f"🎯 Generation completed, produced {len(goldens)} goldens")
             
             # Associate each golden with its source context metadata
-            self._associate_goldens_with_context_metadata(goldens, limited_contexts)
+            self._associate_goldens_with_context_metadata(goldens, limited_contexts, context_index_mapping)
             
             # Track evolution statistics from generated goldens
             self._track_evolution_statistics(goldens)
@@ -492,16 +501,17 @@ class DatasetBuilder:
         self.generation_stats['evolution_distribution'] = evolution_counts
         self.generation_stats['quality_scores'] = quality_scores
     
-    def _associate_goldens_with_context_metadata(self, goldens: List, limited_contexts: List[List[str]]) -> None:
+    def _associate_goldens_with_context_metadata(self, goldens: List, limited_contexts: List[List[str]], context_index_mapping: List[int]) -> None:
         """
         Associate each generated golden with metadata from its source context group.
-        
+
         Stores metadata separately since Golden objects are immutable dataclasses.
         Metadata is retrieved during JSON serialization using index-based association.
-        
+
         Args:
             goldens: List of generated golden objects from DeepEval
             limited_contexts: List of context groups that were actually used
+            context_index_mapping: List mapping limited_contexts indices to original context indices
         """
         try:
             # Clear existing metadata store
@@ -512,27 +522,42 @@ class DatasetBuilder:
             
             # Associate each golden with its source context metadata
             for i, golden in enumerate(goldens):
-                if i < len(context_metadata) and i < len(limited_contexts):
-                    # Get metadata for this context
-                    source_context_metadata = context_metadata[i]
-                    
-                    # Extract evolution strategies applied to this golden
-                    applied_evolutions = self._extract_evolution_strategies(golden)
-                    
-                    # Create comprehensive metadata for this golden
-                    golden_metadata = {
-                        'grouping_method': source_context_metadata['strategy'],
-                        'evolutions': applied_evolutions,
-                        'context_traversal_path': source_context_metadata['traversal_path'],
-                        'context_chunk_count': source_context_metadata['chunk_count'],
-                        'context_sentence_count': source_context_metadata['sentence_count'],
-                        'context_strategy_metadata': source_context_metadata['metadata']
-                    }
-                    
-                    # Store metadata in separate store using index association
-                    self.golden_metadata_store.append(golden_metadata)
-                    
-                    self.logger.debug(f"📝 Stored metadata for golden {i} with strategy '{source_context_metadata['strategy']}'")
+                if i < len(limited_contexts) and i < len(context_index_mapping):
+                    # Map back to original context index to get correct metadata
+                    original_context_index = context_index_mapping[i]
+                    if original_context_index < len(context_metadata):
+                        # Get metadata for this context using correct original index
+                        source_context_metadata = context_metadata[original_context_index]
+
+                        # Extract evolution strategies applied to this golden
+                        applied_evolutions = self._extract_evolution_strategies(golden)
+
+                        # Create comprehensive metadata for this golden
+                        golden_metadata = {
+                            'grouping_method': source_context_metadata['strategy'],
+                            'evolutions': applied_evolutions,
+                            'context_traversal_path': source_context_metadata['traversal_path'],
+                            'context_chunk_count': source_context_metadata['chunk_count'],
+                            'context_sentence_count': source_context_metadata['sentence_count'],
+                            'context_strategy_metadata': source_context_metadata['metadata']
+                        }
+
+                        # Store metadata in separate store using index association
+                        self.golden_metadata_store.append(golden_metadata)
+
+                        self.logger.debug(f"📝 Stored metadata for golden {i} with strategy '{source_context_metadata['strategy']}' (original_idx: {original_context_index})")
+                    else:
+                        # Handle case where original context index is out of range
+                        self.logger.warning(f"⚠️ Original context index {original_context_index} out of range for golden {i}")
+                        fallback_metadata = {
+                            'grouping_method': 'index_error',
+                            'evolutions': ['unknown'],
+                            'context_traversal_path': [],
+                            'context_chunk_count': 0,
+                            'context_sentence_count': 0,
+                            'context_strategy_metadata': {}
+                        }
+                        self.golden_metadata_store.append(fallback_metadata)
                 else:
                     # Store fallback metadata for missing associations
                     fallback_metadata = {

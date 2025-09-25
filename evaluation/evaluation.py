@@ -99,6 +99,52 @@ class EvaluationOrchestrator:
         self._metrics_cache: Dict[str, Any] = {}
         
         self.logger.info("EvaluationOrchestrator initialized")
+
+    def _generate_answer_from_context(self, question: str, context: str) -> str:
+        """
+        Generate an answer to the question using the retrieved context.
+
+        Uses the configured evaluation judge model to generate a proper response
+        based on the retrieved context, simulating how a real RAG system works.
+
+        Args:
+            question: The input question
+            context: The retrieved context text
+
+        Returns:
+            Generated answer string
+        """
+        try:
+            # Get the evaluation judge model for answer generation
+            judge_model = self.model_manager.get_evaluation_judge_model()
+
+            # Create a prompt that asks the LLM to answer the question using the context
+            prompt = f"""Based on the provided context, answer the following question. Use only the information from the context and be concise and accurate.
+
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
+
+            # Generate the response using the model
+            response = judge_model.generate(prompt)
+
+            # Extract the actual response text
+            if hasattr(response, 'response'):
+                return response.response
+            elif isinstance(response, str):
+                return response
+            else:
+                return str(response)
+
+        except Exception as e:
+            self.logger.error(f"Failed to generate answer from context: {e}")
+            # Fallback to truncated context if generation fails
+            fallback_answer = context[:500] + "..." if len(context) > 500 else context
+            self.logger.warning(f"Using fallback answer (truncated context)")
+            return fallback_answer
     
     def run(self, algorithm_name: str, 
             algorithm_params: Optional[Dict[str, Any]] = None,
@@ -432,8 +478,9 @@ class EvaluationOrchestrator:
                     algorithm_params=algorithm_params
                 )
                 
-                # Create actual output by joining retrieved content
-                actual_output = "\n".join(retrieval_result.retrieved_content)
+                # Generate actual output using LLM with retrieved content as context
+                context_text = "\n".join(retrieval_result.retrieved_content)
+                actual_output = self._generate_answer_from_context(golden.input, context_text)
                 
                 # Create test case for deepeval evaluation
                 test_case = LLMTestCase(
