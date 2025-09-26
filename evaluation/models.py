@@ -42,7 +42,7 @@ class OpenRouterModel(DeepEvalBaseLLM):
     evaluation framework while using OpenRouter's unified API.
     """
 
-    def __init__(self, model_name: str, api_key: str, temperature: float = 0.1, max_tokens: int = 2000):
+    def __init__(self, model_name: str, api_key: str, temperature: float = 0.1, max_tokens: int = 2000, config: dict = None):
         self.model_name = model_name
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -50,10 +50,61 @@ class OpenRouterModel(DeepEvalBaseLLM):
             base_url="https://openrouter.ai/api/v1/",
             api_key=api_key
         )
+        # Initialize logger
+        import logging
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+        # Rate limiting configuration
+        self.config = config or {}
+        self.rate_limiting = self._get_rate_limiting_config()
+        self._last_api_call_time = 0
 
     def load_model(self):
         """Return the OpenAI client for OpenRouter."""
         return self.client
+
+    def _get_rate_limiting_config(self) -> dict:
+        """Extract rate limiting configuration from config."""
+        deepeval_config = self.config.get('deepeval', {})
+        rate_limiting = deepeval_config.get('api_rate_limiting', {})
+
+        return {
+            'enabled': rate_limiting.get('enabled', True),
+            'delay_between_calls': rate_limiting.get('delay_between_calls', 3.0),
+            'delay_after_failure': rate_limiting.get('delay_after_failure', 5.0),
+            'delay_for_large_requests': rate_limiting.get('delay_for_large_requests', 5.0)
+        }
+
+    def _apply_rate_limiting(self, prompt: str, failed_attempt: bool = False):
+        """Apply rate limiting delays based on configuration."""
+        if not self.rate_limiting.get('enabled', True):
+            return
+
+        import time
+        current_time = time.time()
+        time_since_last_call = current_time - self._last_api_call_time
+
+        # Calculate required delay
+        base_delay = self.rate_limiting.get('delay_between_calls', 3.0)
+
+        # Extra delay for large requests
+        prompt_length = len(prompt)
+        if prompt_length > 30000:  # Large request threshold
+            base_delay += self.rate_limiting.get('delay_for_large_requests', 5.0)
+            self.logger.info(f"Large request detected ({prompt_length} chars), adding extra delay")
+
+        # Extra delay after failures
+        if failed_attempt:
+            base_delay += self.rate_limiting.get('delay_after_failure', 5.0)
+            self.logger.info(f"Previous failure detected, adding extra delay")
+
+        # Apply delay if needed
+        if time_since_last_call < base_delay:
+            sleep_time = base_delay - time_since_last_call
+            self.logger.info(f"⏱️  Rate limiting: sleeping {sleep_time:.1f}s (last call {time_since_last_call:.1f}s ago)")
+            time.sleep(sleep_time)
+
+        self._last_api_call_time = time.time()
 
     def generate(self, prompt: str, schema: BaseModel = None) -> str:
         """
@@ -87,45 +138,101 @@ class OpenRouterModel(DeepEvalBaseLLM):
                 {"role": "user", "content": prompt}
             ]
 
-        try:
-            response = client.chat.completions.create(**request_kwargs)
-            content = response.choices[0].message.content
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            # Apply rate limiting before each attempt
+            failed_previous_attempt = attempt > 0
+            self._apply_rate_limiting(prompt, failed_attempt=failed_previous_attempt)
 
-            # If schema provided, validate and return structured output
-            if schema:
-                # Special handling for DeepEval's Response schema
-                if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
-                    # First, try to parse content as JSON to see if it's a dict-in-string
-                    parsed_content = None
-                    if isinstance(content, str):
-                        try:
-                            import json
-                            parsed_content = json.loads(content)
-                        except:
-                            parsed_content = None
+            try:
+                response = client.chat.completions.create(**request_kwargs)
+                content = response.choices[0].message.content
 
-                    # Handle case where content is a dict (either directly or parsed from JSON string)
-                    if isinstance(content, dict) or isinstance(parsed_content, dict):
-                        dict_to_process = content if isinstance(content, dict) else parsed_content
-                        # Extract the actual content from the dict
-                        clean_content = self._extract_content_from_dict(dict_to_process)
-                        return schema(response=clean_content)
-                    else:
-                        # For regular string content, clean and wrap in Response
-                        clean_content = self._clean_response_content(content)
-                        return schema(response=clean_content)
+                # COMPREHENSIVE DEBUGGING: Log raw content on all calls
+                self.logger.debug(f"OpenRouter raw response (attempt {attempt + 1}): {type(content)}, length: {len(str(content))}")
+                self.logger.debug(f"OpenRouter content preview: {str(content)[:500]}...")
+
+                # Quick check if we got HTML instead of expected content
+                if isinstance(content, str) and content.strip().startswith('<'):
+                    self.logger.error(f"OpenRouter returned HTML content: {content[:1000]}...")
+                    raise RuntimeError("OpenRouter returned HTML content (possible rate limit or error page)")
+
+                # Check for large responses that might contain mixed content
+                if isinstance(content, str) and len(content) > 5000:
+                    self.logger.warning(f"OpenRouter returned large response ({len(content)} chars) - checking for HTML mixed in")
+                    # Look for HTML patterns in large responses
+                    if '<html>' in content.lower() or '<!doctype' in content.lower() or '<body>' in content.lower():
+                        self.logger.error(f"OpenRouter returned mixed HTML content in large response: {content[:2000]}...")
+                        raise RuntimeError("OpenRouter returned mixed HTML content in large response")
+
+                break  # Success, exit retry loop
+
+            except Exception as e:
+                # Enhanced error logging
+                self.logger.error(f"OpenRouter API attempt {attempt + 1} failed with error: {type(e).__name__}: {str(e)}")
+                if hasattr(e, 'response') and e.response:
+                    self.logger.error(f"HTTP Status: {getattr(e.response, 'status_code', 'unknown')}")
+                    self.logger.error(f"Response headers: {getattr(e.response, 'headers', {})}")
+
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    self.logger.warning(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
                 else:
-                    # For non-Response schemas, try normal JSON validation
+                    self.logger.error(f"All {max_retries} attempts failed. Final error: {e}")
+                    raise  # Re-raise on final attempt
+
+        # If schema provided, validate and return structured output
+        if schema:
+            # Special handling for DeepEval's Response schema
+            if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
+                # First, try to parse content as JSON to see if it's a dict-in-string
+                parsed_content = None
+                if isinstance(content, str):
                     try:
-                        return schema.model_validate_json(content)
-                    except:
-                        # For other schemas, return raw content
-                        return content
+                        import json
+                        parsed_content = json.loads(content)
+                    except json.JSONDecodeError as e:
+                        self.logger.error(f"🚨 JSON PARSE FAILURE - This is the bug!")
+                        self.logger.error(f"JSON parse error: {e}")
+                        self.logger.error(f"Error line {e.lineno}, column {e.colno}, position {e.pos}")
+                        self.logger.error(f"Content length: {len(content)} chars")
+                        self.logger.error(f"Content type: {type(content)}")
+                        self.logger.error(f"First 1000 chars: {content[:1000]}")
+                        self.logger.error(f"Content around error position {e.pos}: {content[max(0, e.pos-100):e.pos+100]}")
+                        self.logger.error(f"Last 500 chars: {content[-500:]}")
 
-            return content
+                        # Try to identify the issue
+                        if '<html>' in content.lower():
+                            self.logger.error("🎯 FOUND IT: Content contains HTML - this is the source of JSON parse failures!")
+                        if 'cloudflare' in content.lower():
+                            self.logger.error("🎯 FOUND IT: Content contains Cloudflare - likely rate limiting page!")
+                        if 'error' in content.lower():
+                            self.logger.error("🎯 FOUND IT: Content contains error messages!")
 
-        except Exception as e:
-            raise RuntimeError(f"OpenRouter API call failed: {e}")
+                        parsed_content = None
+
+                # Handle case where content is a dict (either directly or parsed from JSON string)
+                if isinstance(content, dict) or isinstance(parsed_content, dict):
+                    dict_to_process = content if isinstance(content, dict) else parsed_content
+                    # Extract the actual content from the dict
+                    clean_content = self._extract_content_from_dict(dict_to_process)
+                    return schema(response=clean_content)
+                else:
+                    # For regular string content, clean and wrap in Response
+                    clean_content = self._clean_response_content(content)
+                    return schema(response=clean_content)
+            else:
+                # For non-Response schemas, try normal JSON validation
+                try:
+                    return schema.model_validate_json(content)
+                except:
+                    # For other schemas, return raw content
+                    return content
+
+        return content
 
     async def a_generate(self, prompt: str, schema: BaseModel = None):
         """
@@ -491,7 +598,8 @@ class ModelManager:
             model_name=config.model_name,
             api_key=api_key,
             temperature=config.temperature,
-            max_tokens=config.max_tokens
+            max_tokens=config.max_tokens,
+            config=self.config  # Pass full config for rate limiting access
         )
     
     def _validate_configuration(self) -> None:

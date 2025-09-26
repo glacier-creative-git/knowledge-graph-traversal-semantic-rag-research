@@ -8,6 +8,14 @@ experiment:
   version: "2.0.0"
   tags: ["multi_granularity", "graph_traversal", "rag", "ollama"]
 
+  # Experiment Tracking for Dashboard
+  tracking:
+    notes: "Added reranking implementation with hybrid strategy"
+    run_type: "reranking_comparison"
+    dataset_type: "sequential_multi_hop"
+    baseline_comparison: true
+    expected_improvements: ["contextual_relevancy", "precision"]
+
 # System Configuration
 system:
   device: "mps"  # auto, cpu, cuda, mps
@@ -105,7 +113,7 @@ retrieval:
     max_results: 10
     min_sentence_threshold: 10  # Minimum sentences to extract
     max_safety_hops: 20  # Safety limit to prevent infinite traversal
-    enable_reranking: false  # Enable reranking of extracted content
+    enable_reranking: true   # Enable reranking of extracted content
     single_anchor_mode: true  # Use single anchor for efficiency
 
     # KG Algorithm
@@ -120,19 +128,22 @@ retrieval:
 
 # Reranking Configuration - Standardizes Output and Optimizes Relevance
 reranking:
-  strategy: "hybrid"  # Options: "tfidf", "semantic", "hybrid"
-  target_count: 10    # Standardized output: exactly 10 sentences per algorithm
-  
-  # TF-IDF reranking parameters
+  strategy: "semantic"  # Options: "tfidf", "semantic", "hybrid"
+  target_count: 10      # Standardized output: exactly 10 sentences per algorithm
+
+  # Neural semantic reranking (HuggingFace cross-encoders)
+  model_name: "cross-encoder/ms-marco-MiniLM-L-6-v2"  # MS MARCO trained cross-encoder
+
+  # TF-IDF reranking parameters (fallback)
   max_features: 5000
   ngram_range: [1, 2]
-  
-  # Hybrid reranking weights
+
+  # Hybrid reranking weights (when strategy is "hybrid")
   hybrid_weights:
     tfidf: 0.6           # Primary relevance signal
     length: 0.2          # Moderate-length sentence preference
     question_overlap: 0.2 # Bonus for question keyword overlap
-  
+
   # Quality control
   enable_fallback: true
   log_reranking_decisions: false  # Set to true for debugging
@@ -327,18 +338,25 @@ notifications:
 # DeepEval Configuration - Synthetic Dataset Generation and Evaluation
 # ==================================================================
 deepeval:
+  # API Rate Limiting Configuration
+  api_rate_limiting:
+    enabled: true                    # Enable API call delays
+    delay_between_calls: 3.0         # Seconds to wait between API calls
+    delay_after_failure: 5.0         # Extra delay after API failures
+    delay_for_large_requests: 5.0    # Extra delay for requests >30k tokens
+
   models:
     # Model provider for question generation
     question_generation:
       provider: "openrouter"              # ollama, openai, anthropic, openrouter
-      model_name: "meta-llama/llama-3.3-70b-instruct"      # Provider-specific model identifier
+      model_name: "openai/gpt-5-nano"      # Provider-specific model identifier
       temperature: 0.1
       max_tokens: 20000
-    
+
     # Model provider for evaluation (LLM-as-a-judge)
     evaluation_judge:
       provider: "openrouter"              # Using Ollama for local evaluation
-      model_name: "meta-llama/llama-3.3-70b-instruct"      # Same model as question generation for consistency
+      model_name: "openai/gpt-5-nano"      # Same model as question generation for consistency
       temperature: 0.0                # Low temperature for consistent evaluation
       max_tokens: 50000
 
@@ -357,7 +375,7 @@ deepeval:
       include_expected_output: true   # Generate ideal answers
       
     evolution:
-      enabled: false
+      enabled: true
       num_evolutions: 1               # Number of evolution steps per question
       evolution_types:                # Specific evolution strategies
         - "REASONING"                 # Multi-step logical reasoning
@@ -366,9 +384,9 @@ deepeval:
         - "MULTICONTEXT"              # Multi-chunk questions
       evolution_distribution:
         REASONING: 0.4                # 40% reasoning questions
-        COMPARATIVE: 0.3              # 30% comparison questions
-        IN_BREADTH: 0.2               # 20% broad questions
-        MULTICONTEXT: 0.1             # 10% multi-context questions
+        COMPARATIVE: 0.0              # 30% comparison questions
+        IN_BREADTH: 0.0               # 20% broad questions
+        MULTICONTEXT: 0.0             # 10% multi-context questions
     
     output:
       save_path: "data/synthetic_dataset.json"
@@ -377,7 +395,7 @@ deepeval:
 
       # DeepEval dashboard integration
       push_to_dashboard: true        # Push dataset to DeepEval dashboard (must be on paid plan for this to work)
-      dataset_alias: "5q-seq-multihop-noevolve"  # Unique name for dataset on dashboard
+      dataset_alias: "5q-seq-multihop-reasoning"  # Unique name for dataset on dashboard
       pull_from_dashboard: false      # Load dataset from dashboard instead of local file
 
       # CSV conversion for manual upload (free tier workaround)
@@ -409,9 +427,9 @@ deepeval:
     algorithms:
       # List of retrieval algorithms to benchmark
       test_algorithms:
-        - "basic_retrieval"
-        - "query_traversal" 
-        - "kg_traversal"
+        # - "basic_retrieval"
+        # - "query_traversal"
+        # - "kg_traversal"
         - "triangulation_centroid"
       
       # Algorithm hyperparameters (configurable for dashboard visibility)

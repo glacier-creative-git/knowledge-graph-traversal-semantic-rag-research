@@ -36,6 +36,7 @@ from deepeval.metrics import (
 # Local imports
 from utils.retrieval import RetrievalOrchestrator
 from utils.knowledge_graph import KnowledgeGraph
+from utils.reranker import RerankerOrchestrator
 from .models import ModelManager
 
 
@@ -89,7 +90,15 @@ class EvaluationOrchestrator:
         
         # Initialize model manager for evaluation judges
         self.model_manager = ModelManager(config, logger)
-        
+
+        # Initialize reranker if enabled
+        self.reranker_orchestrator: Optional[RerankerOrchestrator] = None
+        if self._is_reranking_enabled():
+            self.reranker_orchestrator = RerankerOrchestrator(config, logger)
+            self.logger.info("Reranking enabled - RerankerOrchestrator initialized")
+        else:
+            self.logger.info("Reranking disabled")
+
         # Core components (lazy-loaded)
         self.knowledge_graph: Optional[KnowledgeGraph] = None
         self.retrieval_orchestrator: Optional[RetrievalOrchestrator] = None
@@ -99,6 +108,10 @@ class EvaluationOrchestrator:
         self._metrics_cache: Dict[str, Any] = {}
         
         self.logger.info("EvaluationOrchestrator initialized")
+
+    def _is_reranking_enabled(self) -> bool:
+        """Check if reranking is enabled in configuration."""
+        return self.config.get('evaluation', {}).get('benchmarking', {}).get('enable_reranking', False)
 
     def _generate_answer_from_context(self, question: str, context: str) -> str:
         """
@@ -192,53 +205,18 @@ Answer:"""
         
         # Execute deepeval evaluation
         self.logger.info(f"🔍 Evaluating {len(test_cases)} test cases with {len(metrics)} metrics")
-        
+
         try:
-            # Evaluate each metric individually to capture scores
-            self.logger.info(f"🔍 Running individual metric evaluations to capture scores...")
-
-            # Store scores for each metric per test case
-            metric_results = {}
-
-            for metric in metrics:
-                metric_name = getattr(metric, 'name', None) or getattr(metric, '__name__', None) or metric.__class__.__name__
-                metric_results[metric_name] = []
-
-                for i, test_case in enumerate(test_cases):
-                    try:
-                        # Evaluate this metric on this test case
-                        metric.measure(test_case)
-
-                        # Extract the score
-                        score = getattr(metric, 'score', None)
-                        success = getattr(metric, 'success', None)
-                        if success is None and hasattr(metric, 'is_successful'):
-                            try:
-                                success = metric.is_successful()
-                            except:
-                                success = False
-
-                        metric_results[metric_name].append({
-                            'score': score,
-                            'success': success,
-                            'test_case_index': i
-                        })
-
-                        self.logger.debug(f"Metric {metric_name}, test case {i}: score={score}, success={success}")
-
-                    except Exception as e:
-                        self.logger.error(f"Failed to evaluate {metric_name} on test case {i}: {e}")
-                        metric_results[metric_name].append({
-                            'score': None,
-                            'success': False,
-                            'test_case_index': i
-                        })
-
-            # Now run the full evaluation for dashboard upload
+            # Run single batch evaluation (no double evaluation!)
+            self.logger.info(f"🔍 Running batch evaluation with deepeval.evaluate()...")
             project_config = self.deepeval_config.get('project', {})
             project_name = project_config.get('name', 'semantic-rag-research')
             project_id = project_config.get('id', 'cmfpz4kpj03i62ad3v3a098kv')
             identifier = f"{project_name}_{algorithm_name}"
+
+            # Get experiment tracking configuration
+            experiment_config = self.config.get('experiment', {})
+            tracking_config = experiment_config.get('tracking', {})
 
             hyperparameters = {
                 'algorithm': algorithm_name,
@@ -246,6 +224,20 @@ Answer:"""
                 'project_description': project_config.get('description', ''),
                 'project_tags': ', '.join(project_config.get('tags', [])),
                 'project_id': project_id,
+
+                # Experiment tracking (configurable)
+                'reranking_enabled': self._is_reranking_enabled(),
+                'reranking_strategy': self.config.get('reranking', {}).get('strategy', 'none') if self._is_reranking_enabled() else 'disabled',
+                'experiment_notes': tracking_config.get('notes', 'No notes provided'),
+                'run_type': tracking_config.get('run_type', 'standard'),
+                'dataset_type': tracking_config.get('dataset_type', 'unknown'),
+                'baseline_comparison': tracking_config.get('baseline_comparison', False),
+                'expected_improvements': ', '.join(tracking_config.get('expected_improvements', [])),
+
+                # Experiment metadata
+                'experiment_name': experiment_config.get('name', 'semantic_rag_pipeline'),
+                'experiment_version': experiment_config.get('version', '1.0.0'),
+
                 **final_params
             }
 
@@ -279,7 +271,39 @@ Answer:"""
         except Exception as e:
             self.logger.error(f"❌ DeepEval execution failed: {e}")
             raise RuntimeError(f"Evaluation execution failed: {e}")
-        
+
+        # Extract metric results from test cases after evaluation
+        self.logger.info("📊 Extracting metric results from evaluated test cases...")
+        metric_results = {}
+
+        for metric in metrics:
+            metric_name = getattr(metric, 'name', None) or getattr(metric, '__name__', None) or metric.__class__.__name__
+            metric_results[metric_name] = []
+
+            for i, test_case in enumerate(test_cases):
+                # Extract scores from test case after evaluation
+                score = None
+                success = False
+
+                # Try to get metric results from test case
+                if hasattr(test_case, 'metrics_metadata') and test_case.metrics_metadata:
+                    metric_data = test_case.metrics_metadata.get(metric_name, {})
+                    score = metric_data.get('score')
+                    success = metric_data.get('success', False)
+
+                # Fallback: get from metric object directly if available
+                if score is None and hasattr(metric, 'score'):
+                    score = getattr(metric, 'score', None)
+                    success = getattr(metric, 'success', False)
+
+                metric_results[metric_name].append({
+                    'score': score,
+                    'success': success,
+                    'test_case_index': i
+                })
+
+                self.logger.debug(f"Extracted - Metric {metric_name}, test case {i}: score={score}, success={success}")
+
         # Process and aggregate results
         evaluation_time = time.time() - start_time
 
@@ -477,9 +501,18 @@ Answer:"""
                     algorithm_name=algorithm_name,
                     algorithm_params=algorithm_params
                 )
-                
-                # Generate actual output using LLM with retrieved content as context
-                context_text = "\n".join(retrieval_result.retrieved_content)
+
+                # Apply reranking if enabled (standardizes output across all algorithms)
+                if self.reranker_orchestrator:
+                    reranked_sentences, rerank_metadata = self.reranker_orchestrator.rerank_retrieval_result(
+                        retrieval_result, golden.input
+                    )
+                    context_text = "\n".join(reranked_sentences)
+                    self.logger.debug(f"Reranking applied: {len(retrieval_result.retrieved_content)} -> {len(reranked_sentences)} sentences")
+                else:
+                    context_text = "\n".join(retrieval_result.retrieved_content)
+
+                # Generate actual output using LLM with (potentially reranked) context
                 actual_output = self._generate_answer_from_context(golden.input, context_text)
                 
                 # Create test case for deepeval evaluation
