@@ -1,0 +1,423 @@
+2025-09-26 19:00:51,541 - DeepEvalBenchmark - INFO - 🚀 DeepEval Semantic Traversal Benchmark Starting
+2025-09-26 19:00:51,541 - DeepEvalBenchmark - INFO - ======================================================================
+2025-09-26 19:00:51,541 - DeepEvalBenchmark - INFO - Timestamp: 2025-09-26T19:00:51.541203
+2025-09-26 19:00:51,541 - DeepEvalBenchmark - INFO - 🔧 Loading configuration and validating environment...
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - ✅ Available providers: OpenAI, Anthropic, OpenRouter, Ollama (local)
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - 📊 Phase 1: Knowledge Graph Construction
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - ==================================================
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - ✅ Knowledge graph found at data/knowledge_graph.json - skipping rebuild
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO -    Use --force-rebuild-kg to force regeneration
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - 🧠 Phase 2: Synthetic Dataset Generation
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - ==================================================
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - ModelManager initialized successfully
+2025-09-26 19:00:51,560 - DeepEvalBenchmark - INFO - DatasetBuilder initialized
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 🎯 Starting synthetic dataset generation using deepeval evolution
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 🎯 Using generation method: traditional
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 🔬 Using DeepEval's traditional/native generation methods
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 📋 Traditional generation method: from_docs
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 🧠 Generating new traditional dataset using method: from_docs
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 📄 Generating dataset from documents using DeepEval's native method
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 🧠 Exporting knowledge graph to documents for DeepEval processing
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 📤 Exporting knowledge graph to document files
+2025-09-26 19:00:51,561 - DeepEvalBenchmark - INFO - 📂 Loading knowledge graph from data/knowledge_graph.json
+2025-09-26 19:00:52,358 - DeepEvalBenchmark - INFO - ✅ Knowledge graph loaded: 18318 chunks, 18488 sentences, 94 documents
+2025-09-26 19:00:52,360 - DeepEvalBenchmark - DEBUG -    Doc Neuroscience: found 141 chunks
+2025-09-26 19:00:52,362 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/the_nervous_system_knowledge.txt
+2025-09-26 19:00:52,362 - DeepEvalBenchmark - INFO -    Deduplication: 444 → 149 unique sentences
+2025-09-26 19:00:52,363 - DeepEvalBenchmark - DEBUG -    Doc Behavioral neuroscience: found 151 chunks
+2025-09-26 19:00:52,364 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/biological_bases_of_behavior_knowledge.txt
+2025-09-26 19:00:52,364 - DeepEvalBenchmark - INFO -    Deduplication: 477 → 160 unique sentences
+2025-09-26 19:00:52,365 - DeepEvalBenchmark - DEBUG -    Doc Computational neuroscience: found 100 chunks
+2025-09-26 19:00:52,367 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/mathematical_modeling_knowledge.txt
+2025-09-26 19:00:52,367 - DeepEvalBenchmark - INFO -    Deduplication: 306 → 104 unique sentences
+2025-09-26 19:00:52,367 - DeepEvalBenchmark - DEBUG -    Doc Cognitive neuroscience: found 175 chunks
+2025-09-26 19:00:52,369 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/brain_function_and_cognition_knowledge.txt
+2025-09-26 19:00:52,369 - DeepEvalBenchmark - INFO -    Deduplication: 570 → 188 unique sentences
+2025-09-26 19:00:52,370 - DeepEvalBenchmark - DEBUG -    Doc Educational neuroscience: found 343 chunks
+2025-09-26 19:00:52,373 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/neural_mechanisms_of_learning_knowledge.txt
+2025-09-26 19:00:52,373 - DeepEvalBenchmark - INFO -    Deduplication: 1110 → 361 unique sentences
+2025-09-26 19:00:52,374 - DeepEvalBenchmark - DEBUG -    Doc Affective neuroscience: found 238 chunks
+2025-09-26 19:00:52,376 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/emotion_processing_in_the_brain_knowledge.txt
+2025-09-26 19:00:52,376 - DeepEvalBenchmark - INFO -    Deduplication: 738 → 246 unique sentences
+2025-09-26 19:00:52,377 - DeepEvalBenchmark - DEBUG -    Doc Personality neuroscience: found 134 chunks
+2025-09-26 19:00:52,379 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/personality_and_behavior_knowledge.txt
+2025-09-26 19:00:52,379 - DeepEvalBenchmark - INFO -    Deduplication: 483 → 156 unique sentences
+2025-09-26 19:00:52,379 - DeepEvalBenchmark - DEBUG -    Doc Integrative neuroscience: found 51 chunks
+2025-09-26 19:00:52,380 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/complex_systems_and_behavior_knowledge.txt
+2025-09-26 19:00:52,380 - DeepEvalBenchmark - INFO -    Deduplication: 159 → 54 unique sentences
+2025-09-26 19:00:52,381 - DeepEvalBenchmark - DEBUG -    Doc Outline of neuroscience: found 24 chunks
+2025-09-26 19:00:52,382 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/structure_and_function_of_the_nervous_system_knowledge.txt
+2025-09-26 19:00:52,382 - DeepEvalBenchmark - INFO -    Deduplication: 72 → 26 unique sentences
+2025-09-26 19:00:52,383 - DeepEvalBenchmark - DEBUG -    Doc Memory: found 460 chunks
+2025-09-26 19:00:52,386 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/information_encoding_and_storage_knowledge.txt
+2025-09-26 19:00:52,386 - DeepEvalBenchmark - INFO -    Deduplication: 1428 → 482 unique sentences
+2025-09-26 19:00:52,387 - DeepEvalBenchmark - DEBUG -    Doc Neuroscience nursing: found 32 chunks
+2025-09-26 19:00:52,388 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/neuroscience_nursing_scope_knowledge.txt
+2025-09-26 19:00:52,388 - DeepEvalBenchmark - INFO -    Deduplication: 111 → 38 unique sentences
+2025-09-26 19:00:52,389 - DeepEvalBenchmark - DEBUG -    Doc Neuroscience of sleep: found 401 chunks
+2025-09-26 19:00:52,391 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/the_importance_of_sleep_knowledge.txt
+2025-09-26 19:00:52,392 - DeepEvalBenchmark - INFO -    Deduplication: 1239 → 418 unique sentences
+2025-09-26 19:00:52,392 - DeepEvalBenchmark - DEBUG -    Doc Asperger syndrome: found 236 chunks
+2025-09-26 19:00:52,395 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/neurodevelopmental_disorder_knowledge.txt
+2025-09-26 19:00:52,395 - DeepEvalBenchmark - INFO -    Deduplication: 762 → 260 unique sentences
+2025-09-26 19:00:52,396 - DeepEvalBenchmark - DEBUG -    Doc Precision Neuroscience: found 31 chunks
+2025-09-26 19:00:52,397 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/brain-computer_interfaces_knowledge.txt
+2025-09-26 19:00:52,397 - DeepEvalBenchmark - INFO -    Deduplication: 111 → 35 unique sentences
+2025-09-26 19:00:52,397 - DeepEvalBenchmark - DEBUG -    Doc Visual neuroscience: found 37 chunks
+2025-09-26 19:00:52,398 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/visual_perception_knowledge.txt
+2025-09-26 19:00:52,398 - DeepEvalBenchmark - INFO -    Deduplication: 111 → 39 unique sentences
+2025-09-26 19:00:52,399 - DeepEvalBenchmark - DEBUG -    Doc Neuroscience of music: found 292 chunks
+2025-09-26 19:00:52,401 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/brain-based_mechanisms_knowledge.txt
+2025-09-26 19:00:52,401 - DeepEvalBenchmark - INFO -    Deduplication: 948 → 302 unique sentences
+2025-09-26 19:00:52,402 - DeepEvalBenchmark - DEBUG -    Doc Neuroscience of religion: found 84 chunks
+2025-09-26 19:00:52,403 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/neural_correlations_of_spirituality_knowledge.txt
+2025-09-26 19:00:52,403 - DeepEvalBenchmark - INFO -    Deduplication: 267 → 108 unique sentences
+2025-09-26 19:00:52,404 - DeepEvalBenchmark - DEBUG -    Doc Social cognitive neuroscience: found 115 chunks
+2025-09-26 19:00:52,406 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/social_cognition_knowledge.txt
+2025-09-26 19:00:52,406 - DeepEvalBenchmark - INFO -    Deduplication: 372 → 117 unique sentences
+2025-09-26 19:00:52,406 - DeepEvalBenchmark - DEBUG -    Doc Evolutionary neuroscience: found 109 chunks
+2025-09-26 19:00:52,408 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/evolution_of_nervous_systems_knowledge.txt
+2025-09-26 19:00:52,408 - DeepEvalBenchmark - INFO -    Deduplication: 351 → 114 unique sentences
+2025-09-26 19:00:52,409 - DeepEvalBenchmark - DEBUG -    Doc Psychology: found 741 chunks
+2025-09-26 19:00:52,414 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/behavior_and_mind_knowledge.txt
+2025-09-26 19:00:52,414 - DeepEvalBenchmark - INFO -    Deduplication: 2514 → 815 unique sentences
+2025-09-26 19:00:52,415 - DeepEvalBenchmark - DEBUG -    Doc Social psychology: found 215 chunks
+2025-09-26 19:00:52,418 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/social_influence_knowledge.txt
+2025-09-26 19:00:52,418 - DeepEvalBenchmark - INFO -    Deduplication: 720 → 233 unique sentences
+2025-09-26 19:00:52,418 - DeepEvalBenchmark - DEBUG -    Doc Physiological psychology: found 106 chunks
+2025-09-26 19:00:52,420 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/brain-behavior_relationships_knowledge.txt
+2025-09-26 19:00:52,420 - DeepEvalBenchmark - INFO -    Deduplication: 318 → 108 unique sentences
+2025-09-26 19:00:52,421 - DeepEvalBenchmark - DEBUG -    Doc Evolutionary psychology: found 462 chunks
+2025-09-26 19:00:52,424 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/evolutionary_perspective_knowledge.txt
+2025-09-26 19:00:52,424 - DeepEvalBenchmark - INFO -    Deduplication: 1479 → 507 unique sentences
+2025-09-26 19:00:52,425 - DeepEvalBenchmark - DEBUG -    Doc Gestalt psychology: found 197 chunks
+2025-09-26 19:00:52,427 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/pattern_recognition_knowledge.txt
+2025-09-26 19:00:52,427 - DeepEvalBenchmark - INFO -    Deduplication: 606 → 210 unique sentences
+2025-09-26 19:00:52,427 - DeepEvalBenchmark - DEBUG -    Doc Filipino psychology: found 103 chunks
+2025-09-26 19:00:52,429 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/indigenous_psychology_knowledge.txt
+2025-09-26 19:00:52,429 - DeepEvalBenchmark - INFO -    Deduplication: 324 → 116 unique sentences
+2025-09-26 19:00:52,429 - DeepEvalBenchmark - DEBUG -    Doc Developmental psychology: found 620 chunks
+2025-09-26 19:00:52,433 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/human_growth_and_development_knowledge.txt
+2025-09-26 19:00:52,433 - DeepEvalBenchmark - INFO -    Deduplication: 1953 → 668 unique sentences
+2025-09-26 19:00:52,434 - DeepEvalBenchmark - DEBUG -    Doc Forensic psychology: found 232 chunks
+2025-09-26 19:00:52,437 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/forensic_application_knowledge.txt
+2025-09-26 19:00:52,437 - DeepEvalBenchmark - INFO -    Deduplication: 783 → 250 unique sentences
+2025-09-26 19:00:52,437 - DeepEvalBenchmark - DEBUG -    Doc Association (psychology): found 74 chunks
+2025-09-26 19:00:52,438 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/mental_connections_knowledge.txt
+2025-09-26 19:00:52,438 - DeepEvalBenchmark - INFO -    Deduplication: 234 → 77 unique sentences
+2025-09-26 19:00:52,439 - DeepEvalBenchmark - DEBUG -    Doc Phenomenology (psychology): found 41 chunks
+2025-09-26 19:00:52,441 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/subjective_experiences_knowledge.txt
+2025-09-26 19:00:52,441 - DeepEvalBenchmark - INFO -    Deduplication: 131 → 48 unique sentences
+2025-09-26 19:00:52,442 - DeepEvalBenchmark - DEBUG -    Doc International psychology: found 103 chunks
+2025-09-26 19:00:52,444 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/global_contexts_knowledge.txt
+2025-09-26 19:00:52,444 - DeepEvalBenchmark - INFO -    Deduplication: 360 → 115 unique sentences
+2025-09-26 19:00:52,444 - DeepEvalBenchmark - DEBUG -    Doc Educational psychology: found 328 chunks
+2025-09-26 19:00:52,447 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/learning_processes_knowledge.txt
+2025-09-26 19:00:52,447 - DeepEvalBenchmark - INFO -    Deduplication: 1017 → 351 unique sentences
+2025-09-26 19:00:52,448 - DeepEvalBenchmark - DEBUG -    Doc Cognitive psychology: found 169 chunks
+2025-09-26 19:00:52,450 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/mental_processes_knowledge.txt
+2025-09-26 19:00:52,450 - DeepEvalBenchmark - INFO -    Deduplication: 558 → 178 unique sentences
+2025-09-26 19:00:52,451 - DeepEvalBenchmark - DEBUG -    Doc Shadow (psychology): found 56 chunks
+2025-09-26 19:00:52,452 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/the_unconscious_mind_knowledge.txt
+2025-09-26 19:00:52,452 - DeepEvalBenchmark - INFO -    Deduplication: 239 → 93 unique sentences
+2025-09-26 19:00:52,453 - DeepEvalBenchmark - DEBUG -    Doc Carl Jung: found 495 chunks
+2025-09-26 19:00:52,456 - DeepEvalBenchmark - DEBUG -    Doc Analytical psychology: found 353 chunks
+2025-09-26 19:00:52,460 - DeepEvalBenchmark - INFO - 📄 Exported 2 documents to data/deepeval_docs/analytical_psychology_knowledge.txt
+2025-09-26 19:00:52,460 - DeepEvalBenchmark - INFO -    Deduplication: 2681 → 936 unique sentences
+2025-09-26 19:00:52,461 - DeepEvalBenchmark - DEBUG -    Doc Industrial and organizational psychology: found 389 chunks
+2025-09-26 19:00:52,464 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/work_lives_knowledge.txt
+2025-09-26 19:00:52,464 - DeepEvalBenchmark - INFO -    Deduplication: 1344 → 424 unique sentences
+2025-09-26 19:00:52,465 - DeepEvalBenchmark - DEBUG -    Doc Applied psychology: found 185 chunks
+2025-09-26 19:00:52,467 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/behavioral_applications_knowledge.txt
+2025-09-26 19:00:52,467 - DeepEvalBenchmark - INFO -    Deduplication: 606 → 196 unique sentences
+2025-09-26 19:00:52,468 - DeepEvalBenchmark - DEBUG -    Doc Engineering psychology: found 45 chunks
+2025-09-26 19:00:52,469 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/human_behavior_and_capability_knowledge.txt
+2025-09-26 19:00:52,469 - DeepEvalBenchmark - INFO -    Deduplication: 144 → 50 unique sentences
+2025-09-26 19:00:52,470 - DeepEvalBenchmark - DEBUG -    Doc Computer: found 398 chunks
+2025-09-26 19:00:52,473 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computational_capabilities_knowledge.txt
+2025-09-26 19:00:52,473 - DeepEvalBenchmark - INFO -    Deduplication: 1260 → 424 unique sentences
+2025-09-26 19:00:52,474 - DeepEvalBenchmark - DEBUG -    Doc Computer science: found 175 chunks
+2025-09-26 19:00:52,476 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computation_and_information_knowledge.txt
+2025-09-26 19:00:52,476 - DeepEvalBenchmark - INFO -    Deduplication: 543 → 189 unique sentences
+2025-09-26 19:00:52,477 - DeepEvalBenchmark - DEBUG -    Doc Personal computer: found 337 chunks
+2025-09-26 19:00:52,480 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/individual_use_knowledge.txt
+2025-09-26 19:00:52,480 - DeepEvalBenchmark - INFO -    Deduplication: 1146 → 382 unique sentences
+2025-09-26 19:00:52,480 - DeepEvalBenchmark - DEBUG -    Doc Computer network: found 392 chunks
+2025-09-26 19:00:52,483 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computer_networking_basics_knowledge.txt
+2025-09-26 19:00:52,483 - DeepEvalBenchmark - INFO -    Deduplication: 1299 → 417 unique sentences
+2025-09-26 19:00:52,484 - DeepEvalBenchmark - DEBUG -    Doc Video game: found 377 chunks
+2025-09-26 19:00:52,487 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/interactive_technology_knowledge.txt
+2025-09-26 19:00:52,487 - DeepEvalBenchmark - INFO -    Deduplication: 1189 → 406 unique sentences
+2025-09-26 19:00:52,488 - DeepEvalBenchmark - DEBUG -    Doc Computer hardware: found 163 chunks
+2025-09-26 19:00:52,489 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computer_components_knowledge.txt
+2025-09-26 19:00:52,490 - DeepEvalBenchmark - INFO -    Deduplication: 501 → 167 unique sentences
+2025-09-26 19:00:52,490 - DeepEvalBenchmark - DEBUG -    Doc Computer security: found 617 chunks
+2025-09-26 19:00:52,494 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computer_security_threats_knowledge.txt
+2025-09-26 19:00:52,494 - DeepEvalBenchmark - INFO -    Deduplication: 2022 → 685 unique sentences
+2025-09-26 19:00:52,495 - DeepEvalBenchmark - DEBUG -    Doc Computer graphics (computer science): found 34 chunks
+2025-09-26 19:00:52,497 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/digital_synthesis_and_manipulation_knowledge.txt
+2025-09-26 19:00:52,497 - DeepEvalBenchmark - INFO -    Deduplication: 121 → 41 unique sentences
+2025-09-26 19:00:52,497 - DeepEvalBenchmark - DEBUG -    Doc Computer compatibility: found 15 chunks
+2025-09-26 19:00:52,498 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/software_compatibility_knowledge.txt
+2025-09-26 19:00:52,498 - DeepEvalBenchmark - INFO -    Deduplication: 45 → 17 unique sentences
+2025-09-26 19:00:52,499 - DeepEvalBenchmark - DEBUG -    Doc Computer worm: found 72 chunks
+2025-09-26 19:00:52,500 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/self-replication_knowledge.txt
+2025-09-26 19:00:52,500 - DeepEvalBenchmark - INFO -    Deduplication: 234 → 80 unique sentences
+2025-09-26 19:00:52,501 - DeepEvalBenchmark - DEBUG -    Doc Analog computer: found 271 chunks
+2025-09-26 19:00:52,503 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/analog_vs_digital_computation_knowledge.txt
+2025-09-26 19:00:52,503 - DeepEvalBenchmark - INFO -    Deduplication: 840 → 287 unique sentences
+2025-09-26 19:00:52,504 - DeepEvalBenchmark - DEBUG -    Doc Computer program: found 607 chunks
+2025-09-26 19:00:52,507 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computer_programs_knowledge.txt
+2025-09-26 19:00:52,507 - DeepEvalBenchmark - INFO -    Deduplication: 1803 → 620 unique sentences
+2025-09-26 19:00:52,508 - DeepEvalBenchmark - DEBUG -    Doc Computer virus: found 262 chunks
+2025-09-26 19:00:52,510 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/malware_replication_knowledge.txt
+2025-09-26 19:00:52,510 - DeepEvalBenchmark - INFO -    Deduplication: 852 → 284 unique sentences
+2025-09-26 19:00:52,511 - DeepEvalBenchmark - DEBUG -    Doc Computer vision: found 232 chunks
+2025-09-26 19:00:52,513 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/image_understanding_knowledge.txt
+2025-09-26 19:00:52,513 - DeepEvalBenchmark - INFO -    Deduplication: 847 → 262 unique sentences
+2025-09-26 19:00:52,513 - DeepEvalBenchmark - DEBUG -    Doc Computer scientist: found 14 chunks
+2025-09-26 19:00:52,515 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/theoretical_computing_knowledge.txt
+2025-09-26 19:00:52,515 - DeepEvalBenchmark - INFO -    Deduplication: 63 → 20 unique sentences
+2025-09-26 19:00:52,516 - DeepEvalBenchmark - DEBUG -    Doc Computer Olympiad: found 45 chunks
+2025-09-26 19:00:52,517 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computer_competitions_knowledge.txt
+2025-09-26 19:00:52,517 - DeepEvalBenchmark - INFO -    Deduplication: 177 → 51 unique sentences
+2025-09-26 19:00:52,518 - DeepEvalBenchmark - DEBUG -    Doc Computer memory: found 113 chunks
+2025-09-26 19:00:52,520 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computer_memory_functionality_knowledge.txt
+2025-09-26 19:00:52,520 - DeepEvalBenchmark - INFO -    Deduplication: 363 → 119 unique sentences
+2025-09-26 19:00:52,520 - DeepEvalBenchmark - DEBUG -    Doc Computer ethics: found 58 chunks
+2025-09-26 19:00:52,521 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/professional_conduct_knowledge.txt
+2025-09-26 19:00:52,522 - DeepEvalBenchmark - INFO -    Deduplication: 186 → 67 unique sentences
+2025-09-26 19:00:52,522 - DeepEvalBenchmark - DEBUG -    Doc Computing: found 141 chunks
+2025-09-26 19:00:52,524 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/computing_machinery_knowledge.txt
+2025-09-26 19:00:52,524 - DeepEvalBenchmark - INFO -    Deduplication: 435 → 148 unique sentences
+2025-09-26 19:00:52,525 - DeepEvalBenchmark - DEBUG -    Doc Information technology: found 89 chunks
+2025-09-26 19:00:52,526 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/information_management_knowledge.txt
+2025-09-26 19:00:52,526 - DeepEvalBenchmark - INFO -    Deduplication: 300 → 109 unique sentences
+2025-09-26 19:00:52,527 - DeepEvalBenchmark - DEBUG -    Doc Neural network (machine learning): found 388 chunks
+2025-09-26 19:00:52,530 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/neural_network_structure_knowledge.txt
+2025-09-26 19:00:52,530 - DeepEvalBenchmark - INFO -    Deduplication: 1236 → 410 unique sentences
+2025-09-26 19:00:52,530 - DeepEvalBenchmark - DEBUG -    Doc Neural network: found 25 chunks
+2025-09-26 19:00:52,531 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/interconnected_systems_knowledge.txt
+2025-09-26 19:00:52,531 - DeepEvalBenchmark - INFO -    Deduplication: 75 → 27 unique sentences
+2025-09-26 19:00:52,532 - DeepEvalBenchmark - DEBUG -    Doc Convolutional neural network: found 463 chunks
+2025-09-26 19:00:52,535 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/deep_learning_knowledge.txt
+2025-09-26 19:00:52,535 - DeepEvalBenchmark - INFO -    Deduplication: 1476 → 481 unique sentences
+2025-09-26 19:00:52,537 - DeepEvalBenchmark - DEBUG -    Doc Recurrent neural network: found 243 chunks
+2025-09-26 19:00:52,539 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/sequential_data_processing_knowledge.txt
+2025-09-26 19:00:52,539 - DeepEvalBenchmark - INFO -    Deduplication: 746 → 250 unique sentences
+2025-09-26 19:00:52,539 - DeepEvalBenchmark - DEBUG -    Doc Feedforward neural network: found 46 chunks
+2025-09-26 19:00:52,540 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/feedforward_neural_networks_knowledge.txt
+2025-09-26 19:00:52,540 - DeepEvalBenchmark - INFO -    Deduplication: 168 → 58 unique sentences
+2025-09-26 19:00:52,541 - DeepEvalBenchmark - DEBUG -    Doc Deep learning: found 382 chunks
+2025-09-26 19:00:52,544 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/multilayered_neural_networks_knowledge.txt
+2025-09-26 19:00:52,544 - DeepEvalBenchmark - INFO -    Deduplication: 1244 → 410 unique sentences
+2025-09-26 19:00:52,545 - DeepEvalBenchmark - DEBUG -    Doc Physics-informed neural networks: found 94 chunks
+2025-09-26 19:00:52,547 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/prior_knowledge_in_machine_learning_knowledge.txt
+2025-09-26 19:00:52,547 - DeepEvalBenchmark - INFO -    Deduplication: 297 → 98 unique sentences
+2025-09-26 19:00:52,547 - DeepEvalBenchmark - DEBUG -    Doc Neural network (biology): found 43 chunks
+2025-09-26 19:00:52,549 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/biological_neural_networks_knowledge.txt
+2025-09-26 19:00:52,549 - DeepEvalBenchmark - INFO -    Deduplication: 141 → 46 unique sentences
+2025-09-26 19:00:52,549 - DeepEvalBenchmark - DEBUG -    Doc Graph neural network: found 100 chunks
+2025-09-26 19:00:52,551 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/graph_neural_networks_knowledge.txt
+2025-09-26 19:00:52,551 - DeepEvalBenchmark - INFO -    Deduplication: 342 → 109 unique sentences
+2025-09-26 19:00:52,552 - DeepEvalBenchmark - DEBUG -    Doc Residual neural network: found 70 chunks
+2025-09-26 19:00:52,553 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/deep_learning_architectures_knowledge.txt
+2025-09-26 19:00:52,553 - DeepEvalBenchmark - INFO -    Deduplication: 231 → 74 unique sentences
+2025-09-26 19:00:52,554 - DeepEvalBenchmark - DEBUG -    Doc Spiking neural network: found 93 chunks
+2025-09-26 19:00:52,556 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/neural_network_architecture_knowledge.txt
+2025-09-26 19:00:52,556 - DeepEvalBenchmark - INFO -    Deduplication: 288 → 97 unique sentences
+2025-09-26 19:00:52,557 - DeepEvalBenchmark - DEBUG -    Doc Types of artificial neural networks: found 331 chunks
+2025-09-26 19:00:52,559 - DeepEvalBenchmark - DEBUG -    Doc History of artificial neural networks: found 192 chunks
+2025-09-26 19:00:52,562 - DeepEvalBenchmark - INFO - 📄 Exported 2 documents to data/deepeval_docs/inspiration_from_biological_systems_knowledge.txt
+2025-09-26 19:00:52,562 - DeepEvalBenchmark - INFO -    Deduplication: 1626 → 537 unique sentences
+2025-09-26 19:00:52,563 - DeepEvalBenchmark - DEBUG -    Doc Quantum neural network: found 56 chunks
+2025-09-26 19:00:52,564 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/quantum_mechanics_knowledge.txt
+2025-09-26 19:00:52,564 - DeepEvalBenchmark - INFO -    Deduplication: 171 → 59 unique sentences
+2025-09-26 19:00:52,565 - DeepEvalBenchmark - DEBUG -    Doc Generative adversarial network: found 233 chunks
+2025-09-26 19:00:52,568 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/generative_artificial_intelligence_knowledge.txt
+2025-09-26 19:00:52,568 - DeepEvalBenchmark - INFO -    Deduplication: 726 → 245 unique sentences
+2025-09-26 19:00:52,569 - DeepEvalBenchmark - DEBUG -    Doc Dilution (neural networks): found 25 chunks
+2025-09-26 19:00:52,570 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/regularization_techniques_knowledge.txt
+2025-09-26 19:00:52,570 - DeepEvalBenchmark - INFO -    Deduplication: 75 → 27 unique sentences
+2025-09-26 19:00:52,571 - DeepEvalBenchmark - DEBUG -    Doc Siamese neural network: found 21 chunks
+2025-09-26 19:00:52,571 - DeepEvalBenchmark - DEBUG -    Doc Neural field: found 51 chunks
+2025-09-26 19:00:52,573 - DeepEvalBenchmark - INFO - 📄 Exported 2 documents to data/deepeval_docs/neural_networks_knowledge.txt
+2025-09-26 19:00:52,573 - DeepEvalBenchmark - INFO -    Deduplication: 288 → 86 unique sentences
+2025-09-26 19:00:52,574 - DeepEvalBenchmark - DEBUG -    Doc Cellular neural network: found 235 chunks
+2025-09-26 19:00:52,576 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/parallel_computing_paradigms_knowledge.txt
+2025-09-26 19:00:52,582 - DeepEvalBenchmark - INFO -    Deduplication: 732 → 238 unique sentences
+2025-09-26 19:00:52,583 - DeepEvalBenchmark - DEBUG -    Doc Machine learning: found 346 chunks
+2025-09-26 19:00:52,585 - DeepEvalBenchmark - DEBUG -    Doc Torch (machine learning): found 28 chunks
+2025-09-26 19:00:52,587 - DeepEvalBenchmark - DEBUG -    Doc Support vector machine: found 173 chunks
+2025-09-26 19:00:52,590 - DeepEvalBenchmark - INFO - 📄 Exported 3 documents to data/deepeval_docs/machine_learning_knowledge.txt
+2025-09-26 19:00:52,590 - DeepEvalBenchmark - INFO -    Deduplication: 1775 → 592 unique sentences
+2025-09-26 19:00:52,591 - DeepEvalBenchmark - DEBUG -    Doc Quantum machine learning: found 209 chunks
+2025-09-26 19:00:52,593 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/quantum_algorithms_knowledge.txt
+2025-09-26 19:00:52,593 - DeepEvalBenchmark - INFO -    Deduplication: 651 → 217 unique sentences
+2025-09-26 19:00:52,594 - DeepEvalBenchmark - DEBUG -    Doc Supervised learning: found 100 chunks
+2025-09-26 19:00:52,595 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/machine_learning_paradigm_knowledge.txt
+2025-09-26 19:00:52,595 - DeepEvalBenchmark - INFO -    Deduplication: 358 → 112 unique sentences
+2025-09-26 19:00:52,596 - DeepEvalBenchmark - DEBUG -    Doc Active learning (machine learning): found 59 chunks
+2025-09-26 19:00:52,597 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/interactive_learning_knowledge.txt
+2025-09-26 19:00:52,597 - DeepEvalBenchmark - INFO -    Deduplication: 181 → 62 unique sentences
+2025-09-26 19:00:52,597 - DeepEvalBenchmark - DEBUG -    Doc Attention (machine learning): found 70 chunks
+2025-09-26 19:00:52,599 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/attention_mechanism_knowledge.txt
+2025-09-26 19:00:52,599 - DeepEvalBenchmark - INFO -    Deduplication: 216 → 74 unique sentences
+2025-09-26 19:00:52,599 - DeepEvalBenchmark - DEBUG -    Doc Transformer (deep learning architecture): found 314 chunks
+2025-09-26 19:00:52,602 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/deep_learning_architecture_knowledge.txt
+2025-09-26 19:00:52,602 - DeepEvalBenchmark - INFO -    Deduplication: 966 → 321 unique sentences
+2025-09-26 19:00:52,602 - DeepEvalBenchmark - DEBUG -    Doc Boosting (machine learning): found 61 chunks
+2025-09-26 19:00:52,604 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/ensemble_methods_knowledge.txt
+2025-09-26 19:00:52,604 - DeepEvalBenchmark - INFO -    Deduplication: 195 → 66 unique sentences
+2025-09-26 19:00:52,604 - DeepEvalBenchmark - DEBUG -    Doc Artificial intelligence: found 569 chunks
+2025-09-26 19:00:52,608 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/artificial_intelligence_knowledge.txt
+2025-09-26 19:00:52,608 - DeepEvalBenchmark - INFO -    Deduplication: 1871 → 629 unique sentences
+2025-09-26 19:00:52,609 - DeepEvalBenchmark - DEBUG -    Doc Adversarial machine learning: found 143 chunks
+2025-09-26 19:00:52,611 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/adversarial_machine_learning_knowledge.txt
+2025-09-26 19:00:52,611 - DeepEvalBenchmark - INFO -    Deduplication: 462 → 154 unique sentences
+2025-09-26 19:00:52,612 - DeepEvalBenchmark - DEBUG -    Doc List of datasets for machine-learning research: found 37 chunks
+2025-09-26 19:00:52,613 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/importance_of_datasets_in_machine_learning_knowledge.txt
+2025-09-26 19:00:52,613 - DeepEvalBenchmark - INFO -    Deduplication: 111 → 40 unique sentences
+2025-09-26 19:00:52,614 - DeepEvalBenchmark - DEBUG -    Doc Learning: found 322 chunks
+2025-09-26 19:00:52,616 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/learning_process_knowledge.txt
+2025-09-26 19:00:52,616 - DeepEvalBenchmark - INFO -    Deduplication: 1022 → 334 unique sentences
+2025-09-26 19:00:52,617 - DeepEvalBenchmark - DEBUG -    Doc Statistical classification: found 47 chunks
+2025-09-26 19:00:52,618 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/classification_methods_knowledge.txt
+2025-09-26 19:00:52,618 - DeepEvalBenchmark - INFO -    Deduplication: 168 → 48 unique sentences
+2025-09-26 19:00:52,619 - DeepEvalBenchmark - DEBUG -    Doc Multimodal learning: found 24 chunks
+2025-09-26 19:00:52,621 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/multimodal_data_integration_knowledge.txt
+2025-09-26 19:00:52,621 - DeepEvalBenchmark - INFO -    Deduplication: 78 → 27 unique sentences
+2025-09-26 19:00:52,621 - DeepEvalBenchmark - DEBUG -    Doc Reinforcement learning: found 207 chunks
+2025-09-26 19:00:52,623 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/reinforcement_learning_paradigm_knowledge.txt
+2025-09-26 19:00:52,623 - DeepEvalBenchmark - INFO -    Deduplication: 678 → 217 unique sentences
+2025-09-26 19:00:52,624 - DeepEvalBenchmark - DEBUG -    Doc Feature (machine learning): found 38 chunks
+2025-09-26 19:00:52,625 - DeepEvalBenchmark - INFO - 📄 Exported 1 documents to data/deepeval_docs/machine_learning_fundamentals_knowledge.txt
+2025-09-26 19:00:52,625 - DeepEvalBenchmark - INFO -    Deduplication: 114 → 40 unique sentences
+2025-09-26 19:00:52,625 - DeepEvalBenchmark - INFO - ✅ Exported knowledge graph to 89 theme-based documents
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/the_nervous_system_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/biological_bases_of_behavior_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/mathematical_modeling_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/brain_function_and_cognition_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neural_mechanisms_of_learning_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/emotion_processing_in_the_brain_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/personality_and_behavior_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/complex_systems_and_behavior_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/structure_and_function_of_the_nervous_system_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/information_encoding_and_storage_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neuroscience_nursing_scope_knowledge.txt
+2025-09-26 19:00:52,656 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/the_importance_of_sleep_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neurodevelopmental_disorder_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/brain-computer_interfaces_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/visual_perception_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/brain-based_mechanisms_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neural_correlations_of_spirituality_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/social_cognition_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/evolution_of_nervous_systems_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/behavior_and_mind_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/social_influence_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/brain-behavior_relationships_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/evolutionary_perspective_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/pattern_recognition_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/indigenous_psychology_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/human_growth_and_development_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/forensic_application_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/mental_connections_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/subjective_experiences_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/global_contexts_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/learning_processes_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/mental_processes_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/the_unconscious_mind_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/analytical_psychology_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/work_lives_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/behavioral_applications_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/human_behavior_and_capability_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computational_capabilities_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computation_and_information_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/individual_use_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computer_networking_basics_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/interactive_technology_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computer_components_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computer_security_threats_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/digital_synthesis_and_manipulation_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/software_compatibility_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/self-replication_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/analog_vs_digital_computation_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computer_programs_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/malware_replication_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/image_understanding_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/theoretical_computing_knowledge.txt
+2025-09-26 19:00:52,657 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computer_competitions_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computer_memory_functionality_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/professional_conduct_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/computing_machinery_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/information_management_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neural_network_structure_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/interconnected_systems_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/deep_learning_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/sequential_data_processing_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/feedforward_neural_networks_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/multilayered_neural_networks_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/prior_knowledge_in_machine_learning_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/biological_neural_networks_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/graph_neural_networks_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/deep_learning_architectures_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neural_network_architecture_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/inspiration_from_biological_systems_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/quantum_mechanics_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/generative_artificial_intelligence_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/regularization_techniques_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/neural_networks_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/parallel_computing_paradigms_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/machine_learning_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/quantum_algorithms_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/machine_learning_paradigm_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/interactive_learning_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/attention_mechanism_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/deep_learning_architecture_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/ensemble_methods_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/artificial_intelligence_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/adversarial_machine_learning_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/importance_of_datasets_in_machine_learning_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/learning_process_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/classification_methods_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/multimodal_data_integration_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/reinforcement_learning_paradigm_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - ✅ Found document: data/deepeval_docs/machine_learning_fundamentals_knowledge.txt
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - 🔧 Creating traditional synthesizer with quality controls
+2025-09-26 19:00:52,658 - DeepEvalBenchmark - INFO - Instantiating question_generation model: openrouter/meta-llama/llama-3.3-70b-instruct
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - ✅ question_generation model instantiated and cached successfully
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - 🧬 Traditional evolution: 7 types, 2 steps
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - 🎛️ Filtration configured: threshold=0.7, retries=5
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - 🔧 Synthesizer configured with:
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO -    Generation model: OpenRouter: meta-llama/llama-3.3-70b-instruct
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - 🔍 Generating 3 questions from 89 documents
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - 📋 Parameters: max_per_context=1, include_output=True
+2025-09-26 19:00:52,673 - DeepEvalBenchmark - INFO - 📄 Chunking: size=1024, overlap=128
+2025-09-26 19:00:52,687 - DeepEvalBenchmark - INFO -    Embedding model: sentence-transformers/all-mpnet-base-v2
+2025-09-26 19:00:52,687 - asyncio - DEBUG - Using selector: KqueueSelector
+2025-09-26 19:00:52,872 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): us.i.posthog.com:443
+2025-09-26 19:00:53,127 - urllib3.connectionpool - DEBUG - https://us.i.posthog.com:443 "POST /batch/ HTTP/1.1" 200 15
+2025-09-26 19:00:58,337 - chromadb.telemetry.product.posthog - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-09-26 19:00:58,362 - chromadb.config - DEBUG - Starting component System
+2025-09-26 19:00:58,363 - chromadb.config - DEBUG - Starting component Posthog
+2025-09-26 19:00:58,372 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientStartEvent: capture() takes 1 positional argument but 3 were given
+2025-09-26 19:00:58,372 - chromadb.telemetry.product.posthog - ERROR - Failed to send telemetry event ClientCreateCollectionEvent: capture() takes 1 positional argument but 3 were given
+2025-09-26 19:00:58,391 - sentence_transformers.SentenceTransformer - INFO - Use pytorch device_name: mps
+2025-09-26 19:00:58,391 - sentence_transformers.SentenceTransformer - INFO - Load pretrained SentenceTransformer: sentence-transformers/all-mpnet-base-v2
+2025-09-26 19:00:58,393 - urllib3.connectionpool - DEBUG - Starting new HTTPS connection (1): huggingface.co:443
+2025-09-26 19:00:58,562 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/modules.json HTTP/1.1" 307 0
+2025-09-26 19:00:58,587 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/modules.json HTTP/1.1" 200 0
+2025-09-26 19:00:58,646 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+2025-09-26 19:00:58,674 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/config_sentence_transformers.json HTTP/1.1" 200 0
+2025-09-26 19:00:58,737 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/config_sentence_transformers.json HTTP/1.1" 307 0
+2025-09-26 19:00:58,770 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/config_sentence_transformers.json HTTP/1.1" 200 0
+2025-09-26 19:00:58,838 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/README.md HTTP/1.1" 307 0
+2025-09-26 19:00:58,867 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/README.md HTTP/1.1" 200 0
+2025-09-26 19:00:58,928 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/modules.json HTTP/1.1" 307 0
+2025-09-26 19:00:58,957 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/modules.json HTTP/1.1" 200 0
+2025-09-26 19:00:59,018 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/sentence_bert_config.json HTTP/1.1" 307 0
+2025-09-26 19:00:59,045 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/sentence_bert_config.json HTTP/1.1" 200 0
+2025-09-26 19:00:59,113 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/adapter_config.json HTTP/1.1" 404 0
+2025-09-26 19:00:59,174 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /sentence-transformers/all-mpnet-base-v2/resolve/main/config.json HTTP/1.1" 307 0
+2025-09-26 19:00:59,221 - urllib3.connectionpool - DEBUG - https://huggingface.co:443 "HEAD /api/resolve-cache/models/sentence-transformers/all-mpnet-base-v2/e8c3b32edf5434bc2275fc9bab85f82640a19130/config.json HTTP/1.1" 200 0
+2025-09-26 19:00:59,349 - DeepEvalBenchmark - INFO - ⚠️ Benchmark interrupted by user
