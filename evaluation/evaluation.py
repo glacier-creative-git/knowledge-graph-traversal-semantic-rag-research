@@ -32,6 +32,7 @@ from deepeval.metrics import (
     ContextualPrecisionMetric, ContextualRelevancyMetric,
     FaithfulnessMetric, GEval
 )
+from deepeval.evaluate import AsyncConfig
 
 # Local imports
 from utils.retrieval import RetrievalOrchestrator
@@ -112,6 +113,34 @@ class EvaluationOrchestrator:
     def _is_reranking_enabled(self) -> bool:
         """Check if reranking is enabled in configuration."""
         return self.config.get('evaluation', {}).get('benchmarking', {}).get('enable_reranking', False)
+
+    def _create_async_config(self) -> AsyncConfig:
+        """
+        Create AsyncConfig for deepeval evaluation execution.
+
+        Configures sequential vs parallel execution and rate limiting based on
+        the configuration file to prevent API rate limit issues.
+        """
+        # Get async configuration from deepeval config
+        async_config = self.deepeval_config.get('evaluation', {}).get('async_config', {})
+
+        # Extract configuration values with defaults
+        run_async = async_config.get('run_async', False)  # Default to sequential (False)
+        max_concurrent = async_config.get('max_concurrent', 1)  # Default to 1 for sequential
+        throttle_value = async_config.get('throttle_value', 3.0)  # Default to 3 seconds delay
+
+        # Log the configuration being used
+        execution_mode = "parallel" if run_async else "sequential"
+        self.logger.info(f"🔧 Evaluation execution mode: {execution_mode}")
+        if run_async:
+            self.logger.info(f"   Max concurrent: {max_concurrent}")
+        self.logger.info(f"   Throttle delay: {throttle_value}s")
+
+        return AsyncConfig(
+            run_async=run_async,
+            max_concurrent=max_concurrent,
+            throttle_value=throttle_value
+        )
 
     def _generate_answer_from_context(self, question: str, context: str) -> str:
         """
@@ -243,6 +272,9 @@ Answer:"""
 
             self.logger.info(f"📊 Uploading to DeepEval dashboard - Project: {project_name} (ID: {project_id}), Run: {identifier}")
 
+            # Create async configuration for evaluation execution
+            async_config = self._create_async_config()
+
             # Add generated test cases to the dataset for proper linkage
             if self.evaluation_dataset:
                 for test_case in test_cases:
@@ -255,7 +287,8 @@ Answer:"""
                     test_cases=self.evaluation_dataset.test_cases,  # Use dataset's test_cases
                     metrics=metrics,
                     identifier=identifier,
-                    hyperparameters=hyperparameters
+                    hyperparameters=hyperparameters,
+                    async_config=async_config
                 )
                 self.logger.info("✅ Evaluation completed using dataset.test_cases (maintains dataset linkage)")
             else:
@@ -264,7 +297,8 @@ Answer:"""
                     test_cases=test_cases,
                     metrics=metrics,
                     identifier=identifier,
-                    hyperparameters=hyperparameters
+                    hyperparameters=hyperparameters,
+                    async_config=async_config
                 )
                 self.logger.info("✅ Evaluation completed via manually created test cases")
 

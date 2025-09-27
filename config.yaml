@@ -349,14 +349,14 @@ deepeval:
     # Model provider for question generation
     question_generation:
       provider: "openrouter"              # ollama, openai, anthropic, openrouter
-      model_name: "openai/gpt-5-nano"      # Provider-specific model identifier
+      model_name: "meta-llama/llama-3.3-70b-instruct"      # Provider-specific model identifier
       temperature: 0.1
       max_tokens: 20000
 
     # Model provider for evaluation (LLM-as-a-judge)
     evaluation_judge:
       provider: "openrouter"              # Using Ollama for local evaluation
-      model_name: "openai/gpt-5-nano"      # Same model as question generation for consistency
+      model_name: "meta-llama/llama-3.3-70b-instruct"      # Same model as question generation for consistency
       temperature: 0.0                # Low temperature for consistent evaluation
       max_tokens: 50000
 
@@ -373,6 +373,13 @@ deepeval:
       num_goldens: 5                # Number of synthetic questions to generate
       max_goldens_per_context: 1     # Questions per knowledge graph chunk group
       include_expected_output: true   # Generate ideal answers
+      
+    # Quality filtering configuration (for DeepEval native strategy)
+    filtration:
+      enabled: true                  # Enable quality filtering with LLM judge
+      critic_model: "gpt-4o"         # Model for quality assessment
+      synthetic_input_quality_threshold: 0.7  # Minimum quality score (0-1, default 0.5)
+      max_quality_retries: 5         # Number of retries for low-quality questions
       
     evolution:
       enabled: true
@@ -394,15 +401,21 @@ deepeval:
       force_regenerate: true         # Set to true to regenerate existing datasets
 
       # DeepEval dashboard integration
-      push_to_dashboard: true        # Push dataset to DeepEval dashboard (must be on paid plan for this to work)
-      dataset_alias: "5q-seq-multihop-reasoning"  # Unique name for dataset on dashboard
-      pull_from_dashboard: false      # Load dataset from dashboard instead of local file
+      push_to_dashboard: false        # Push dataset to DeepEval dashboard (must be on paid plan for this to work)
+      dataset_alias: "5q-deepeval-filtered-reasoning"  # Unique name for dataset on dashboard
+      pull_from_dashboard: true      # Load dataset from dashboard instead of local file
 
       # CSV conversion for manual upload (free tier workaround)
       generate_csv: true               # Generate CSV file for manual dashboard upload
       csv_context_delimiter: " | "    # Delimiter for context arrays in CSV
   
   evaluation:
+    # Async configuration for deepeval evaluation execution
+    async_config:
+      run_async: false               # Set to false for sequential execution (prevents API rate limiting)
+      max_concurrent: 1              # Maximum concurrent evaluations (only used when run_async=true)
+      throttle_value: 3.0            # Delay in seconds between test case evaluations
+
     metrics:
       # Core RAG metrics for retrieval quality assessment
       rag_metrics:
@@ -427,7 +440,7 @@ deepeval:
     algorithms:
       # List of retrieval algorithms to benchmark
       test_algorithms:
-        # - "basic_retrieval"
+        - "basic_retrieval"
         # - "query_traversal"
         # - "kg_traversal"
         - "triangulation_centroid"
@@ -490,7 +503,7 @@ context_strategies:
   # Strategy 4: Sequential Multi-Hop Structured Reading
   # Creates predictable reading patterns with configurable cross-document hops
   sequential_multi_hop:
-    enabled: true
+    enabled: false
     weight: 0.33                    # 20% of context groups
     num_reading_hops: 3            # Sequential reading steps within documents
     num_paragraph_sentences: 5     # Target sentences per paragraph/document
@@ -505,3 +518,14 @@ context_strategies:
     max_sentences: 10              # Larger for unrestricted exploration
     allow_cross_document: true     # Enable cross-document traversal
     description: "Unrestricted similarity-based exploration across entire knowledge graph"
+  
+  # Strategy 6: DeepEval Native Simple Extraction
+  # Simple chunk extraction relying on DeepEval's LLM-based quality filtering
+  deepeval_native:
+    enabled: true
+    weight: 0.2                    # Baseline comparison weight
+    max_sentences: 10              # Maximum sentences per context group
+    extraction_mode: "random"      # 'random' or 'sequential' chunk selection
+    chunks_per_group: 3            # Number of chunks per context group
+    ensure_document_diversity: true # Ensure chunks come from different documents
+    description: "Simple random/sequential extraction with DeepEval FiltrationConfig quality filtering - no semantic traversal"

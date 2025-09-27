@@ -985,6 +985,158 @@ class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
         return context_groups
 
 
+class DeepEvalNativeStrategy(ContextGroupingStrategy):
+    """
+    DeepEval-native context extraction strategy.
+    
+    Uses simple random or sequential chunk extraction without sophisticated semantic traversal.
+    Relies on DeepEval's FiltrationConfig quality scoring (clarity, self-containment) to ensure
+    high-quality contexts, rather than using pre-computed KG similarities.
+    
+    This strategy prioritizes:
+    - Simplicity: Random/sequential chunk selection
+    - Quality: DeepEval's LLM-based quality filtering
+    - Diversity: Wide coverage across documents
+    - Speed: No complex traversal calculations
+    
+    Perfect for baseline comparison against sophisticated semantic strategies.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.extraction_mode = self.strategy_config.get('extraction_mode', 'random')  # 'random' or 'sequential'
+        self.chunks_per_group = self.strategy_config.get('chunks_per_group', 3)
+        self.ensure_document_diversity = self.strategy_config.get('ensure_document_diversity', True)
+        
+    def generate_context_groups(self, num_groups: int) -> List[ContextGroup]:
+        """
+        Generate context groups using simple extraction with DeepEval quality reliance.
+        
+        Unlike sophisticated strategies that use semantic similarity for traversal,
+        this strategy simply extracts chunks and lets DeepEval's FiltrationConfig
+        handle quality through LLM-based scoring of clarity and self-containment.
+        
+        Args:
+            num_groups: Number of context groups to generate
+            
+        Returns:
+            List of ContextGroup objects with simple extraction metadata
+        """
+        context_groups = []
+        
+        # Get all available chunks
+        all_chunk_ids = list(self.kg.chunks.keys())
+        
+        if not all_chunk_ids:
+            self.logger.warning("No chunks available for DeepEval native strategy")
+            return []
+        
+        # Shuffle for randomness if in random mode
+        if self.extraction_mode == 'random':
+            random.shuffle(all_chunk_ids)
+            self.logger.debug(f"🎲 DeepEval native: Shuffled {len(all_chunk_ids)} chunks for random extraction")
+        
+        # Track used chunks to avoid duplication
+        used_chunks = set()
+        
+        for group_idx in range(num_groups):
+            # Select chunks for this group
+            group_chunk_ids = []
+            group_documents = set()
+            
+            # Try to get chunks_per_group chunks
+            attempts = 0
+            max_attempts = len(all_chunk_ids)
+            
+            while len(group_chunk_ids) < self.chunks_per_group and attempts < max_attempts:
+                # Get next chunk based on extraction mode
+                if self.extraction_mode == 'random':
+                    # Random selection from unused chunks
+                    available_chunks = [c for c in all_chunk_ids if c not in used_chunks]
+                    if not available_chunks:
+                        break
+                    candidate_chunk = random.choice(available_chunks)
+                else:  # sequential
+                    # Sequential selection
+                    candidate_idx = (group_idx * self.chunks_per_group + len(group_chunk_ids)) % len(all_chunk_ids)
+                    candidate_chunk = all_chunk_ids[candidate_idx]
+                    
+                    if candidate_chunk in used_chunks:
+                        attempts += 1
+                        continue
+                
+                candidate_doc = self.kg.chunks[candidate_chunk].source_document
+                
+                # Check document diversity if enabled
+                if self.ensure_document_diversity and candidate_doc in group_documents:
+                    attempts += 1
+                    continue
+                
+                # Add chunk to group
+                group_chunk_ids.append(candidate_chunk)
+                group_documents.add(candidate_doc)
+                used_chunks.add(candidate_chunk)
+                
+                attempts += 1
+            
+            # Extract data for context group
+            chunks_texts = []
+            sentences = []
+            
+            for chunk_id in group_chunk_ids:
+                # Get chunk text
+                chunk = self.kg.chunks[chunk_id]
+                chunks_texts.append(chunk.chunk_text)
+                
+                # Extract sentences from chunk (with deduplication)
+                chunk_sentences = self._get_chunk_sentences(chunk_id)
+                new_sentences = self._deduplicate_sentences(chunk_sentences, sentences)
+                sentences.extend(new_sentences)
+            
+            # Truncate sentences to max_sentences limit
+            final_sentences = sentences[:self.max_sentences]
+            
+            # Create context group with simple metadata
+            context_group = ContextGroup(
+                chunks=chunks_texts,
+                chunk_ids=group_chunk_ids,
+                sentences=final_sentences,
+                strategy="deepeval_native",
+                metadata={
+                    'extraction_mode': self.extraction_mode,
+                    'chunks_per_group_target': self.chunks_per_group,
+                    'chunks_extracted': len(group_chunk_ids),
+                    'documents_in_group': list(group_documents),
+                    'document_diversity_enforced': self.ensure_document_diversity,
+                    'final_sentence_count': len(final_sentences),
+                    'quality_filtering': 'Relies on DeepEval FiltrationConfig with LLM-based quality scoring',
+                    'note': 'Simple extraction strategy - no semantic traversal, relies on downstream quality filtering'
+                },
+                traversal_path=group_chunk_ids  # Linear path, no traversal
+            )
+            
+            self.logger.debug(
+                f"✅ DeepEval native group {group_idx}: {len(group_chunk_ids)} chunks "
+                f"from {len(group_documents)} documents, {len(final_sentences)} sentences"
+            )
+            
+            context_groups.append(context_group)
+        
+        # Log strategy summary
+        total_chunks = sum(len(cg.chunk_ids) for cg in context_groups)
+        total_docs = len(set(
+            doc for cg in context_groups 
+            for doc in cg.metadata.get('documents_in_group', [])
+        ))
+        
+        self.logger.info(
+            f"🎯 DeepEval native strategy generated {len(context_groups)} groups: "
+            f"{total_chunks} chunks from {total_docs} documents (mode: {self.extraction_mode})"
+        )
+        
+        return context_groups
+
+
 class ContextGroupingOrchestrator:
     """
     Orchestrates multiple context grouping strategies according to configuration.
@@ -1022,7 +1174,8 @@ class ContextGroupingOrchestrator:
         strategy_classes = {
             'intra_document': IntraDocumentStrategy,
             'theme_based': ThemeBasedStrategy,
-            'sequential_multi_hop': SequentialMultiHopStrategy
+            'sequential_multi_hop': SequentialMultiHopStrategy,
+            'deepeval_native': DeepEvalNativeStrategy
             # 'inter_document': InterDocumentStrategy  # DEPRECATED: Redundant with ThemeBasedStrategy fallback
             # 'knowledge_graph_similarity': KnowledgeGraphSimilarityStrategy  # DEPRECATED: Redundant with inter_document
         }

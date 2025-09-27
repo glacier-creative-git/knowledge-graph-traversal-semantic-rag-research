@@ -24,7 +24,7 @@ from datetime import datetime
 
 # DeepEval imports for synthetic generation
 from deepeval.synthesizer import Synthesizer
-from deepeval.synthesizer.config import EvolutionConfig, Evolution
+from deepeval.synthesizer.config import EvolutionConfig, Evolution, FiltrationConfig
 from deepeval.dataset import EvaluationDataset
 
 # Local imports
@@ -338,9 +338,32 @@ class DatasetBuilder:
         
         Uses the configured question generation model with evolution settings
         optimized for creating challenging semantic traversal test cases.
+        Optionally includes FiltrationConfig for quality filtering.
         """
         # Get question generation model from model manager
         generation_model = self.model_manager.get_question_generation_model()
+        
+        # Check if quality filtration is enabled
+        filtration_settings = self.deepeval_config.get('dataset', {}).get('filtration', {})
+        filtration_config = None
+        
+        if filtration_settings.get('enabled', False):
+            from deepeval.synthesizer.config import FiltrationConfig
+            
+            critic_model = filtration_settings.get('critic_model', 'gpt-4o')
+            quality_threshold = filtration_settings.get('synthetic_input_quality_threshold', 0.7)
+            max_retries = filtration_settings.get('max_quality_retries', 5)
+            
+            filtration_config = FiltrationConfig(
+                critic_model=critic_model,
+                synthetic_input_quality_threshold=quality_threshold,
+                max_quality_retries=max_retries
+            )
+            
+            self.logger.info(
+                f"🎯 Quality filtering enabled: threshold={quality_threshold}, "
+                f"max_retries={max_retries}, critic_model={critic_model}"
+            )
         
         self.logger.info(
             f"🔧 Creating synthesizer with model: {generation_model.get_model_name()}"
@@ -348,7 +371,8 @@ class DatasetBuilder:
         
         return Synthesizer(
             model=generation_model,
-            evolution_config=evolution_config
+            evolution_config=evolution_config,
+            filtration_config=filtration_config  # None if disabled
         )
     
     def _generate_goldens_with_evolution(self, synthesizer: Synthesizer, 
