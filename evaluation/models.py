@@ -228,9 +228,30 @@ class OpenRouterModel(DeepEvalBaseLLM):
                 # For non-Response schemas, try normal JSON validation
                 try:
                     return schema.model_validate_json(content)
-                except:
-                    # For other schemas, return raw content
-                    return content
+                except Exception as validation_error:
+                    self.logger.warning(f"Schema validation failed: {validation_error}")
+                    self.logger.debug(f"Content type: {type(content)}")
+                    self.logger.debug(f"Content preview: {content[:500] if isinstance(content, str) else content}")
+
+                    # Try to parse the JSON content and create the schema object manually
+                    try:
+                        import json
+                        if isinstance(content, str):
+                            parsed_content = json.loads(content)
+
+                            # Create the schema object using parsed content
+                            if isinstance(parsed_content, dict):
+                                return schema(**parsed_content)
+                            else:
+                                self.logger.warning(f"Parsed content is not a dict: {type(parsed_content)}")
+                                return content
+                        else:
+                            self.logger.warning(f"Content is not a string for JSON parsing: {type(content)}")
+                            return content
+                    except Exception as parse_error:
+                        self.logger.error(f"Manual JSON parsing failed: {parse_error}")
+                        # For other schemas, return raw content as fallback
+                        return content
 
         return content
 
@@ -437,32 +458,45 @@ class ModelManager:
     def get_evaluation_judge_model(self) -> DeepEvalBaseModel:
         """
         Get configured model for evaluation judging (LLM-as-a-judge).
-        
+
         Returns:
             DeepEvalBaseModel: Ready-to-use model instance for evaluation
-            
+
         Raises:
             ValueError: If model configuration is invalid
             RuntimeError: If model instantiation fails
         """
         return self._get_model('evaluation_judge')
+
+    def get_answer_generation_model(self) -> DeepEvalBaseModel:
+        """
+        Get configured model for answer generation during retrieval testing.
+
+        Returns:
+            DeepEvalBaseModel: Ready-to-use model instance for answer generation
+
+        Raises:
+            ValueError: If model configuration is invalid
+            RuntimeError: If model instantiation fails
+        """
+        return self._get_model('answer_generation')
     
     def validate_model_availability(self) -> Dict[str, bool]:
         """
         Validate that all configured models are accessible and functional.
-        
+
         Returns:
             Dict[str, bool]: Mapping of model types to availability status
         """
         results = {}
-        
-        for model_type in ['question_generation', 'evaluation_judge']:
+
+        for model_type in ['question_generation', 'evaluation_judge', 'answer_generation']:
             try:
                 model = self._get_model(model_type)
-                
+
                 # Test with simple prompt to verify functionality
                 test_response = model.generate("Test prompt: respond with 'OK'")
-                
+
                 # Validate response is not empty
                 if test_response and len(test_response.strip()) > 0:
                     results[model_type] = True
@@ -470,28 +504,28 @@ class ModelManager:
                 else:
                     results[model_type] = False
                     self.logger.error(f"❌ {model_type} model returned empty response")
-                    
+
             except Exception as e:
                 results[model_type] = False
                 self.logger.error(f"❌ {model_type} model validation failed: {e}")
-        
+
         return results
     
     def get_model_info(self, model_type: str) -> Dict[str, Any]:
         """
         Get detailed information about a configured model.
-        
+
         Args:
-            model_type: Type of model ('question_generation' or 'evaluation_judge')
-            
+            model_type: Type of model ('question_generation', 'evaluation_judge', or 'answer_generation')
+
         Returns:
             Dict containing model configuration and status information
         """
-        if model_type not in ['question_generation', 'evaluation_judge']:
+        if model_type not in ['question_generation', 'evaluation_judge', 'answer_generation']:
             raise ValueError(f"Invalid model_type: {model_type}")
-        
+
         model_config = ModelConfig(**self.deepeval_config['models'][model_type])
-        
+
         return {
             'provider': model_config.provider,
             'model_name': model_config.model_name,
@@ -551,8 +585,7 @@ class ModelManager:
 
         return GPTModel(
             model=config.model_name,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens
+            temperature=config.temperature
         )
     
     def _create_ollama_model(self, config: ModelConfig) -> OllamaModel:
@@ -606,8 +639,8 @@ class ModelManager:
         """Validate deepeval configuration structure."""
         if 'models' not in self.deepeval_config:
             raise ValueError("Missing 'models' section in deepeval configuration")
-        
-        required_models = ['question_generation', 'evaluation_judge']
+
+        required_models = ['question_generation', 'evaluation_judge', 'answer_generation']
         for model_type in required_models:
             if model_type not in self.deepeval_config['models']:
                 raise ValueError(f"Missing {model_type} configuration in deepeval.models")
@@ -653,5 +686,6 @@ class ModelManager:
         """Get current cache status for all model types."""
         return {
             'question_generation': 'question_generation' in self._model_cache,
-            'evaluation_judge': 'evaluation_judge' in self._model_cache
+            'evaluation_judge': 'evaluation_judge' in self._model_cache,
+            'answer_generation': 'answer_generation' in self._model_cache
         }

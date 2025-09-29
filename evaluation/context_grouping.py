@@ -89,14 +89,75 @@ class ContextGroupingStrategy:
         """
         raise NotImplementedError("Subclasses must implement generate_context_groups")
     
-    def _get_random_anchor_chunk(self, exclude_chunks: Optional[Set[str]] = None) -> Optional[str]:
-        """Get a random chunk ID as anchor point, excluding specified chunks."""
+    def _get_random_anchor_chunk(self, exclude_chunks: Optional[Set[str]] = None,
+                                min_quality: Optional[float] = None) -> Optional[str]:
+        """
+        Get a random chunk ID as anchor point, with optional quality filtering.
+
+        Args:
+            exclude_chunks: Set of chunk IDs to exclude from selection
+            min_quality: Minimum quality score required (uses high-quality chunks if None)
+
+        Returns:
+            Random chunk ID meeting quality criteria, or None if no chunks available
+        """
+        # Determine quality threshold
+        if min_quality is None:
+            # Use high-quality chunks by default (0.8 is a good threshold for anchors)
+            min_quality = 0.8
+
+        # Start with all chunks
         available_chunks = list(self.kg.chunks.keys())
+
+        # Apply exclusion filter
         if exclude_chunks:
             available_chunks = [c for c in available_chunks if c not in exclude_chunks]
-        
-        return random.choice(available_chunks) if available_chunks else None
-    
+
+        # Apply quality filter if quality scores are available
+        quality_filtered_chunks = []
+        for chunk_id in available_chunks:
+            chunk = self.kg.chunks[chunk_id]
+            if chunk.quality_score is not None and chunk.quality_score >= min_quality:
+                quality_filtered_chunks.append(chunk_id)
+
+        # Use quality-filtered chunks if available, otherwise fall back to all available
+        final_chunks = quality_filtered_chunks if quality_filtered_chunks else available_chunks
+
+        if final_chunks:
+            selected_chunk = random.choice(final_chunks)
+            if quality_filtered_chunks:
+                chunk = self.kg.chunks[selected_chunk]
+                self.logger.debug(f"Selected high-quality anchor: {selected_chunk} (quality: {chunk.quality_score:.3f})")
+            else:
+                self.logger.debug(f"Selected anchor from fallback pool: {selected_chunk} (no quality filter)")
+            return selected_chunk
+
+        return None
+
+    def _filter_chunks_by_quality(self, chunk_ids: List[str],
+                                 min_quality: float = 0.7) -> List[str]:
+        """
+        Filter chunk IDs by quality score.
+
+        Args:
+            chunk_ids: List of chunk IDs to filter
+            min_quality: Minimum quality score required
+
+        Returns:
+            List of chunk IDs meeting quality criteria
+        """
+        quality_filtered = []
+        for chunk_id in chunk_ids:
+            if chunk_id in self.kg.chunks:
+                chunk = self.kg.chunks[chunk_id]
+                if chunk.quality_score is not None and chunk.quality_score >= min_quality:
+                    quality_filtered.append(chunk_id)
+                elif chunk.quality_score is None:
+                    # Include chunks without quality scores (for backward compatibility)
+                    quality_filtered.append(chunk_id)
+
+        return quality_filtered
+
     def _get_chunk_sentences(self, chunk_id: str) -> List[str]:
         """
         Extract actual sentence texts from a chunk using knowledge graph sentence ID mapping.
@@ -1024,17 +1085,26 @@ class DeepEvalNativeStrategy(ContextGroupingStrategy):
         """
         context_groups = []
         
-        # Get all available chunks
+        # Get all available chunks and apply quality filtering
         all_chunk_ids = list(self.kg.chunks.keys())
-        
+
         if not all_chunk_ids:
             self.logger.warning("No chunks available for DeepEval native strategy")
             return []
-        
+
+        # Apply quality filtering (prefer high-quality chunks for this strategy)
+        quality_filtered_chunks = self._filter_chunks_by_quality(all_chunk_ids, min_quality=0.7)
+
+        # Use quality-filtered chunks if available, otherwise fall back to all chunks
+        working_chunks = quality_filtered_chunks if quality_filtered_chunks else all_chunk_ids
+
+        self.logger.debug(f"🎯 DeepEval native: Using {len(working_chunks)}/{len(all_chunk_ids)} chunks "
+                         f"({'quality-filtered' if quality_filtered_chunks else 'unfiltered'})")
+
         # Shuffle for randomness if in random mode
         if self.extraction_mode == 'random':
-            random.shuffle(all_chunk_ids)
-            self.logger.debug(f"🎲 DeepEval native: Shuffled {len(all_chunk_ids)} chunks for random extraction")
+            random.shuffle(working_chunks)
+            self.logger.debug(f"🎲 DeepEval native: Shuffled {len(working_chunks)} chunks for random extraction")
         
         # Track used chunks to avoid duplication
         used_chunks = set()
@@ -1051,15 +1121,15 @@ class DeepEvalNativeStrategy(ContextGroupingStrategy):
             while len(group_chunk_ids) < self.chunks_per_group and attempts < max_attempts:
                 # Get next chunk based on extraction mode
                 if self.extraction_mode == 'random':
-                    # Random selection from unused chunks
-                    available_chunks = [c for c in all_chunk_ids if c not in used_chunks]
+                    # Random selection from unused chunks (quality-filtered)
+                    available_chunks = [c for c in working_chunks if c not in used_chunks]
                     if not available_chunks:
                         break
                     candidate_chunk = random.choice(available_chunks)
                 else:  # sequential
-                    # Sequential selection
-                    candidate_idx = (group_idx * self.chunks_per_group + len(group_chunk_ids)) % len(all_chunk_ids)
-                    candidate_chunk = all_chunk_ids[candidate_idx]
+                    # Sequential selection (quality-filtered)
+                    candidate_idx = (group_idx * self.chunks_per_group + len(group_chunk_ids)) % len(working_chunks)
+                    candidate_chunk = working_chunks[candidate_idx]
                     
                     if candidate_chunk in used_chunks:
                         attempts += 1

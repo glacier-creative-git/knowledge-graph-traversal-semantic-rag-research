@@ -102,6 +102,9 @@ class EvaluationOrchestrator:
 
         # Core components (lazy-loaded)
         self.knowledge_graph: Optional[KnowledgeGraph] = None
+
+        # Storage for visualization data
+        self.retrieval_results: Dict[str, Dict[str, Any]] = {}  # query -> {algorithm_name -> result}
         self.retrieval_orchestrator: Optional[RetrievalOrchestrator] = None
         self.evaluation_dataset: Optional[EvaluationDataset] = None
         
@@ -146,7 +149,7 @@ class EvaluationOrchestrator:
         """
         Generate an answer to the question using the retrieved context.
 
-        Uses the configured evaluation judge model to generate a proper response
+        Uses the configured answer generation model to generate a proper response
         based on the retrieved context, simulating how a real RAG system works.
 
         Args:
@@ -157,8 +160,8 @@ class EvaluationOrchestrator:
             Generated answer string
         """
         try:
-            # Get the evaluation judge model for answer generation
-            judge_model = self.model_manager.get_evaluation_judge_model()
+            # Get the answer generation model for answer generation
+            answer_model = self.model_manager.get_answer_generation_model()
 
             # Create a prompt that asks the LLM to answer the question using the context
             prompt = f"""Based on the provided context, answer the following question. Use only the information from the context and be concise and accurate.
@@ -171,7 +174,7 @@ Question: {question}
 Answer:"""
 
             # Generate the response using the model
-            response = judge_model.generate(prompt)
+            response = answer_model.generate(prompt)
 
             # Extract the actual response text
             if hasattr(response, 'response'):
@@ -535,6 +538,11 @@ Answer:"""
                     algorithm_name=algorithm_name,
                     algorithm_params=algorithm_params
                 )
+
+                # Store retrieval result for visualization
+                if golden.input not in self.retrieval_results:
+                    self.retrieval_results[golden.input] = {}
+                self.retrieval_results[golden.input][algorithm_name] = retrieval_result
 
                 # Apply reranking if enabled (standardizes output across all algorithms)
                 if self.reranker_orchestrator:

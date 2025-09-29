@@ -71,11 +71,9 @@ wikipedia:
   use_cached_articles: true
   topics:
     - "Neuroscience"
-    - "Psychology"
-    - "Computer"
     - "Neural Networks"
     - "Machine Learning"
-  articles_per_topic: 20
+  articles_per_topic: 2
   max_article_length: 5000000
   min_article_length: 1000
   language: "en"
@@ -232,7 +230,31 @@ knowledge_graph_assembly:
 knowledge_graph:
   use_cached: true
   architecture: "multi_granularity_three_tier"  # Document → Chunk → Sentence hierarchy
-  
+
+  # Chunk Quality Scoring Configuration
+  quality_scoring:
+    enabled: true                    # Enable LLM-based chunk quality assessment
+    provider: "openrouter"               # Model provider: "ollama", "openrouter", "openai"
+    model_name: "meta-llama/llama-3.3-70b-instruct"       # Model for quality assessment
+    temperature: 0.1                 # Low temperature for consistent scoring
+    max_tokens: 5000                  # Token limit for scoring responses
+
+    # Quality thresholds and filtering
+    quality_threshold: 0.7           # Minimum quality score for high-quality classification (0-1)
+    enable_filtering: false          # Keep all chunks, just score them (preserves graph structure)
+
+    # Quality scoring criteria (matches DeepEval's ContextScore schema)
+    scoring_criteria:
+      clarity: "Assess how clear and comprehensible the information is"
+      depth: "Evaluate the extent of detailed analysis and original insights"
+      structure: "Review how well content is organized with logical progression"
+      relevance: "Analyze importance and focus without unnecessary diversions"
+
+    # Performance settings
+    batch_size: 10                   # Number of chunks to score in parallel
+    retry_attempts: 3                # Number of retries for failed scoring
+    cache_scores: true               # Cache quality scores to avoid re-computation
+
   # Note: Sparsity is now controlled in similarities section
   # This section focuses on graph structure and entity extraction
   extractors:
@@ -245,33 +267,6 @@ knowledge_graph:
     summary:
       enabled: true
       max_sentences: 2
-
-# Question Generation Models Configuration (Phase 7)
-question_generation:
-  # Model selection: "ollama" or "openai"
-  generator_model_type: "ollama"  # Primary model for question generation
-  critic_model_type: "ollama"     # Secondary model for question critique
-  
-  # Question type distribution (must sum to 1.0)
-  question_distribution:
-    single_hop: 0.3        # Same document, raw similarity
-    sequential_flow: 0.25  # Same document, 1-10 chunks
-    multi_hop: 0.2         # 3 documents, raw KG similarity
-    theme_hop: 0.15        # 3 documents, theme similarity  
-    hierarchical: 0.1      # doc_summary → chunk → sentence
-  
-  # Generation parameters
-  num_questions: 50        # Total number of questions to generate
-  max_hops: 3              # Maximum hops for multi-hop questions
-  max_sentences: 10        # Maximum sentences to pull
-  enable_early_stopping: false  # Disabled for now
-  cache_questions: true    # Cache generated questions
-  
-  # Quality control
-  retry_failed_questions: true
-  max_retries: 3
-  min_question_length: 20
-  max_question_length: 200
 
 # Ollama Configuration
 ollama:
@@ -310,14 +305,37 @@ evaluation:
     include_content_preview: true  # Add content previews to YAML output
     detailed_logging: true     # Enhanced logging for algorithm behavior analysis
 
-# Visualization Configuration (unchanged)
+# Visualization Configuration - Enhanced for Benchmark Integration
 visualization:
   enabled: true
+
+  # Traditional visualizations (maintained for compatibility)
   similarity_matrices: true
   traversal_paths: true
   chunk_boundaries: true
   question_distribution: true
   knowledge_graph_structure: true
+
+  # New benchmark visualizations
+  context_grouping:
+    enabled: true                    # Visualize context grouping process during dataset generation
+    include_traversal_paths: true    # Show how contexts were traversed/grouped
+    visualization_types: ["windowed", "global", "sequential"]  # Types of heatmaps to generate
+
+  retrieval_paths:
+    enabled: true                    # Visualize algorithm retrieval paths during evaluation
+    include_3d_plotly: true          # Generate interactive 3D Plotly visualizations
+    include_heatmaps: true           # Generate matplotlib heatmap visualizations
+    max_nodes: 40                    # Maximum nodes to show in 3D visualizations
+    show_all_visited: true           # Show all visited nodes, not just final path
+
+  # Output configuration
+  output:
+    formats: ["plotly", "matplotlib"]  # Output formats to generate
+    figure_size: [20, 8]             # Default figure size for matplotlib
+    dpi: 300                         # Resolution for saved images
+    save_html: true                  # Save interactive HTML files
+    save_png: true                   # Save static PNG files
 
 # Output Configuration (unchanged)
 output:
@@ -348,15 +366,22 @@ deepeval:
   models:
     # Model provider for question generation
     question_generation:
-      provider: "openrouter"              # ollama, openai, anthropic, openrouter
-      model_name: "meta-llama/llama-3.3-70b-instruct"      # Provider-specific model identifier
+      provider: "openai"              # ollama, openai, anthropic, openrouter
+      model_name: "gpt-4o"      # Provider-specific model identifier
       temperature: 0.1
       max_tokens: 20000
 
+    # Model provider for answer generation during retrieval testing
+    answer_generation:
+      provider: "openai"              # Model for generating answers from retrieved context
+      model_name: "gpt-4o"      # Model for RAG answer generation
+      temperature: 0.1                # Slightly higher temperature for more natural answers
+      max_tokens: 5000
+
     # Model provider for evaluation (LLM-as-a-judge)
     evaluation_judge:
-      provider: "openrouter"              # Using Ollama for local evaluation
-      model_name: "meta-llama/llama-3.3-70b-instruct"      # Same model as question generation for consistency
+      provider: "openrouter"              # Using OpenRouter for evaluation
+      model_name: "meta-llama/llama-3.3-70b-instruct"      # Model for metric evaluation
       temperature: 0.0                # Low temperature for consistent evaluation
       max_tokens: 50000
 
@@ -370,7 +395,7 @@ deepeval:
 
   dataset:
     generation:
-      num_goldens: 5                # Number of synthetic questions to generate
+      num_goldens: 1                # Number of synthetic questions to generate
       max_goldens_per_context: 1     # Questions per knowledge graph chunk group
       include_expected_output: true   # Generate ideal answers
       
@@ -378,7 +403,7 @@ deepeval:
     filtration:
       enabled: true                  # Enable quality filtering with LLM judge
       critic_model: "gpt-4o"         # Model for quality assessment
-      synthetic_input_quality_threshold: 0.7  # Minimum quality score (0-1, default 0.5)
+      synthetic_input_quality_threshold: 0.8  # Minimum quality score (0-1, default 0.5)
       max_quality_retries: 5         # Number of retries for low-quality questions
       
     evolution:
@@ -390,7 +415,7 @@ deepeval:
         - "IN_BREADTH"                # Broader scope questions
         - "MULTICONTEXT"              # Multi-chunk questions
       evolution_distribution:
-        REASONING: 0.4                # 40% reasoning questions
+        REASONING: 1.0                # 40% reasoning questions
         COMPARATIVE: 0.0              # 30% comparison questions
         IN_BREADTH: 0.0               # 20% broad questions
         MULTICONTEXT: 0.0             # 10% multi-context questions
@@ -402,7 +427,7 @@ deepeval:
 
       # DeepEval dashboard integration
       push_to_dashboard: false        # Push dataset to DeepEval dashboard (must be on paid plan for this to work)
-      dataset_alias: "5q-deepeval-filtered-reasoning"  # Unique name for dataset on dashboard
+      dataset_alias: "1q-deepeval-reasoning"  # Unique name for dataset on dashboard
       pull_from_dashboard: true      # Load dataset from dashboard instead of local file
 
       # CSV conversion for manual upload (free tier workaround)
@@ -440,7 +465,7 @@ deepeval:
     algorithms:
       # List of retrieval algorithms to benchmark
       test_algorithms:
-        - "basic_retrieval"
+        # - "basic_retrieval"
         # - "query_traversal"
         # - "kg_traversal"
         - "triangulation_centroid"

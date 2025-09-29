@@ -228,8 +228,9 @@ class DatasetBuilder:
         max_goldens_per_context = generation_config.get('max_goldens_per_context', 3)
         
         # Calculate desired number of context groups
-        # Only generate what's actually needed for efficiency
-        base_contexts_needed = min(len(kg.chunks), num_goldens // max_goldens_per_context + 1)
+        # Use ceiling division to get exactly the number needed
+        import math
+        base_contexts_needed = min(len(kg.chunks), math.ceil(num_goldens / max_goldens_per_context))
         total_context_groups = base_contexts_needed  # Generate exactly what's needed
         
         # Generate context groups using all enabled strategies
@@ -268,7 +269,10 @@ class DatasetBuilder:
         self.generation_stats['context_strategy_distribution'] = strategy_distribution
         self.generation_stats['strategy_configuration'] = strategy_stats
         self.generation_stats['context_metadata'] = context_metadata  # Store for golden association
-        
+
+        # Store context groups for visualization (needed by benchmark.py)
+        self.context_groups = context_groups
+
         return contexts
 
     

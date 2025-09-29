@@ -69,12 +69,19 @@ class Chunk:
     theme_similar_documents: List[str] = None  # Doc IDs of theme-similar documents (inherited from parent)
     theme_similarity_scores: Dict[str, float] = None  # doc_id -> theme_similarity_score (inherited from parent)
 
+    # Quality scoring metadata (DeepEval-style LLM assessment)
+    quality_score: Optional[float] = None  # Overall quality score (0-1, average of components)
+    quality_components: Optional[Dict[str, float]] = None  # Individual component scores
+    quality_tier: Optional[str] = None  # "high", "medium", "low" based on score thresholds
+
     def __post_init__(self):
         """Initialize optional fields as empty containers."""
         if self.theme_similar_documents is None:
             self.theme_similar_documents = []
         if self.theme_similarity_scores is None:
             self.theme_similarity_scores = {}
+        if self.quality_components is None:
+            self.quality_components = {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -391,6 +398,313 @@ class KnowledgeGraph:
             return 0.0
         return document.theme_similarity_scores.get(doc_id_2, 0.0)
 
+    def score_chunk_quality(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None) -> None:
+        """
+        Score quality of all chunks using LLM-based assessment (DeepEval-style).
+
+        Adds quality scores and components to each chunk as permanent metadata.
+        Uses the configured model provider (Ollama, OpenRouter, or OpenAI).
+
+        Args:
+            config: System configuration containing quality scoring settings
+            logger: Optional logger for progress tracking
+        """
+        if logger is None:
+            logger = logging.getLogger(__name__)
+
+        quality_config = config.get('knowledge_graph', {}).get('quality_scoring', {})
+
+        if not quality_config.get('enabled', True):
+            logger.info("🔍 Quality scoring disabled - skipping chunk quality assessment")
+            return
+
+        logger.info(f"🎯 Starting chunk quality scoring for {len(self.chunks)} chunks")
+
+        # Initialize model manager for quality scoring
+        from evaluation.models import ModelManager
+        model_manager = ModelManager(config, logger)
+
+        # Create a temporary model config for quality scoring
+        temp_model_config = {
+            'deepeval': {
+                'models': {
+                    'quality_scorer': {
+                        'provider': quality_config.get('provider', 'ollama'),
+                        'model_name': quality_config.get('model_name', 'llama3.1:8b'),
+                        'temperature': quality_config.get('temperature', 0.1),
+                        'max_tokens': quality_config.get('max_tokens', 500)
+                    }
+                }
+            }
+        }
+
+        # Update model manager config temporarily
+        original_config = model_manager.deepeval_config
+        model_manager.deepeval_config = temp_model_config['deepeval']
+
+        try:
+            # Get quality scoring model
+            quality_model = model_manager._get_model('quality_scorer')
+
+            # Quality scoring statistics
+            scores_computed = 0
+            scores_failed = 0
+            quality_distribution = {'high': 0, 'medium': 0, 'low': 0}
+
+            batch_size = quality_config.get('batch_size', 10)
+            retry_attempts = quality_config.get('retry_attempts', 3)
+            quality_threshold = quality_config.get('quality_threshold', 0.7)
+
+            chunk_items = list(self.chunks.items())
+            total_chunks = len(chunk_items)
+
+            for i in range(0, total_chunks, batch_size):
+                batch = chunk_items[i:i + batch_size]
+                logger.info(f"📊 Processing chunk quality batch {i//batch_size + 1}/{(total_chunks + batch_size - 1)//batch_size}")
+
+                for chunk_id, chunk in batch:
+                    # Skip if already scored (for resumability)
+                    if chunk.quality_score is not None:
+                        logger.debug(f"   ⏭️  Skipping {chunk_id} - already scored")
+                        continue
+
+                    score, components = self._score_single_chunk(chunk.chunk_text, quality_model, retry_attempts, logger)
+
+                    if score is not None:
+                        # Store quality metadata in chunk
+                        chunk.quality_score = score
+                        chunk.quality_components = components
+                        chunk.quality_tier = self._determine_quality_tier(score, quality_threshold)
+
+                        # Update statistics
+                        scores_computed += 1
+                        quality_distribution[chunk.quality_tier] += 1
+
+                        logger.debug(f"   ✅ {chunk_id}: {score:.3f} ({chunk.quality_tier})")
+                    else:
+                        scores_failed += 1
+                        logger.warning(f"   ❌ Failed to score {chunk_id}")
+
+            # Log final statistics
+            logger.info(f"🎯 Quality scoring complete!")
+            logger.info(f"   ✅ Scored: {scores_computed}/{total_chunks} chunks")
+            logger.info(f"   ❌ Failed: {scores_failed} chunks")
+            logger.info(f"   📊 Distribution: High={quality_distribution['high']}, "
+                       f"Medium={quality_distribution['medium']}, Low={quality_distribution['low']}")
+
+            # Filter low-quality chunks if enabled
+            if quality_config.get('enable_filtering', True):
+                self._filter_low_quality_chunks(quality_threshold, logger)
+
+        finally:
+            # Restore original model manager config
+            model_manager.deepeval_config = original_config
+
+    def _score_single_chunk(self, chunk_text: str, quality_model, retry_attempts: int,
+                           logger: logging.Logger) -> Tuple[Optional[float], Optional[Dict[str, float]]]:
+        """
+        Score a single chunk using DeepEval's context evaluation template.
+
+        Args:
+            chunk_text: Text content of the chunk to score
+            quality_model: Model instance for scoring
+            retry_attempts: Number of retry attempts for failed scoring
+            logger: Logger instance
+
+        Returns:
+            Tuple of (overall_score, component_scores) or (None, None) if scoring fails
+        """
+        # Use DeepEval's exact context evaluation prompt
+        prompt = f"""Given a context, complete the following task and return the result in VALID JSON format: Evaluate the supplied context and assign a numerical score between 0 (Low) and 1 (High) for each of the following criteria in your JSON response:
+
+- **clarity**: Assess how clear and comprehensible the information is. A score of 1 indicates that the context is straightforward and easily understandable, while a score of 0 reflects vagueness or confusion in the information presented.
+- **depth**: Evaluate the extent of detailed analysis and the presence of original insights within the context. A high score (1) suggests a thorough and thought-provoking examination, while a low score (0) indicates a shallow overview of the subject.
+- **structure**: Review how well the content is organized and whether it follows a logical progression. A score of 1 is given to contexts that are coherently structured and flow well, whereas a score of 0 is for those that lack organization or clarity in their progression.
+- **relevance**: Analyze the importance of the content in relation to the main topic, awarding a score of 1 for contexts that stay focused on the subject without unnecessary diversions, and a score of 0 for those that include unrelated or irrelevant information.
+
+**
+IMPORTANT: Please make sure to only return in JSON format, with the 'clarity', 'depth', 'structure', and 'relevance' keys.
+
+Example context: "Artificial intelligence is rapidly changing various sectors, from healthcare to finance, by enhancing efficiency and enabling better decision-making."
+Example JSON:
+{{
+    "clarity": 1,
+    "depth": 0.8,
+    "structure": 0.9,
+    "relevance": 1
+}}
+
+Context:
+{chunk_text}
+
+JSON:
+"""
+
+        for attempt in range(retry_attempts):
+            try:
+                # Generate quality assessment
+                response = quality_model.generate(prompt)
+
+                # Handle tuple response from some models (e.g., OllamaModel returns (response, cost))
+                if isinstance(response, tuple):
+                    response = response[0]
+
+                # Parse JSON response
+                import json
+                import re
+
+                # Extract JSON from response (handle cases where model adds extra text)
+                json_match = re.search(r'\{[^}]*\}', response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group()
+                    components = json.loads(json_str)
+                else:
+                    # Try parsing the entire response as JSON
+                    components = json.loads(response.strip())
+
+                # Validate component scores
+                required_keys = ['clarity', 'depth', 'structure', 'relevance']
+                if not all(key in components for key in required_keys):
+                    logger.warning(f"   ⚠️  Missing required quality components (attempt {attempt + 1})")
+                    continue
+
+                # Ensure scores are valid floats between 0 and 1
+                valid_components = {}
+                for key in required_keys:
+                    score = float(components[key])
+                    if 0 <= score <= 1:
+                        valid_components[key] = score
+                    else:
+                        logger.warning(f"   ⚠️  Invalid score for {key}: {score} (attempt {attempt + 1})")
+                        break
+                else:
+                    # All components valid - calculate overall score
+                    overall_score = sum(valid_components.values()) / len(valid_components)
+                    return overall_score, valid_components
+
+            except Exception as e:
+                logger.warning(f"   ⚠️  Quality scoring attempt {attempt + 1} failed: {e}")
+
+        return None, None
+
+    def _determine_quality_tier(self, score: float, threshold: float) -> str:
+        """
+        Determine quality tier based on score and threshold.
+
+        Args:
+            score: Overall quality score (0-1)
+            threshold: Quality threshold from config
+
+        Returns:
+            Quality tier: "high", "medium", or "low"
+        """
+        if score >= threshold:
+            return "high"
+        elif score >= threshold * 0.7:  # Medium: 70% of threshold
+            return "medium"
+        else:
+            return "low"
+
+    def _filter_low_quality_chunks(self, threshold: float, logger: logging.Logger) -> None:
+        """
+        Filter out chunks below quality threshold.
+
+        Args:
+            threshold: Minimum quality score to keep
+            logger: Logger instance
+        """
+        original_count = len(self.chunks)
+
+        # Identify chunks to remove
+        chunks_to_remove = []
+        for chunk_id, chunk in self.chunks.items():
+            if chunk.quality_score is not None and chunk.quality_score < threshold:
+                chunks_to_remove.append(chunk_id)
+
+        if not chunks_to_remove:
+            logger.info(f"🎯 Quality filtering: All {original_count} chunks meet quality threshold ({threshold})")
+            return
+
+        # Remove low-quality chunks
+        for chunk_id in chunks_to_remove:
+            # Remove chunk
+            removed_chunk = self.chunks.pop(chunk_id)
+
+            # Remove chunk from parent document's chunk list
+            if removed_chunk.source_document in self.documents:
+                doc = self.documents[removed_chunk.source_document]
+                if chunk_id in doc.chunk_ids:
+                    doc.chunk_ids.remove(chunk_id)
+
+            # Remove associated sentences
+            for sentence_id in removed_chunk.sentence_ids:
+                if sentence_id in self.sentences:
+                    del self.sentences[sentence_id]
+
+        remaining_count = len(self.chunks)
+        filtered_count = original_count - remaining_count
+
+        logger.info(f"🧹 Quality filtering complete!")
+        logger.info(f"   ❌ Removed: {filtered_count} low-quality chunks (< {threshold})")
+        logger.info(f"   ✅ Remaining: {remaining_count} high-quality chunks")
+
+    def get_chunks_above_quality(self, min_quality: float) -> Dict[str, Chunk]:
+        """
+        Get all chunks with quality score above threshold.
+
+        Args:
+            min_quality: Minimum quality score required
+
+        Returns:
+            Dictionary of chunk_id -> Chunk for chunks meeting quality criteria
+        """
+        high_quality_chunks = {}
+        for chunk_id, chunk in self.chunks.items():
+            if chunk.quality_score is not None and chunk.quality_score >= min_quality:
+                high_quality_chunks[chunk_id] = chunk
+        return high_quality_chunks
+
+    def get_quality_statistics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive quality statistics for the knowledge graph.
+
+        Returns:
+            Dictionary containing quality distribution and statistics
+        """
+        stats = {
+            'total_chunks': len(self.chunks),
+            'scored_chunks': 0,
+            'unscored_chunks': 0,
+            'quality_distribution': {'high': 0, 'medium': 0, 'low': 0},
+            'average_quality': 0.0,
+            'component_averages': {'clarity': 0.0, 'depth': 0.0, 'structure': 0.0, 'relevance': 0.0}
+        }
+
+        scored_chunks = []
+        component_sums = {'clarity': 0.0, 'depth': 0.0, 'structure': 0.0, 'relevance': 0.0}
+
+        for chunk in self.chunks.values():
+            if chunk.quality_score is not None:
+                stats['scored_chunks'] += 1
+                scored_chunks.append(chunk.quality_score)
+                stats['quality_distribution'][chunk.quality_tier] += 1
+
+                # Accumulate component scores
+                if chunk.quality_components:
+                    for component, score in chunk.quality_components.items():
+                        if component in component_sums:
+                            component_sums[component] += score
+            else:
+                stats['unscored_chunks'] += 1
+
+        # Calculate averages
+        if scored_chunks:
+            stats['average_quality'] = sum(scored_chunks) / len(scored_chunks)
+            for component in component_sums:
+                stats['component_averages'][component] = component_sums[component] / len(scored_chunks)
+
+        return stats
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
@@ -544,7 +858,19 @@ class KnowledgeGraphBuilder:
         if docs_with_connections:
             self.logger.info(f"🔍 Sample connections: {docs_with_connections[:3]}")
 
-        # Step 8: Add metadata
+        # Step 8: Score chunk quality using LLM-based assessment
+        self.logger.info("🎯 Starting chunk quality scoring...")
+        kg.score_chunk_quality(self.config, self.logger)
+
+        # Log quality statistics after scoring
+        quality_stats = kg.get_quality_statistics()
+        self.logger.info(f"📊 Quality scoring results:")
+        self.logger.info(f"   Average quality: {quality_stats['average_quality']:.3f}")
+        self.logger.info(f"   High quality chunks: {quality_stats['quality_distribution']['high']}")
+        self.logger.info(f"   Medium quality chunks: {quality_stats['quality_distribution']['medium']}")
+        self.logger.info(f"   Low quality chunks: {quality_stats['quality_distribution']['low']}")
+
+        # Step 9: Add metadata including quality information
         build_time = time.time() - start_time
         kg.metadata = {
             'created_at': datetime.now().isoformat(),
@@ -558,7 +884,8 @@ class KnowledgeGraphBuilder:
             'build_time': build_time,
             'model_used': model_name,
             'config': self.config.get('knowledge_graph', {}),
-            'embedding_cache_loaded': True
+            'embedding_cache_loaded': True,
+            'quality_scoring': quality_stats
         }
 
         self.logger.info(f"🎉 Knowledge graph built successfully in {build_time:.2f}s")
