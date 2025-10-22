@@ -134,13 +134,13 @@ knowledge_graph:
 
   extractors:
     ner:
-      enabled: true
+      enabled: false
       entity_types: ["PERSON", "ORG", "GPE", "PRODUCT", "EVENT", "MISC"]
     keyphrases:
-      enabled: true
+      enabled: false
       max_features: 15
     summary:
-      enabled: true
+      enabled: false
       max_sentences: 2
 
 # === CUSTOMIZABLE CONFIGURATION ===
