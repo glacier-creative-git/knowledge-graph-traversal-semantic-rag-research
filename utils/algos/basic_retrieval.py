@@ -16,9 +16,10 @@ from ..traversal import TraversalPath, GranularityLevel
 class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm 1: Pure similarity-based RAG without traversal."""
     
-    def __init__(self, knowledge_graph, config: Dict[str, Any], 
-                 query_similarity_cache: Dict[str, float], logger=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger)
+    def __init__(self, knowledge_graph, config: Dict[str, Any],
+                 query_similarity_cache: Dict[str, float], logger=None,
+                 shared_embedding_model=None):
+        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
         
         # Algorithm-specific parameters
         self.top_k_chunks = self.traversal_config.get('top_k_chunks', 5)

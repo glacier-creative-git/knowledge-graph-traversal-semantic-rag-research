@@ -22,8 +22,9 @@ class KGTraversalAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm 3B: Chunk-centric traversal with exploration-potential early stopping."""
 
     def __init__(self, knowledge_graph, config: Dict[str, Any],
-                 query_similarity_cache: Dict[str, float], logger=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger)
+                 query_similarity_cache: Dict[str, float], logger=None,
+                 shared_embedding_model=None):
+        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
 
         self.logger.info(f"KGTraversalAlgorithm initialized: max_hops={self.max_hops}, "
                          f"min_sentences={self.min_sentence_threshold}")

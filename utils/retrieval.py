@@ -15,9 +15,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from .algos import (
     BasicRetrievalAlgorithm,
-    QueryTraversalAlgorithm, 
+    QueryTraversalAlgorithm,
     KGTraversalAlgorithm,
-    TriangulationCentroidAlgorithm,
+    TriangulationAverageAlgorithm,
+    TriangulationGeometric3DAlgorithm,
+    TriangulationGeometricFullDimAlgorithm,
+    LLMGuidedTraversalAlgorithm,
     RetrievalResult
 )
 from .traversal import TraversalPath, GranularityLevel
@@ -30,30 +33,39 @@ class RetrievalOrchestrator:
     Multi-algorithm retrieval orchestrator for semantic knowledge graph traversal.
     Provides unified interface to all retrieval algorithms and enables benchmarking.
     """
-    
-    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any], 
+
+    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any],
                  logger: Optional[logging.Logger] = None):
         """Initialize orchestrator with knowledge graph and configuration."""
         self.kg = knowledge_graph
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.traversal_config = config['retrieval']['semantic_traversal']
-        
+
         # Initialize embedding model for query encoding
         self.model_name = list(config['models']['embedding_models'])[0]
         self.embedding_model = EmbeddingModel(self.model_name, config['system']['device'], logger)
-        
+
         # Query similarity cache for sharing across algorithms
         self.query_similarity_cache: Dict[str, float] = {}
-        
+
+        # Shared PCA projection for triangulation_geometric_3d algorithm (memory optimization)
+        # This is initialized once and reused across all retrievals to save memory
+        self.shared_pca_reducer = None
+        self.shared_pca_coords_3d_cache: Dict[str, np.ndarray] = {}
+        self.shared_pca_explained_variance = None
+
         # Available algorithms
         self.algorithms = {
             "basic_retrieval": BasicRetrievalAlgorithm,
             "query_traversal": QueryTraversalAlgorithm,
             "kg_traversal": KGTraversalAlgorithm,
-            "triangulation_centroid": TriangulationCentroidAlgorithm
+            "triangulation_average": TriangulationAverageAlgorithm,
+            "triangulation_geometric_3d": TriangulationGeometric3DAlgorithm,
+            "triangulation_geometric_fulldim": TriangulationGeometricFullDimAlgorithm,
+            "llm_guided_traversal": LLMGuidedTraversalAlgorithm
         }
-        
+
         self.logger.info(f"RetrievalOrchestrator initialized with {len(self.algorithms)} algorithms")
     
     def retrieve(self, query: str, algorithm_name: str = "triangulation_centroid", 
@@ -63,8 +75,9 @@ class RetrievalOrchestrator:
         
         Args:
             query: Search query string
-            algorithm_name: Algorithm to use ("basic_retrieval", "query_traversal", 
-                          "kg_traversal", "triangulation_centroid")
+            algorithm_name: Algorithm to use ("basic_retrieval", "query_traversal",
+                          "kg_traversal", "triangulation_average",
+                          "triangulation_geometric_3d", "triangulation_geometric_fulldim")
             algorithm_params: Optional algorithm-specific parameters
             
         Returns:
@@ -88,13 +101,31 @@ class RetrievalOrchestrator:
         # Step 2: Initialize and execute algorithm
         algorithm_class = self.algorithms[algorithm_name]
         algorithm_params = algorithm_params or {}
-        
-        algorithm = algorithm_class(
-            knowledge_graph=self.kg,
-            config=self.config,
-            query_similarity_cache=self.query_similarity_cache,
-            logger=self.logger
-        )
+
+        # Pass shared resources to algorithms for memory efficiency
+        if algorithm_name == "triangulation_geometric_3d":
+            algorithm = algorithm_class(
+                knowledge_graph=self.kg,
+                config=self.config,
+                query_similarity_cache=self.query_similarity_cache,
+                logger=self.logger,
+                shared_embedding_model=self.embedding_model,  # Share embedding model!
+                shared_pca_reducer=self.shared_pca_reducer,
+                shared_pca_coords_cache=self.shared_pca_coords_3d_cache,
+                shared_pca_explained_variance=self.shared_pca_explained_variance
+            )
+            # Update shared PCA resources after initialization (first run will create them)
+            self.shared_pca_reducer = algorithm.pca_reducer
+            self.shared_pca_coords_3d_cache = algorithm.coords_3d_cache
+            self.shared_pca_explained_variance = algorithm.pca_explained_variance
+        else:
+            algorithm = algorithm_class(
+                knowledge_graph=self.kg,
+                config=self.config,
+                query_similarity_cache=self.query_similarity_cache,
+                logger=self.logger,
+                shared_embedding_model=self.embedding_model  # Share embedding model for ALL algorithms!
+            )
         
         # Execute retrieval
         result = algorithm.retrieve(query, anchor_chunk)
@@ -139,16 +170,34 @@ class RetrievalOrchestrator:
         for algorithm_name in self.algorithms.keys():
             try:
                 self.logger.info(f"   Running {algorithm_name}...")
-                
+
                 algorithm_class = self.algorithms[algorithm_name]
                 params = algorithm_params.get(algorithm_name, {})
-                
-                algorithm = algorithm_class(
-                    knowledge_graph=self.kg,
-                    config=self.config,
-                    query_similarity_cache=self.query_similarity_cache,
-                    logger=self.logger
-                )
+
+                # Pass shared resources to algorithms for memory efficiency
+                if algorithm_name == "triangulation_geometric_3d":
+                    algorithm = algorithm_class(
+                        knowledge_graph=self.kg,
+                        config=self.config,
+                        query_similarity_cache=self.query_similarity_cache,
+                        logger=self.logger,
+                        shared_embedding_model=self.embedding_model,  # Share embedding model!
+                        shared_pca_reducer=self.shared_pca_reducer,
+                        shared_pca_coords_cache=self.shared_pca_coords_3d_cache,
+                        shared_pca_explained_variance=self.shared_pca_explained_variance
+                    )
+                    # Update shared PCA resources after initialization (first run will create them)
+                    self.shared_pca_reducer = algorithm.pca_reducer
+                    self.shared_pca_coords_3d_cache = algorithm.coords_3d_cache
+                    self.shared_pca_explained_variance = algorithm.pca_explained_variance
+                else:
+                    algorithm = algorithm_class(
+                        knowledge_graph=self.kg,
+                        config=self.config,
+                        query_similarity_cache=self.query_similarity_cache,
+                        logger=self.logger,
+                        shared_embedding_model=self.embedding_model  # Share embedding model for ALL algorithms!
+                    )
                 
                 result = algorithm.retrieve(query, anchor_chunk)
                 results[algorithm_name] = result
@@ -235,10 +284,10 @@ class RetrievalOrchestrator:
     # Backward compatibility method - preserves existing interface
     def hybrid_semantic_traversal_retrieval(self, query: str) -> RetrievalResult:
         """
-        Backward compatibility method that uses the triangulation centroid algorithm.
+        Backward compatibility method that uses the triangulation average algorithm.
         Preserves the existing interface while using the new algorithm framework.
         """
-        return self.retrieve(query, "triangulation_centroid")
+        return self.retrieve(query, "triangulation_average")
 
 
 # Factory function for easy initialization (backward compatibility)

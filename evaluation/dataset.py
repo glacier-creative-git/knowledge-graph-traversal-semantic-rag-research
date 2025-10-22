@@ -372,11 +372,13 @@ class DatasetBuilder:
         self.logger.info(
             f"🔧 Creating synthesizer with model: {generation_model.get_model_name()}"
         )
-        
+        self.logger.info("⏱️  Sequential mode enabled to avoid API rate limits")
+
         return Synthesizer(
             model=generation_model,
             evolution_config=evolution_config,
-            filtration_config=filtration_config  # None if disabled
+            filtration_config=filtration_config,  # None if disabled
+            async_mode=False  # Sequential mode to avoid rate limits
         )
     
     def _generate_goldens_with_evolution(self, synthesizer: Synthesizer, 

@@ -171,17 +171,188 @@ Examples:
         help='Enable verbose debug logging'
     )
     
-    # Model overrides (for future use)
+    # Model Configuration
+    parser.add_argument(
+        '--embedding-model',
+        type=str,
+        help='Override embedding model (default: sentence-transformers/all-mpnet-base-v2)'
+    )
+
+    parser.add_argument(
+        '--quality-scoring-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override quality scoring provider (default: openrouter)'
+    )
+
+    parser.add_argument(
+        '--quality-scoring-model-name',
+        type=str,
+        help='Override quality scoring model name'
+    )
+
+    parser.add_argument(
+        '--reranking-model',
+        type=str,
+        help='Override reranking model (default: cross-encoder/ms-marco-MiniLM-L-6-v2)'
+    )
+
+    # DeepEval Model Configuration
+    parser.add_argument(
+        '--question-generation-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override question generation provider (default: openai)'
+    )
+
+    parser.add_argument(
+        '--question-generation-model',
+        type=str,
+        help='Override question generation model (default: gpt-4o)'
+    )
+
+    parser.add_argument(
+        '--answer-generation-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override answer generation provider (default: openai)'
+    )
+
+    parser.add_argument(
+        '--answer-generation-model',
+        type=str,
+        help='Override answer generation model (default: gpt-4o)'
+    )
+
+    parser.add_argument(
+        '--evaluation-judge-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override evaluation judge provider (default: openrouter)'
+    )
+
+    parser.add_argument(
+        '--evaluation-judge-model',
+        type=str,
+        help='Override evaluation judge model (default: meta-llama/llama-3.3-70b-instruct)'
+    )
+
+    # DeepEval Project Configuration
+    parser.add_argument(
+        '--deepeval-project-name',
+        type=str,
+        help='Override DeepEval project name'
+    )
+
+    # Dataset Configuration
+    parser.add_argument(
+        '--dataset-num-goldens',
+        type=int,
+        help='Number of golden examples to generate (default: 3)'
+    )
+
+    parser.add_argument(
+        '--dataset-filtration-enabled',
+        type=lambda x: x.lower() == 'true',
+        help='Enable dataset filtration (true/false, default: true)'
+    )
+
+    parser.add_argument(
+        '--dataset-filtration-model',
+        type=str,
+        help='Model for dataset filtration (default: gpt-4o)'
+    )
+
+    parser.add_argument(
+        '--evolution-enabled',
+        type=lambda x: x.lower() == 'true',
+        help='Enable question evolution (true/false, default: true)'
+    )
+
+    parser.add_argument(
+        '--num-evolutions',
+        type=int,
+        help='Number of evolutions to perform (default: 2)'
+    )
+
+    parser.add_argument(
+        '--dataset-save-path',
+        type=str,
+        help='Path to save generated dataset (default: data/synthetic_dataset.json)'
+    )
+
+    parser.add_argument(
+        '--push-dataset',
+        action='store_true',
+        help='Push dataset to DeepEval dashboard when complete'
+    )
+
+    parser.add_argument(
+        '--pull-dataset',
+        action='store_true',
+        help='Pull dataset from DeepEval dashboard for evaluation'
+    )
+
+    parser.add_argument(
+        '--dataset-name',
+        type=str,
+        help='Dataset alias/name for DeepEval dashboard'
+    )
+
+    parser.add_argument(
+        '--generate-csv',
+        action='store_true',
+        help='Generate CSV file for DeepEval upload'
+    )
+
+    parser.add_argument(
+        '--evaluation-run-async',
+        action='store_true',
+        help='Run evaluation asynchronously'
+    )
+
+    # Context Grouping Strategy Configuration
+    parser.add_argument(
+        '--enable-context-strategies',
+        nargs='*',
+        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'knowledge_graph_similarity', 'deepeval_native'],
+        help='Enable specific context grouping strategies (space-separated list)'
+    )
+
+    parser.add_argument(
+        '--disable-context-strategies',
+        nargs='*',
+        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'knowledge_graph_similarity', 'deepeval_native'],
+        help='Disable specific context grouping strategies (space-separated list)'
+    )
+
+    # Retrieval Algorithm Configuration
+    parser.add_argument(
+        '--test-algorithms',
+        nargs='*',
+        choices=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
+        help='Specify which algorithms to test (space-separated list, default: all)'
+    )
+
+    # Evolution Type Configuration
+    parser.add_argument(
+        '--evolution-types',
+        nargs='*',
+        choices=['REASONING', 'COMPARATIVE', 'IN_BREADTH', 'MULTICONTEXT'],
+        help='Specify which evolution types to use (space-separated list)'
+    )
+
+    # Legacy model overrides (for backward compatibility)
     parser.add_argument(
         '--question-model',
         type=str,
-        help='Override question generation model (e.g., "ollama", "openai")'
+        help='Override question generation model (deprecated: use --question-generation-provider)'
     )
-    
+
     parser.add_argument(
         '--evaluation-model',
         type=str,
-        help='Override evaluation judge model (e.g., "gpt-4o", "claude-3-sonnet")'
+        help='Override evaluation judge model (deprecated: use --evaluation-judge-model)'
     )
 
     # Visualization control
@@ -219,23 +390,149 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 
 def apply_model_overrides(config: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
-    """Apply command-line model overrides to configuration."""
+    """Apply command-line overrides to configuration."""
+    logger = logging.getLogger("DeepEvalBenchmark")
+
+    # Model Configuration Overrides
+    if args.embedding_model:
+        config.setdefault('models', {}).setdefault('embedding_models', [])
+        config['models']['embedding_models'] = [args.embedding_model]
+        logger.info(f"🔧 Override: Embedding model -> {args.embedding_model}")
+
+    if args.quality_scoring_provider:
+        config.setdefault('knowledge_graph', {}).setdefault('quality_scoring', {})['provider'] = args.quality_scoring_provider
+        logger.info(f"🔧 Override: Quality scoring provider -> {args.quality_scoring_provider}")
+
+    if args.quality_scoring_model_name:
+        config.setdefault('knowledge_graph', {}).setdefault('quality_scoring', {})['model_name'] = args.quality_scoring_model_name
+        logger.info(f"🔧 Override: Quality scoring model -> {args.quality_scoring_model_name}")
+
+    if args.reranking_model:
+        config.setdefault('reranking', {})['model_name'] = args.reranking_model
+        logger.info(f"🔧 Override: Reranking model -> {args.reranking_model}")
+
+    # DeepEval Model Configuration Overrides
+    if args.question_generation_provider:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('question_generation', {})['provider'] = args.question_generation_provider
+        logger.info(f"🔧 Override: Question generation provider -> {args.question_generation_provider}")
+
+    if args.question_generation_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('question_generation', {})['model_name'] = args.question_generation_model
+        logger.info(f"🔧 Override: Question generation model -> {args.question_generation_model}")
+
+    if args.answer_generation_provider:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('answer_generation', {})['provider'] = args.answer_generation_provider
+        logger.info(f"🔧 Override: Answer generation provider -> {args.answer_generation_provider}")
+
+    if args.answer_generation_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('answer_generation', {})['model_name'] = args.answer_generation_model
+        logger.info(f"🔧 Override: Answer generation model -> {args.answer_generation_model}")
+
+    if args.evaluation_judge_provider:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('evaluation_judge', {})['provider'] = args.evaluation_judge_provider
+        logger.info(f"🔧 Override: Evaluation judge provider -> {args.evaluation_judge_provider}")
+
+    if args.evaluation_judge_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('evaluation_judge', {})['model_name'] = args.evaluation_judge_model
+        logger.info(f"🔧 Override: Evaluation judge model -> {args.evaluation_judge_model}")
+
+    # DeepEval Project Configuration
+    if args.deepeval_project_name:
+        config.setdefault('deepeval', {}).setdefault('project', {})['name'] = args.deepeval_project_name
+        logger.info(f"🔧 Override: DeepEval project name -> {args.deepeval_project_name}")
+
+    # Dataset Configuration Overrides
+    if args.dataset_num_goldens:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('generation', {})['num_goldens'] = args.dataset_num_goldens
+        logger.info(f"🔧 Override: Dataset num goldens -> {args.dataset_num_goldens}")
+
+    if args.dataset_filtration_enabled is not None:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('filtration', {})['enabled'] = args.dataset_filtration_enabled
+        logger.info(f"🔧 Override: Dataset filtration enabled -> {args.dataset_filtration_enabled}")
+
+    if args.dataset_filtration_model:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('filtration', {})['critic_model'] = args.dataset_filtration_model
+        logger.info(f"🔧 Override: Dataset filtration model -> {args.dataset_filtration_model}")
+
+    if args.evolution_enabled is not None:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('evolution', {})['enabled'] = args.evolution_enabled
+        logger.info(f"🔧 Override: Evolution enabled -> {args.evolution_enabled}")
+
+    if args.num_evolutions:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('evolution', {})['num_evolutions'] = args.num_evolutions
+        logger.info(f"🔧 Override: Num evolutions -> {args.num_evolutions}")
+
+    if args.dataset_save_path:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['save_path'] = args.dataset_save_path
+        logger.info(f"🔧 Override: Dataset save path -> {args.dataset_save_path}")
+
+    if args.push_dataset:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['push_to_dashboard'] = True
+        logger.info("🔧 Override: Push dataset to dashboard enabled")
+
+    if args.pull_dataset:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['pull_from_dashboard'] = True
+        logger.info("🔧 Override: Pull dataset from dashboard enabled")
+
+    if args.dataset_name:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['dataset_alias'] = args.dataset_name
+        logger.info(f"🔧 Override: Dataset name -> {args.dataset_name}")
+
+    if args.generate_csv:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['generate_csv'] = True
+        logger.info("🔧 Override: Generate CSV enabled")
+
+    if args.evaluation_run_async:
+        config.setdefault('deepeval', {}).setdefault('evaluation', {}).setdefault('async_config', {})['run_async'] = True
+        logger.info("🔧 Override: Async evaluation enabled")
+
+    # Context Grouping Strategy Overrides
+    if args.enable_context_strategies or args.disable_context_strategies:
+        context_strategies = config.setdefault('context_strategies', {})
+
+        # If enabling specific strategies, disable all others first
+        if args.enable_context_strategies is not None:
+            for strategy in context_strategies:
+                context_strategies[strategy]['enabled'] = False
+            for strategy in args.enable_context_strategies:
+                if strategy in context_strategies:
+                    context_strategies[strategy]['enabled'] = True
+                    logger.info(f"🔧 Override: Enabled context strategy -> {strategy}")
+
+        # Disable specific strategies
+        if args.disable_context_strategies:
+            for strategy in args.disable_context_strategies:
+                if strategy in context_strategies:
+                    context_strategies[strategy]['enabled'] = False
+                    logger.info(f"🔧 Override: Disabled context strategy -> {strategy}")
+
+    # Test Algorithms Override
+    if args.test_algorithms:
+        config.setdefault('deepeval', {}).setdefault('evaluation', {}).setdefault('algorithms', {})['test_algorithms'] = args.test_algorithms
+        logger.info(f"🔧 Override: Test algorithms -> {', '.join(args.test_algorithms)}")
+
+    # Evolution Types Override
+    if args.evolution_types:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('evolution', {})['evolution_types'] = args.evolution_types
+        logger.info(f"🔧 Override: Evolution types -> {', '.join(args.evolution_types)}")
+
+    # Legacy model overrides (backward compatibility)
     if args.question_model:
-        config['deepeval']['models']['question_generation']['provider'] = args.question_model
-        logging.getLogger("DeepEvalBenchmark").info(f"🔧 Override: Question generation model -> {args.question_model}")
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('question_generation', {})['provider'] = args.question_model
+        logger.info(f"🔧 Override (legacy): Question generation provider -> {args.question_model}")
 
     if args.evaluation_model:
-        config['deepeval']['models']['evaluation_judge']['model_name'] = args.evaluation_model
-        logging.getLogger("DeepEvalBenchmark").info(f"🔧 Override: Evaluation judge model -> {args.evaluation_model}")
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('evaluation_judge', {})['model_name'] = args.evaluation_model
+        logger.info(f"🔧 Override (legacy): Evaluation judge model -> {args.evaluation_model}")
 
     # Apply visualization overrides
     if args.enable_visualizations:
         config.setdefault('visualization', {})['enabled'] = True
-        logging.getLogger("DeepEvalBenchmark").info("🔧 Override: Visualizations enabled")
+        logger.info("🔧 Override: Visualizations enabled")
 
     if args.disable_visualizations:
         config.setdefault('visualization', {})['enabled'] = False
-        logging.getLogger("DeepEvalBenchmark").info("🔧 Override: Visualizations disabled")
+        logger.info("🔧 Override: Visualizations disabled")
 
     return config
 
@@ -259,13 +556,15 @@ def create_context_grouping_visualizations(context_groups: List[ContextGroup], o
     from utils.knowledge_graph import KnowledgeGraph
     import json
 
-    # Load embeddings for visualization (same logic as evaluation.py)
-    embeddings_path = Path("embeddings/raw/sentence_transformers_all_mpnet_base_v2_multi_granularity.json")
+    # Load embeddings for visualization - dynamically determine path from config
+    embedding_model = config.get('models', {}).get('embedding_models', ['sentence-transformers/all-mpnet-base-v2'])[0]
+    safe_model_name = embedding_model.replace("/", "_").replace("-", "_")
+    embeddings_path = Path(f"embeddings/raw/{safe_model_name}_multi_granularity.json")
     embeddings_data = None
     if embeddings_path.exists():
         with open(embeddings_path, 'r') as f:
             raw_data = json.load(f)
-        model_name = raw_data.get('metadata', {}).get('model_name', 'sentence-transformers/all-mpnet-base-v2')
+        model_name = raw_data.get('metadata', {}).get('model_name', embedding_model)
         embeddings_data = {model_name: raw_data['embeddings']}
 
     kg = KnowledgeGraph.load(str(kg_path), embeddings_data)
@@ -360,13 +659,15 @@ def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_
     from utils.knowledge_graph import KnowledgeGraph
     import json
 
-    # Load embeddings for visualization (same logic as evaluation.py)
-    embeddings_path = Path("embeddings/raw/sentence_transformers_all_mpnet_base_v2_multi_granularity.json")
+    # Load embeddings for visualization - dynamically determine path from config
+    embedding_model = config.get('models', {}).get('embedding_models', ['sentence-transformers/all-mpnet-base-v2'])[0]
+    safe_model_name = embedding_model.replace("/", "_").replace("-", "_")
+    embeddings_path = Path(f"embeddings/raw/{safe_model_name}_multi_granularity.json")
     embeddings_data = None
     if embeddings_path.exists():
         with open(embeddings_path, 'r') as f:
             raw_data = json.load(f)
-        model_name = raw_data.get('metadata', {}).get('model_name', 'sentence-transformers/all-mpnet-base-v2')
+        model_name = raw_data.get('metadata', {}).get('model_name', embedding_model)
         embeddings_data = {model_name: raw_data['embeddings']}
 
     kg = KnowledgeGraph.load(str(kg_path), embeddings_data)

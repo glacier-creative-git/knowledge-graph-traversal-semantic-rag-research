@@ -115,6 +115,12 @@ class EvaluationOrchestrator:
 
     def _is_reranking_enabled(self) -> bool:
         """Check if reranking is enabled in configuration."""
+        # Check in retrieval.semantic_traversal first (primary location)
+        retrieval_reranking = self.config.get('retrieval', {}).get('semantic_traversal', {}).get('enable_reranking', None)
+        if retrieval_reranking is not None:
+            return retrieval_reranking
+
+        # Fallback to old location for backwards compatibility
         return self.config.get('evaluation', {}).get('benchmarking', {}).get('enable_reranking', False)
 
     def _create_async_config(self) -> AsyncConfig:
@@ -427,9 +433,12 @@ Answer:"""
         if not kg_path.exists():
             raise FileNotFoundError(f"Knowledge graph not found at {kg_path}. Run kg_pipeline.build() first.")
         
-        # Load embeddings for retrieval algorithms
-        embeddings_path = Path("embeddings/raw/sentence_transformers_all_mpnet_base_v2_multi_granularity.json")
+        # Load embeddings for retrieval algorithms - dynamically determine path from config
+        configured_model = self.config['models']['embedding_models'][0]  # Get first configured model
+        model_path_safe = configured_model.replace('/', '_').replace('-', '_')
+        embeddings_path = Path(f"embeddings/raw/{model_path_safe}_multi_granularity.json")
         embeddings_data = None
+        self.logger.info(f"🔍 Looking for embeddings at: {embeddings_path}")
         if embeddings_path.exists():
             self.logger.info(f"📥 Loading embeddings from {embeddings_path}")
             with open(embeddings_path, 'r') as f:
@@ -437,8 +446,8 @@ Answer:"""
 
             # Transform the file structure to what knowledge graph expects
             # From: {"metadata": {...}, "embeddings": {"chunks": [...], "sentences": [...]}}
-            # To: {"sentence-transformers/all-mpnet-base-v2": {"chunks": [...], "sentences": [...]}}
-            model_name = raw_data.get('metadata', {}).get('model_name', 'sentence-transformers/all-mpnet-base-v2')
+            # To: {"configured_model": {"chunks": [...], "sentences": [...]}}
+            model_name = raw_data.get('metadata', {}).get('model_name', configured_model)
             embeddings_data = {
                 model_name: raw_data['embeddings']
             }

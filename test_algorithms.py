@@ -73,9 +73,20 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
 
     # Load cached embeddings
     embeddings_dir = project_root / "embeddings" / "raw"
-    embeddings_file = embeddings_dir / "sentence_transformers_all_mpnet_base_v2_multi_granularity.json"
-
-    if not embeddings_file.exists():
+    
+    # Look for available embedding files (support both old and new models)
+    possible_files = [
+        embeddings_dir / "mixedbread_ai_mxbai_embed_large_v1_multi_granularity.json",
+        embeddings_dir / "sentence_transformers_all_mpnet_base_v2_multi_granularity.json"
+    ]
+    
+    embeddings_file = None
+    for file_path in possible_files:
+        if file_path.exists():
+            embeddings_file = file_path
+            break
+    
+    if not embeddings_file:
         logger.warning(f"Embeddings file not found: {embeddings_file}")
         logger.warning("Loading knowledge graph without embeddings")
         kg = KnowledgeGraph.load(str(kg_file))
@@ -86,6 +97,10 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
         import json
         with open(embeddings_file, 'r') as f:
             raw_embeddings = json.load(f)
+
+        # Extract the model name from metadata (this is critical!)
+        model_name = raw_embeddings.get('metadata', {}).get('model_name', 'unknown')
+        logger.info(f"📊 Detected model name from embeddings: {model_name}")
 
         # FIXED: Extract the nested 'embeddings' structure
         # The cached file has structure: {"metadata": {...}, "embeddings": {"chunks": [...], "sentences": [...]}}
@@ -99,7 +114,7 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
             logger.info(f"Using direct embeddings structure with keys: {list(nested_embeddings.keys())}")
 
         # Convert to the expected format for KnowledgeGraph.load()
-        model_name = "sentence-transformers/all-mpnet-base-v2"
+        # Use the DETECTED model name, not a hardcoded one!
         embeddings_data = {model_name: nested_embeddings}
 
         logger.info(f"Loaded embeddings data structure:")
@@ -727,7 +742,14 @@ def main():
 
         # Test 1: Individual algorithm testing
         logger.info(f"\n🧪 PHASE 1: Individual Algorithm Testing")
-        algorithms = ["basic_retrieval", "query_traversal", "kg_traversal", "triangulation_centroid"]
+        algorithms = [
+            "basic_retrieval", 
+            "query_traversal", 
+            "kg_traversal", 
+            "triangulation_average",
+            "triangulation_geometric_3d",
+            "triangulation_geometric_768d"
+        ]
 
         for algorithm_name in algorithms:
             test_individual_algorithm(orchestrator, algorithm_name, primary_query, kg, output_dir, logger)

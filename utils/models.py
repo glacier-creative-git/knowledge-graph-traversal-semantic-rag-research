@@ -168,33 +168,41 @@ class EmbeddingModel:
     def encode_batch(self, texts: List[str], batch_size: int = 32, show_progress: bool = True) -> np.ndarray:
         """
         Encode a batch of texts to embeddings.
-        
+
         Args:
             texts: List of texts to encode
             batch_size: Batch size for encoding
             show_progress: Whether to show progress bar
-            
+
         Returns:
             Array of embeddings with shape (len(texts), embedding_dimension)
         """
         if not texts:
             return np.array([])
-        
+
         try:
             self.logger.debug(f"Encoding {len(texts)} texts with batch size {batch_size}")
-            
+
+            # Apply model-specific prompt prefixes
+            processed_texts = texts
+            if "mxbai-embed" in self.model_name.lower():
+                # mxbai-embed-large requires special prompt for retrieval tasks
+                prompt_prefix = "Represent this sentence for searching relevant passages: "
+                processed_texts = [prompt_prefix + text for text in texts]
+                self.logger.debug(f"Applied mxbai-embed prompt prefix to {len(texts)} texts")
+
             # Use sentence-transformers encode method with batching
             embeddings = self.model.encode(
-                texts,
+                processed_texts,
                 batch_size=batch_size,
                 show_progress_bar=show_progress,
                 convert_to_numpy=True,
                 device=self.device
             )
-            
+
             self.logger.debug(f"Generated embeddings shape: {embeddings.shape}")
             return embeddings
-            
+
         except Exception as e:
             self.logger.error(f"Failed to encode batch: {e}")
             raise
