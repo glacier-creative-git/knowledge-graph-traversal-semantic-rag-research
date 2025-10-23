@@ -105,23 +105,23 @@ There are **seven** total algorithms in this repository that can be used for ret
 *Basic semantic RAG algorithm. Contains no traversal. Used as a control.*
 
 ![BASIC RETRIEVAL](docs/BASIC_RETRIEVAL.png)
----
----
+
+
 First, embed the user's query.
 
 
 $$\vec{q} = \text{embed}(\text{query})$$
----
+
 
 Lookup the most semantically similar chunks in the knowledge graph directly based on cosine similarity.
 
 $$\text{sim}(\vec{q}, \vec{c}_i) = \frac{\vec{q} \cdot \vec{c}_i}{\|\vec{q}\| \|\vec{c}_i\|}$$
----
+
 
 Continue selecting the cached top chunks until `max_sentences`, stopping early once individual sentence quality beats the next chunk option (after at least five sentences are gathered).
 
-$$\text{stop when } |S| = \text{max\_sentences}\,\, \text{or}\,\, \Big(|S| \geq 5 \land \max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \text{sim}(\vec{q}, \vec{c}_{\text{next}})\Big)$$
----
+$$\text{stop when } |S| = \text{max\_sentences} \text{ or } \big(|S| \geq 5 \land \max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \text{sim}(\vec{q}, \vec{c}_{\text{next}})\big)$$
+
 
 
 ## 2. `query_traversal`
@@ -129,157 +129,106 @@ $$\text{stop when } |S| = \text{max\_sentences}\,\, \text{or}\,\, \Big(|S| \geq 
 *Query-guided graph traversal that always prioritizes similarity to the original query.*
 
 ![QUERY TRAVERSAL](docs/QUERY_TRAVERSAL.png)
----
----
 
-Embed the user's query and find the ***most similar chunk node in the graph to the query.*** This is called the *anchor chunk.* 
+Embed the user's query and find the ***most similar chunk node in the graph to the query.*** This is called the *anchor chunk.*
 
 $$\vec{q} = \text{embed}(\text{query}), \quad c_0 = \arg\max_{c_i} \text{sim}(\vec{q}, \vec{c}_i)$$
----
----
 
 Starting from the anchor chunk's top inter-document and top intra-document connections, at each hop, find the next node (chunk or sentence) most similar to the query.
 
 $$n_{t+1} = \arg\max_{n \in \text{neighbors}(c_t)} \text{sim}(\vec{q}, \vec{n})$$
----
----
 
 Extract all sentences from each visited chunk (including the anchor chunk). Continue traversing to chunks with highest query similarity.
 
 $$c_{t+1} = \arg\max_{c \in C_{\text{unvisited}}} \text{sim}(\vec{q}, \vec{c})$$
----
----
 
 Chunks are not revisited; newly extracted sentences are deduplicated against what has already been gathered.
 
 Stop when `max_sentences` reached or, once at least eight sentences have been collected, when the best extracted sentence exceeds the best available chunk (early stopping).
 
 $$\max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \max_{c \in C_{\text{available}}} \text{sim}(\vec{q}, \vec{c}) \implies \text{stop}$$
----
----
 
 ## 3. `kg_traversal`
 
 *Chunk-centric graph traversal that follows local similarity paths (not query similarity), with a focus on greater graph exploration.*
 
 ![KG TRAVERSAL](docs/KG_TRAVERSAL.png)
----
----
 
 Similar to the `query_traversal` algorithm, start at the anchor chunk.
 
 $$c_0 = \arg\max_{c_i} \text{sim}(\vec{q}, \vec{c}_i), \quad S_0 = \text{sentences}(c_0)$$
----
----
 
 Unlike the `query_traveral` algorithm, starting from the anchor chunk's `top_x` and `top_k` connections, at each hop, find the next chunk ***most similar to the node that we are currently at in the graph.***
 
 $$c_{t+1} = \arg\max_{c \in \text{neighbors}(c_t)} \text{sim}(\vec{c}_t, \vec{c})$$
----
----
 
 To encourage exploration and prevent too much read-through, prevent sentence overlap by skipping chunks containing already-extracted sentences, and traversal only considers chunk nodes (sentence nodes are ignored).
 
 $$c \notin C_{\text{candidates}} \text{ if } \text{sentences}(c) \cap S_{\text{extracted}} \neq \emptyset$$
----
----
 
 Stop when next chunk similarity ≤ previous hop similarity (exploration-potential early stopping), or at `max_sentences`.
 
 $$\text{sim}(\vec{c}_t, \vec{c}_{t+1}) \leq \text{sim}(\vec{c}_{t-1}, \vec{c}_t) \implies \text{stop}$$
----
----
 
 ## 4. `triangulation_average`
 
 *Averages cosine similarity scores between the query, current chunk, and prospective chunk/sentence nodes at each step. Creates a balanced averaged traversal that considers both the query and prospective chunks.* When a sentence belongs to a different chunk, sentence-to-chunk similarity is approximated from cached scores so the averaged triangle score stays comparable.
 
 ![TRIANGULATION AVERAGE](docs/TRIANGULATION_AVERAGE.png)
----
----
 
 Embed query and start at anchor chunk.
 
 $$\vec{q} = \text{embed}(\text{query}), \quad c_0 = \arg\max_{c_i} \text{sim}(\vec{q}, \vec{c}_i)$$
----
----
 
 At each traversal step, identify all graph edges between the current chunk, query, and prospective chunks. Consider these edges as triangles.
 
 $$\text{avg}(\vec{q}, \vec{c}_t, \vec{c}_{\text{candidate}}) = \frac{\text{sim}(\vec{q}, \vec{c}_t) + \text{sim}(\vec{q}, \vec{c}_{\text{candidate}}) + \text{sim}(\vec{c}_t, \vec{c}_{\text{candidate}})}{3}$$
----
----
 
 Stop when best extracted sentence average exceeds best available chunk average (evaluated once at least eight sentences anchor the check), or when we hit `max_sentences`.
 
 $$n_{t+1} = \arg\max_{n \in \text{neighbors}(c_t)} \text{avg}(\vec{q}, \vec{c}_t, \vec{n})$$
----
----
 
 When a sentence belongs to a different chunk, sentence-to-chunk similarity is approximated from cached scores so the averaged triangle score stays comparable.
 
 $$\max_{s \in S} \text{avg}(\vec{q}, \vec{c}_t, \vec{s}) > \max_{c \in C} \text{avg}(\vec{q}, \vec{c}_t, \vec{c})$$
----
----
 
 ## 5. `triangulation_geometric_3d`
 
 *Geometric triangulation of prospective chunk centroids using PCA-reduced 3D embeddings.*
 
 ![TRIANGULATION GEOMETRIC](docs/TRIANGULATION_GEOMETRIC.png)
----
----
 
 Reduce all embeddings to 3D using PCA.
 
 $$\vec{q}_{3D}, \vec{c}_{i,3D} = \text{PCA}_{1024 \to 3}(\vec{q}, \{\vec{c}_i\})$$
----
----
 
-Similarly to `trangulation_average`, at each traversal step, identify all graph edges between the current chunk, query, and prospective chunks. This time, find the `triangle centroid` of each created triangle.
+Similarly to `triangulation_average`, at each traversal step, identify all graph edges between the current chunk, query, and prospective chunks. This time, find the `triangle centroid` of each created triangle.
 
 $$\vec{\text{centroid}} = \frac{\vec{q}_{3D} + \vec{c}_{t,3D} + \vec{n}_{3D}}{3}$$
----
----
 
 Traverse to the node with its centroid closest to query (minimal Euclidean distance).
 
 $$n_{t+1} = \arg\min_{n \in \text{neighbors}(c_t)} \|\vec{\text{centroid}}(\vec{q}, \vec{c}_t, \vec{n}) - \vec{q}_{3D}\|_2$$
----
-
----
 
 ## 6. `triangulation_fulldim`
 
 Geometric triangulation in *full* embedding space.
 
----
-
 Work directly with full embeddings instead of PCA 3D reduction.
 
 $$\vec{q}, \vec{c}_i \in \mathbb{R}^{d}\quad(\text{dimension auto-detected per knowledge graph, default }d=1024)$$
----
----
 
 Similarly to the other triangulation algorithms, identify triangles. But this time, in full embedding dimensional space.
 
-
 $$\vec{\text{centroid}}_{768D} = \frac{\vec{q} + \vec{c}_t + \vec{n}}{3}$$
----
----
 
 Select node with centroid closest to query in full-dimensional Euclidean space.
 
 $$n_{t+1} = \arg\min_{n \in \text{neighbors}(c_t)} \|\vec{\text{centroid}}(\vec{q}, \vec{c}_t, \vec{n}) - \vec{q}\|_2$$
----
----
 
 Most mathematically rigorous approach, preserves all embedding information.
 
-
 $$\text{Edge lengths: } d(\vec{q}, \vec{c}) = \|\vec{q} - \vec{c}\|_2$$
----
----
 
 ## 7. `llm-guided-traversal`
 
@@ -290,14 +239,10 @@ Modified version of `query_traversal` but uses a lightweight LLM instead. Trades
 Embed query and find anchor chunk (same as other algorithms).
 
 $$\vec{q} = \text{embed}(\text{query}), \quad c_0 = \arg\max_{c_i} \text{sim}(\vec{q}, \vec{c}_i)$$
----
----
 
 At each hop, get `top_k` and `top_x` potential chunks based on query similarity.
 
 $$C_{\text{candidates}} = \text{top-k}\{c \in \text{neighbors}(c_t) \mid \text{sim}(\vec{q}, \vec{c})\}$$
----
----
 
 At each hop, the LLM receives this prompt:
 
@@ -342,14 +287,10 @@ Send the user's query, the currently extracted context, and previews of potentia
 If the LLM response is invalid, fall back to the highest query similarity candidate to keep traversal moving.
 
 $$c_{t+1} = \text{LLM}(\text{query}, S_{\text{extracted}}, C_{\text{candidates}})$$
----
----
 
 LLM decides when to stop based on semantic reasoning (not just similarity).
 
 $$\text{LLM decides: continue or stop based on context sufficiency}$$
----
----
 
 <h1 align="center">Evaluation</h1>
 
@@ -462,59 +403,34 @@ For the knowledge graph, a `WikiEngine()` was created to extract and clean text 
 
 `articles_per_topic` was set to 5, resulting in 10 total documents in the knowledge graph. For theme extraction, `llama 3.1: 8b` was used to extract document themes to be inherited by all chunk/sentence nodes in each respective document. `mixedbread-ai/mxbai-embed-large-v1` was used for embeddings. Named Entity Recognition (NER) processing was disabled, as it was difficult to make use of compared to raw theme extraction, and the knowledge graph specifically relies on cosine simliarity edges rather than raw entity overlap. Quality scoring was also disabled.
 
- 
 ---
----
-## $$\text{20qa-themes-gpt4omini-reasoning}$$
 
-$$
-\begin{array}{|l|c|c|c|c|c|}
-\hline
-\textbf{Algorithm} & \textbf{Precision} & \textbf{Recall} & \textbf{Answer Relevancy} & \textbf{Faithfulness} & \textbf{Test Cases} \\
-\hline
-\text{basic_retrieval} & 0.87 & 0.74 & 0.91 & 0.93 & 16/20 \\
-\hline
-\text{query_traversal} & 0.83 & 0.83 & 0.91 & 1.00 & 16/20 \\
-\hline
-\text{kg_traversal} & 0.73 & 0.72 & 0.98 & 0.92 & 15/20 \\
-\hline
-\text{triangulation_average} & 0.84 & 0.77 & 0.96 & 1.00 & 16/20 \\
-\hline
-\text{triangulation_geometric_3d} & 0.86 & 0.77 & 0.96 & 1.00 & 16/20 \\
-\hline
-\text{triangulation_fulldim} & 0.90 & 0.78 & 0.95 & 0.99 & 17/20 \\
-\hline
-\text{llm_guided_traversal} & 0.88 & 0.82 & 0.95 & 1.00 & 17/20 \\
-\hline
-\end{array}
-$$
+## 20qa-themes-gpt4omini-reasoning
+
+| Algorithm | Precision | Recall | Answer Relevancy | Faithfulness | Test Cases |
+|-----------|-----------|--------|------------------|--------------|------------|
+| basic_retrieval | 0.87 | 0.74 | 0.91 | 0.93 | 16/20 |
+| query_traversal | 0.83 | 0.83 | 0.91 | 1.00 | 16/20 |
+| kg_traversal | 0.73 | 0.72 | 0.98 | 0.92 | 15/20 |
+| triangulation_average | 0.84 | 0.77 | 0.96 | 1.00 | 16/20 |
+| triangulation_geometric_3d | 0.86 | 0.77 | 0.96 | 1.00 | 16/20 |
+| triangulation_fulldim | 0.90 | 0.78 | 0.95 | 0.99 | 17/20 |
+| llm_guided_traversal | 0.88 | 0.82 | 0.95 | 1.00 | 17/20 |
 
 In this evaluation, `llm_guided_traversal` and `triangulation_fulldim` passed the highest number of test cases, considering this context grouping algorithm was designed to be more challenging (less context between hops compared to `sequential_multi_hop`). `triangulation_fulldim` had the highest precision, and `query_traversal` performed admirably at an evenly balanced 0.83 for both precision and recall. Most importantly, most algorithms outperformed `basic_retrieval` in one or more metrics, which was the objective of the research.  
 
 ---
-## $$\text{50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext}$$
+## 50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext
 
-$$
-\begin{array}{|l|c|c|c|c|c|}
-\hline
-\textbf{Algorithm} & \textbf{Precision} & \textbf{Recall} & \textbf{Answer Relevancy} & \textbf{Faithfulness} & \textbf{Test Cases} \\
-\hline
-\text{basic_retrieval} & 0.93 & 0.88 & 0.99 & 0.99 & 48/50 \\
-\hline
-\text{query_traversal} & 0.91 & 0.91 & 0.98 & 1.00 & 50/50 \\
-\hline
-\text{kg_traversal} & 0.93 & 0.87 & 0.99 & 0.99 & 49/50 \\
-\hline
-\text{triangulation_average} & 0.92 & 0.87 & 0.98 & 0.99 & 49/50 \\
-\hline
-\text{triangulation_geometric_3d} & 0.93 & 0.85 & 0.98 & 1.00 & 48/50 \\
-\hline
-\text{triangulation_fulldim} & 0.93 & 0.87 & 1.00 & 0.97 & 47/50 \\
-\hline
-\text{llm_guided_traversal} & 0.91 & 0.94 & 0.99 & 0.99 & 49/50 \\
-\hline
-\end{array}
-$$
+| Algorithm | Precision | Recall | Answer Relevancy | Faithfulness | Test Cases |
+|-----------|-----------|--------|------------------|--------------|------------|
+| basic_retrieval | 0.93 | 0.88 | 0.99 | 0.99 | 48/50 |
+| query_traversal | 0.91 | 0.91 | 0.98 | 1.00 | 50/50 |
+| kg_traversal | 0.93 | 0.87 | 0.99 | 0.99 | 49/50 |
+| triangulation_average | 0.92 | 0.87 | 0.98 | 0.99 | 49/50 |
+| triangulation_geometric_3d | 0.93 | 0.85 | 0.98 | 1.00 | 48/50 |
+| triangulation_fulldim | 0.93 | 0.87 | 1.00 | 0.97 | 47/50 |
+| llm_guided_traversal | 0.91 | 0.94 | 0.99 | 0.99 | 49/50 |
 
 This evaluation was significantly more robust. Immediately, `query_traversal` proves a 100% winrate on the test cases, failing zero of them. This is excellent to see, as the express purpose of this algorithm is to compare itself against the query at each step of traversal. It also achieved a balanced 0.91 for both precision and recall, slightly losing against `basic_retrieval` on precision, but beating it on recall, which is exactly what we would expect to see.
 
