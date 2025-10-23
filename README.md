@@ -378,23 +378,15 @@ context_strategies:
 
 There are *two* synthetic datasets created, as well as a small knowledge graph from Wikipedia for retrieval:
 
-`20q-themes-gpt4omini-reasoning`
----
-
-For this evaluation, 20 questions were generated using `theme_based` context grouping, with `max_sentences` set to 10, resulting in 3 hops each time. The question, expected output, answer, and critic generation were done using `gpt-4o-mini` for both dataset generation and retrieval. Every question was evolved a single time using DeepEval's "reasoning" evolution type.
+- `20q-themes-gpt4omini-reasoning`: For this evaluation, 20 questions were generated using `theme_based` context grouping, with `max_sentences` set to 10, resulting in 3 hops each time. The question, expected output, answer, and critic generation were done using `gpt-4o-mini` for both dataset generation and retrieval. Every question was evolved a single time using DeepEval's "reasoning" evolution type.
 
 
-`50q-seq-multihop-gpt-4o-reasoning-comparative-multicontext`
----
+- `50q-seq-multihop-gpt-4o-reasoning-comparative-multicontext`: For this evaluation, 50 questions were generated using `sequential_multi_hop` context grouping, with `max_sentences` set to 15, resulting in 3 hops of 5-sentence reading groups. Questions were generated using `gpt-4o`, and expected output, answer, and critic generation were done using `gpt-5-nano`. Every question was evolved a single time, with the following distribution:
 
-For this evaluation, 50 questions were generated using `sequential_multi_hop` context grouping, with `max_sentences` set to 15, resulting in 3 hops of 5-sentence reading groups. Questions were generated using `gpt-4o`, and expected output, answer, and critic generation were done using `gpt-5-nano`. Every question was evolved a single time, with the following distribution:
+  - Reasoning: 40% distribution
+  - Multicontext: 40% distribution
+  - Comparative: 20% distribution
 
-- Reasoning: 40% distribution
-- Multicontext: 40% distribution
-- Comparative: 20% distribution
-
-`knowledge_graph`
----
 
 For the knowledge graph, a `WikiEngine()` was created to extract and clean text from articles of particular topics. The two chosen were:
 
