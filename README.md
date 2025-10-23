@@ -112,17 +112,17 @@ First, embed the user's query.
 
 $$\vec{q} = \text{embed}(\text{query})$$
 ---
----
+
 Lookup the most semantically similar chunks in the knowledge graph directly based on cosine similarity.
 
 $$\text{sim}(\vec{q}, \vec{c}_i) = \frac{\vec{q} \cdot \vec{c}_i}{\|\vec{q}\| \|\vec{c}_i\|}$$
 ---
----
+
 Continue selecting the cached top chunks until `max_sentences`, stopping early once individual sentence quality beats the next chunk option (after at least five sentences are gathered).
 
 $$\text{stop when } |S| = \text{max\_sentences}\,\, \text{or}\,\, \Big(|S| \geq 5 \land \max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \text{sim}(\vec{q}, \vec{c}_{\text{next}})\Big)$$
 ---
----
+
 
 ## 2. `query_traversal`
 
