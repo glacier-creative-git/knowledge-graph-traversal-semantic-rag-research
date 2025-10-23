@@ -72,9 +72,12 @@ A *similarity matrix* is a `numpy` array that contains all possible cosine simil
 
 This visualization shows the "Neuroscience" article on Wikipedia and it is very clear where larger, thematic groupings are throughout the document symmetrically along the diagonal, where every chunk is completely red due to being compared directly to itself. It is very apparent in the visualization that sentences 1 through 15 are very dissimilar to the rest of the document, as evidenced by the deep blue hue.
 
-Similarity matrices are best indexed at the sentence level (one entry per sentence in the document). This means that for the best traversal results, we use a *three sentence sliding window* that moves through the document 1 sentence at a time. So every entry in the array is actually an embedding comparison for *three sentences*. Additionally, to minimize memory usage, we can choose to *sparsely store our top comparisons for each position*, typically only the top 10 chunk comparisons for each chunk. This significantly reduces memory usage by multiple factors and is crucial for larger knowledge graphs..
+Similarity matrices are best indexed at the sentence level (one entry per sentence in the document). This means that for the best traversal results, we use a *three sentence sliding window* that moves through the document 1 sentence at a time. So every entry in the array is actually an embedding comparison for *three sentences*. Additionally, to minimize memory usage, we can choose to *sparsely store our top comparisons for each position*, typically only the top 10 chunk comparisons for each chunk. This significantly reduces memory usage by multiple factors and is crucial for larger knowledge graphs.
 
-To create our knowledge graph edges, we simply take our top intra-document cosine similarities (denoted `top_k`) and our top inter-document cosine simliarities (denoted `top_x`) as graph edges. This allows us to effectively "connect" sparse similariy matrices together. This is demonstrated above in the first image of this publication.
+To create our knowledge graph edges, we simply take our top intra-document cosine similarities (denoted `top_k`) and our top inter-document cosine simliarities (denoted `top_x`) as graph edges. This allows us to effectively "connect" sparse similariy matrices together.
+
+![TRAVERAL_EXAMPLE_GLOBAL](docs/TRAVERAL_EXAMPLE_GLOBAL.png)
+![TRAVERAL_EXAMPLE_SEQUENTIAL](docs/TRAVERAL_EXAMPLE_SEQUENTIAL.png)
 
 ### Adding Hierarchical Properties
 
@@ -86,6 +89,7 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 ![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
 
+<iframe src="docs/knowledge_graph_visualization.html" width="100%" height="800"></iframe>
 ---
 <h1 align="center">Algorithms</h1>
 
@@ -292,6 +296,8 @@ LLM decides when to stop based on semantic reasoning (not just similarity).
 
 $$\text{LLM decides: continue or stop based on context sufficiency}$$
 
+---
+
 <h1 align="center">Evaluation</h1>
 
 Benchmarking RAG systems can be done via a variety of different tools and libraries but it is primarily done via a series of universal metrics:
@@ -376,7 +382,7 @@ context_strategies:
 
 ## Knowledge Graph and Evolved Datasets
 
-There are *two* synthetic datasets created, as well as a small knowledge graph from Wikipedia for retrieval:
+There are *two* synthetic datasets created, as well as a small knowledge graph from Wikipedia for retrieval. The datasets are available in the `datasets` directory:
 
 - `20q-themes-gpt4omini-reasoning`: For this evaluation, 20 questions were generated using `theme_based` context grouping, with `max_sentences` set to 10, resulting in 3 hops each time. The question, expected output, answer, and critic generation were done using `gpt-4o-mini` for both dataset generation and retrieval. Every question was evolved a single time using DeepEval's "reasoning" evolution type.
 
