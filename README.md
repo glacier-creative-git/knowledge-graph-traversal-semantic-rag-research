@@ -89,7 +89,7 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 ![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
 
-<iframe src="docs/knowledge_graph_visualization.html" width="100%" height="800"></iframe>
+<iframe src="docs/KG_PLOTLY.html" width="100%" height="800"></iframe>
 ---
 <h1 align="center">Algorithms</h1>
 
