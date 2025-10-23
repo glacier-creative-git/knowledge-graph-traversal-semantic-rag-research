@@ -405,6 +405,8 @@ For the knowledge graph, a `WikiEngine()` was created to extract and clean text 
 
 ---
 
+<h1 align="center">Benchmarking Results</h1>
+
 $$\Large\text{20qa-themes-gpt4omini-reasoning}$$
 
 | Algorithm | Precision | Recall | Answer Relevancy | Faithfulness | Test Cases |
