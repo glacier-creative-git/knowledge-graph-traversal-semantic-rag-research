@@ -405,16 +405,32 @@ For the knowledge graph, a `WikiEngine()` was created to extract and clean text 
 
 ---
 
-## 20qa-themes-gpt4omini-reasoning
+$$\Large\text{20qa-themes-gpt4omini-reasoning}$$
 
-$$\begin{array}{l|c|c|c|c|c} \textbf{Algorithm} & \textbf{Precision} & \textbf{Recall} & \textbf{Answer Relevancy} & \textbf{Faithfulness} & \textbf{Test Cases} \\ \text{basic-retrieval} & 0.87 & 0.74 & 0.91 & 0.93 & 16/20 \\ \text{query-traversal} & 0.83 & 0.83 & 0.91 & 1.00 & 16/20 \\ \text{kg-traversal} & 0.73 & 0.72 & 0.98 & 0.92 & 15/20 \\ \text{triangulation-average} & 0.84 & 0.77 & 0.96 & 1.00 & 16/20 \\ \text{triangulation-geometric-3d} & 0.86 & 0.77 & 0.96 & 1.00 & 16/20 \\ \text{triangulation-fulldim} & 0.90 & 0.78 & 0.95 & 0.99 & 17/20 \\ \text{llm-guided-traversal} & 0.88 & 0.82 & 0.95 & 1.00 & 17/20 \end{array}$$
+| Algorithm | Precision | Recall | Answer Relevancy | Faithfulness | Test Cases |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| `basic_retrieval` | 0.87 | 0.74 | 0.91 | 0.93 | 16/20 |
+| `query_traversal` | 0.83 | 0.83 | 0.91 | 1.00 | 16/20 |
+| `kg_traversal` | 0.73 | 0.72 | 0.98 | 0.92 | 15/20 |
+| `triangulation_average` | 0.84 | 0.77 | 0.96 | 1.00 | 16/20 |
+| `triangulation_geometric_3d` | 0.86 | 0.77 | 0.96 | 1.00 | 16/20 |
+| `triangulation_fulldim` | 0.90 | 0.78 | 0.95 | 0.99 | 17/20 |
+| `llm_guided_traversal` | 0.88 | 0.82 | 0.95 | 1.00 | 17/20 |
 
 In this evaluation, `llm_guided_traversal` and `triangulation_fulldim` passed the highest number of test cases, considering this context grouping algorithm was designed to be more challenging (less context between hops compared to `sequential_multi_hop`). `triangulation_fulldim` had the highest precision, and `query_traversal` performed admirably at an evenly balanced 0.83 for both precision and recall. Most importantly, most algorithms outperformed `basic_retrieval` in one or more metrics, which was the objective of the research.  
 
 ---
-## 50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext
+$$\Large\text{50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext}$$
 
-$$\begin{array}{l|c|c|c|c|c} \textbf{Algorithm} & \textbf{Precision} & \textbf{Recall} & \textbf{Answer Relevancy} & \textbf{Faithfulness} & \textbf{Test Cases} \\ \text{basic-retrieval} & 0.93 & 0.88 & 0.99 & 0.99 & 48/50 \\ \text{query-traversal} & 0.91 & 0.91 & 0.98 & 1.00 & 50/50 \\ \text{kg-traversal} & 0.93 & 0.87 & 0.99 & 0.99 & 49/50 \\ \text{triangulation-average} & 0.92 & 0.87 & 0.98 & 0.99 & 49/50 \\ \text{triangulation-geometric-3d} & 0.93 & 0.85 & 0.98 & 1.00 & 48/50 \\ \text{triangulation-fulldim} & 0.93 & 0.87 & 1.00 & 0.97 & 47/50 \\ \text{llm-guided-traversal} & 0.91 & 0.94 & 0.99 & 0.99 & 49/50 \end{array}$$
+| Algorithm | Precision | Recall | Answer Relevancy | Faithfulness | Test Cases |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| `basic_retrieval` | 0.93 | 0.88 | 0.99 | 0.99 | 48/50 |
+| `query_traversal` | 0.91 | 0.91 | 0.98 | 1.00 | 50/50 |
+| `kg_traversal` | 0.93 | 0.87 | 0.99 | 0.99 | 49/50 |
+| `triangulation_average` | 0.92 | 0.87 | 0.98 | 0.99 | 49/50 |
+| `triangulation_geometric_3d` | 0.93 | 0.85 | 0.98 | 1.00 | 48/50 |
+| `triangulation_fulldim` | 0.93 | 0.87 | 1.00 | 0.97 | 47/50 |
+| `llm_guided_traversal` | 0.91 | 0.94 | 0.99 | 0.99 | 49/50 |
 
 This evaluation was significantly more robust. Immediately, `query_traversal` proves a 100% winrate on the test cases, failing zero of them. This is excellent to see, as the express purpose of this algorithm is to compare itself against the query at each step of traversal. It also achieved a balanced 0.91 for both precision and recall, slightly losing against `basic_retrieval` on precision, but beating it on recall, which is exactly what we would expect to see.
 
