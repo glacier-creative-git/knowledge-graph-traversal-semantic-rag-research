@@ -89,7 +89,13 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 ![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
 
-<iframe src="docs/KG_PLOTLY.html" width="100%" height="800"></iframe>
+*Below is a Plotly visualization generated of an LLM traversal through a knowledge graph using assets in this repository. You may explore this run by downloading the Plotly HTML graph [here.](docs/KG_PLOTLY.html)*
+
+https://github.com/user-attachments/assets/eb2d7433-b884-4c9d-91bd-04b4a9169fc0
+
+*You can see how the LLM traverses the graph to retrieve relevant context to the query.*
+
+https://github.com/user-attachments/assets/b6f7539b-8fc6-4cb0-89aa-aac32dc02c0c
 
 ---
 
