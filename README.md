@@ -89,7 +89,7 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 ![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
 
-*Below is a Plotly visualization generated of an LLM traversal through a knowledge graph using assets in this repository. You may explore this run by downloading the Plotly HTML graph [here.](docs/KG_PLOTLY.html)*
+*Below is a Plotly visualization generated of an LLM traversal through a knowledge graph using assets in this repository. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/Leviathanium/semantic-rag-chunking-research/releases/download/html/KG_PLOTLY.html)*
 
 https://github.com/user-attachments/assets/eb2d7433-b884-4c9d-91bd-04b4a9169fc0
 
