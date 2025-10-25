@@ -314,6 +314,11 @@ deepeval:
   # This section controls how datasets are generated. When you run "python benchmark.py --dataset-only" it creates a
   # DeepEval dataset in JSON format. This allows you to configure the dataset complexity and size, as well as
   # extra parameters.
+  #
+  # Currently, there are THREE DATASETS located in the "datasets" directory. It's strongly recommended you take a look
+  # at these first and upload the 1q dataset to DeepEval to run inferences on before generating your own dataset. If
+  # you use these pre-generated datasets, don't forget to build the knowledge graph first using the current knowledge
+  # graph Wiki config!
 
   dataset:
     generation:
