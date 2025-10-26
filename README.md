@@ -50,13 +50,15 @@ OPENROUTER_API_KEY=openrouter-api-key
 CONFIDENT_AI_API_KEY=deepeval-api-key
 ```
 
+You'll need to set up an account with DeepEval to get your `CONFIDENT_AI_API_KEY`. You'll also need to get a dataset added through the dashboard manually if this is your first time using DeepEval. It is *strongly recommended* you use `1q-intradoc-reasoning-multicontext.csv` located in the `datasets` directory for your convenience.
+
 Then take a look at the `config.yaml` which holds the configuration settings of the entire repository. Upon publication, it will be configured to test *all seven algorithms* on a single DeepEval golden. To do this, run:
 
 ```commandline
-python benchmark.py --verbose
+python benchmark.py --help
 ```
 
-Lastly, two notes. First, reranking code exists in the repository but has been depreciated. The final results from evaluation contained *no reranking*. Additionally, many ideas here build on other publications such as Microsoft's GraphRAG and Alibaba's KG-Retriever algorithm. They are recommended reads and will be cited at the end of this publication.
+Lastly, two notes. First, reranking code exists in the repository but has been depreciated. The final results from evaluation contained *no reranking*. Additionally, many ideas here build on other publications such as Microsoft's GraphRAG and Xiaomi's KG-Retriever algorithm. They are recommended reads and will be cited at the end of this publication.
 
 <h1 align="center">Knowledge Graph Architecture</h1>
 
@@ -495,10 +497,40 @@ Semantic RAG systems and knowledge graph architecture will continue to evolve as
 - Utilizing a significantly larger knowledge graph, exceeding 500-1000 documents in size.
 - Fine-tuning traversal algorithms for deep research, utilizing LLM recursive deep research methods to explore topics in-depth through sub-agents
 
-These algorithms are available for use via an open source license: teams and organizations may fork this repository and continue to research best practices and implementations for these systems using all code in this repository. I ask that you cite this repository as the foundation for any continued research in the field.
+These algorithms are available for use via MIT license: teams and organizations may fork this repository and continue to research best practices and implementations for these systems using all code in this repository. All I ask is if you use this research or code in your work, please cite it as:
 
-Sources:
+  ```bibtext
+  Eric Lester. (2025). Novel Knowledge Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems.
+  https://github.com/Leviathanium/semantic-rag-chunking-research
+  ```
 
-*KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models*
+---
 
-*Microsoft GraphRAG*
+### *Sources:*
+
+
+
+```bibtext
+  Paper 1: Xiaomi KG-Retriever
+  
+  @article{chen2024kgretriever,
+    title={KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models},
+    author={Chen, Weijie and Bai, Ting and Su, Jinbo and Luan, Jian and Liu, Wei and Shi, Chuan},
+    journal={arXiv preprint arXiv:2412.05547},
+    year={2024}
+  }
+  - ArXiv: https://arxiv.org/abs/2412.05547
+```
+
+```bibtext
+  Paper 2: Microsoft GraphRAG
+
+  @article{Edge2024GraphRAG,
+    title={From Local to Global: A Graph RAG Approach to Query-Focused Summarization},
+    author={Edge, Darren and Trinh, Ha and Cheng, Newman and Bradley, Joshua and Chao, Alex and Mody, Apurva
+  and Truitt, Steven and Larson, Jonathan},
+    year={2024},
+    journal={arXiv preprint arXiv:2404.16130}
+  }
+  - ArXiv: https://arxiv.org/abs/2404.16130
+```

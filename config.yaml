@@ -349,7 +349,7 @@ deepeval:
       cache_enabled: true
       force_regenerate: true
       push_to_dashboard: false # NOTE: This lets you push the dataset to DeepEval automatically, but you have to be on the starter plan for this to work.
-      dataset_alias: "50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext" # Name of dataset. Pulls this (or pushes it with this name when complete) from DeepEval for benchmarking.
+      dataset_alias: "1qa-intradoc-reasoning-multicontext" # Name of dataset. Pulls this (or pushes it with this name when complete) from DeepEval for benchmarking.
       pull_from_dashboard: true # IMPORTANT: Once you have a dataset saved in DeepEval's dashboard, enable this to simply pull it every time.
       generate_csv: true # VERY IMPORTANT: If you don't want to pay for DeepEval, you can enable this to output a .csv to upload as a dataset directly since you can't push without paying. You're welcome :D
       csv_context_delimiter: " | "
@@ -456,7 +456,7 @@ context_strategies:
     description: "Cross-document thematic context grouping."
 
   sequential_multi_hop:
-    enabled: true # Was last used for final research evaluation on 50qa dataset.
+    enabled: true # Was last used to generate the final research evaluation on 50qa dataset. You may change this if you are ready to generate your own.
     weight: 0.33
     num_reading_hops: 3
     num_paragraph_sentences: 5
