@@ -1,32 +1,40 @@
 #!/usr/bin/env python3
 """
-Comprehensive RAG Algorithm Benchmarking System
-==============================================
+DeepEval-Powered Semantic Traversal Benchmark Orchestrator
+=========================================================
 
-Advanced benchmarking orchestrator that evaluates all four retrieval algorithms
-using sophisticated metrics and comprehensive visualization generation.
+Orchestrates knowledge graph building, dataset generation, and algorithm evaluation
+using deepeval's synthetic data generation and sophisticated evaluation metrics.
 
-Features:
-- Automatic question loading/generation with simplified caching
-- Multi-algorithm execution with consistent evaluation
-- Rich metrics calculation using traditional IR and path-based approaches
-- Comprehensive visualization generation (2 plots per algorithm per question)
-- Structured results output in human-readable YAML format
+This script replaces the original benchmark.py with a clean three-phase architecture:
+1. Knowledge Graph Construction (kg_pipeline.build)
+2. Synthetic Dataset Generation (dataset.build) 
+3. Algorithm Evaluation (evaluation.run)
+
+Key Features:
+- Configurable model providers (OpenAI, Ollama, Anthropic, OpenRouter)
+- Evolution-based question complexity enhancement
+- Comprehensive RAG + custom semantic traversal metrics
+- Hyperparameter tracking for dashboard visibility
+- Results compatible with existing visualization infrastructure
 
 Usage:
-    python benchmark.py                    # Run with default settings
-    python benchmark.py --questions 20    # Specify number of questions
-    python benchmark.py --force-regenerate # Force question regeneration
-    python benchmark.py --algorithms basic_retrieval kg_traversal  # Test specific algorithms
+    python benchmark.py                                    # Full pipeline with all algorithms
+    python benchmark.py --algorithm triangulation_centroid # Test specific algorithm
+    python benchmark.py --dataset-only                    # Generate dataset only
+    python benchmark.py --enable-visualizations           # Force enable traversal visualizations
+    python benchmark.py --disable-visualizations          # Force disable visualizations
+    python benchmark.py --models ollama openai            # Override model configuration
+    python benchmark.py --force-rebuild-all               # Force rebuild everything
 """
 
-import os
 import sys
 import argparse
 import logging
 import yaml
+import traceback
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import matplotlib.pyplot as plt
 
@@ -34,652 +42,1026 @@ import matplotlib.pyplot as plt
 project_root = Path(__file__).parent
 sys.path.append(str(project_root))
 
-# Import our components
+# Environment variable management
+from dotenv import load_dotenv
+
+# Import our three main components
 from utils.kg_pipeline import KnowledgeGraphPipeline
+from evaluation.dataset import DatasetBuilder
+from evaluation.evaluation import EvaluationOrchestrator
 
-""" Depreciated:
-from utils.questions import EvaluationDataset, DatasetGenerator
-from utils.benchmarking import BenchmarkEvaluator, CompleteBenchmarkResult, AlgorithmBenchmarkResult
-"""
+# Import visualization components
+from utils.plotly_visualizer import create_algorithm_visualization
+from utils.matplotlib_visualizer import (
+    create_heatmap_visualization,
+    create_global_visualization,
+    create_sequential_visualization
+)
+from utils.algos.base_algorithm import RetrievalResult
+from utils.traversal import TraversalPath, GranularityLevel, ConnectionType
+from evaluation.context_grouping import ContextGroup
 
-from utils.retrieval import RetrievalOrchestrator
-from utils.knowledge_graph import KnowledgeGraph
-from utils.matplotlib_visualizer import create_global_visualization, create_sequential_visualization
-from utils.reranker import create_reranker_orchestrator
 
-
-def setup_logging() -> logging.Logger:
-    """Setup comprehensive logging for the benchmarking process."""
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Setup comprehensive logging for the benchmark orchestrator."""
+    log_level = logging.DEBUG if verbose else logging.INFO
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    
+
     # Configure root logger
     logging.basicConfig(
-        level=logging.INFO,
+        level=log_level,
         format=log_format,
         handlers=[
             logging.StreamHandler(sys.stdout),
             logging.FileHandler('benchmark.log', mode='w', encoding='utf-8')
         ]
     )
-    
-    return logging.getLogger("RAGBenchmark")
+
+    return logging.getLogger("DeepEvalBenchmark")
+
+
+def setup_visualization_output(config: Dict[str, Any], output_prefix: Optional[str] = None) -> Optional[Path]:
+    """Setup output directory for visualizations if enabled."""
+    viz_config = config.get('visualization', {})
+
+    if not viz_config.get('enabled', False):
+        return None
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prefix = output_prefix or "benchmark"
+    output_dir = Path(config['directories']['visualizations']) / f"{prefix}_{timestamp}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    return output_dir
 
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments for benchmark configuration."""
     parser = argparse.ArgumentParser(
-        description="Comprehensive RAG Algorithm Benchmarking System",
+        description="DeepEval-Powered Semantic Traversal Benchmark System",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python benchmark.py                                    # Default benchmark
-  python benchmark.py --questions 25                    # 25 questions
-  python benchmark.py --force-regenerate                # Force new questions  
-  python benchmark.py --algorithms kg_traversal         # Test specific algorithm
-  python benchmark.py --skip-visualizations             # Skip plot generation
-  python benchmark.py --output-dir custom_results       # Custom output directory
+    python benchmark.py                                     # Full pipeline with all algorithms
+    python benchmark.py --algorithm triangulation_centroid # Test specific algorithm
+    python benchmark.py --dataset-only                     # Generate dataset only  
+    python benchmark.py --force-rebuild-all                # Force rebuild everything
+    python benchmark.py --verbose                          # Enable debug logging
+    python benchmark.py --config custom_config.yaml       # Use custom configuration
         """
     )
     
+    # Algorithm selection
     parser.add_argument(
-        '--questions', 
-        type=int, 
-        default=25,
-        help='Number of questions to generate/use (default: 15)'
-    )
-    
-    parser.add_argument(
-        '--algorithms',
-        nargs='*',
-        default=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
-        choices=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
-        help='Algorithms to benchmark (default: all algorithms)'
-    )
-    
-    parser.add_argument(
-        '--force-regenerate',
-        action='store_true',
-        help='Force regeneration of questions even if cache exists'
-    )
-    
-    parser.add_argument(
-        '--skip-visualizations',
-        action='store_true', 
-        help='Skip visualization generation to speed up benchmarking'
-    )
-    
-    parser.add_argument(
-        '--output-dir',
+        '--algorithm',
         type=str,
-        default='benchmark_results',
-        help='Output directory for results and visualizations (default: benchmark_results)'
+        choices=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
+        help='Specific algorithm to benchmark (default: evaluate all algorithms)'
+    )
+    
+    # Pipeline control
+    parser.add_argument(
+        '--dataset-only',
+        action='store_true',
+        help='Generate synthetic dataset only, skip evaluation'
     )
     
     parser.add_argument(
-        '--k-value',
-        type=int,
-        default=10,
-        help='K value for @K metrics (default: 10, matching retrieval steps)'
+        '--evaluation-only',
+        action='store_true',
+        help='Run evaluation only, skip KG building and dataset generation'
+    )
+    
+    # Force rebuild options
+    parser.add_argument(
+        '--force-rebuild-kg',
+        action='store_true',
+        help='Force knowledge graph rebuild even if cache exists'
     )
     
     parser.add_argument(
-        '--max-documents',
-        type=int,
-        default=6,
-        help='Maximum documents to show in visualizations (default: 6)'
+        '--force-rebuild-dataset',
+        action='store_true',
+        help='Force dataset regeneration even if cache exists'
     )
     
+    parser.add_argument(
+        '--force-rebuild-all',
+        action='store_true',
+        help='Force rebuild of all components (KG + dataset)'
+    )
+    
+    # Configuration and output
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='config.yaml',
+        help='Path to configuration file (default: config.yaml)'
+    )
+    
+    parser.add_argument(
+        '--output-prefix',
+        type=str,
+        help='Prefix for output files and reports'
+    )
+    
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='Enable verbose debug logging'
+    )
+    
+    # Model Configuration
+    parser.add_argument(
+        '--embedding-model',
+        type=str,
+        help='Override embedding model (default: sentence-transformers/all-mpnet-base-v2)'
+    )
+
+    parser.add_argument(
+        '--quality-scoring-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override quality scoring provider (default: openrouter)'
+    )
+
+    parser.add_argument(
+        '--quality-scoring-model-name',
+        type=str,
+        help='Override quality scoring model name'
+    )
+
+    parser.add_argument(
+        '--reranking-model',
+        type=str,
+        help='Override reranking model (default: cross-encoder/ms-marco-MiniLM-L-6-v2)'
+    )
+
+    # DeepEval Model Configuration
+    parser.add_argument(
+        '--question-generation-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override question generation provider (default: openai)'
+    )
+
+    parser.add_argument(
+        '--question-generation-model',
+        type=str,
+        help='Override question generation model (default: gpt-4o)'
+    )
+
+    parser.add_argument(
+        '--answer-generation-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override answer generation provider (default: openai)'
+    )
+
+    parser.add_argument(
+        '--answer-generation-model',
+        type=str,
+        help='Override answer generation model (default: gpt-4o)'
+    )
+
+    parser.add_argument(
+        '--evaluation-judge-provider',
+        type=str,
+        choices=['openai', 'anthropic', 'ollama', 'openrouter'],
+        help='Override evaluation judge provider (default: openrouter)'
+    )
+
+    parser.add_argument(
+        '--evaluation-judge-model',
+        type=str,
+        help='Override evaluation judge model (default: meta-llama/llama-3.3-70b-instruct)'
+    )
+
+    # DeepEval Project Configuration
+    parser.add_argument(
+        '--deepeval-project-name',
+        type=str,
+        help='Override DeepEval project name'
+    )
+
+    # Dataset Configuration
+    parser.add_argument(
+        '--dataset-num-goldens',
+        type=int,
+        help='Number of golden examples to generate (default: 3)'
+    )
+
+    parser.add_argument(
+        '--dataset-filtration-enabled',
+        type=lambda x: x.lower() == 'true',
+        help='Enable dataset filtration (true/false, default: true)'
+    )
+
+    parser.add_argument(
+        '--dataset-filtration-model',
+        type=str,
+        help='Model for dataset filtration (default: gpt-4o)'
+    )
+
+    parser.add_argument(
+        '--evolution-enabled',
+        type=lambda x: x.lower() == 'true',
+        help='Enable question evolution (true/false, default: true)'
+    )
+
+    parser.add_argument(
+        '--num-evolutions',
+        type=int,
+        help='Number of evolutions to perform (default: 2)'
+    )
+
+    parser.add_argument(
+        '--dataset-save-path',
+        type=str,
+        help='Path to save generated dataset (default: data/synthetic_dataset.json)'
+    )
+
+    parser.add_argument(
+        '--push-dataset',
+        action='store_true',
+        help='Push dataset to DeepEval dashboard when complete'
+    )
+
+    parser.add_argument(
+        '--pull-dataset',
+        action='store_true',
+        help='Pull dataset from DeepEval dashboard for evaluation'
+    )
+
+    parser.add_argument(
+        '--dataset-name',
+        type=str,
+        help='Dataset alias/name for DeepEval dashboard'
+    )
+
+    parser.add_argument(
+        '--generate-csv',
+        action='store_true',
+        help='Generate CSV file for DeepEval upload'
+    )
+
+    parser.add_argument(
+        '--evaluation-run-async',
+        action='store_true',
+        help='Run evaluation asynchronously'
+    )
+
+    # Context Grouping Strategy Configuration
+    parser.add_argument(
+        '--enable-context-strategies',
+        nargs='*',
+        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'knowledge_graph_similarity', 'deepeval_native'],
+        help='Enable specific context grouping strategies (space-separated list)'
+    )
+
+    parser.add_argument(
+        '--disable-context-strategies',
+        nargs='*',
+        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'knowledge_graph_similarity', 'deepeval_native'],
+        help='Disable specific context grouping strategies (space-separated list)'
+    )
+
+    # Retrieval Algorithm Configuration
+    parser.add_argument(
+        '--test-algorithms',
+        nargs='*',
+        choices=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
+        help='Specify which algorithms to test (space-separated list, default: all)'
+    )
+
+    # Evolution Type Configuration
+    parser.add_argument(
+        '--evolution-types',
+        nargs='*',
+        choices=['REASONING', 'COMPARATIVE', 'IN_BREADTH', 'MULTICONTEXT'],
+        help='Specify which evolution types to use (space-separated list)'
+    )
+
+    # Legacy model overrides (for backward compatibility)
+    parser.add_argument(
+        '--question-model',
+        type=str,
+        help='Override question generation model (deprecated: use --question-generation-provider)'
+    )
+
+    parser.add_argument(
+        '--evaluation-model',
+        type=str,
+        help='Override evaluation judge model (deprecated: use --evaluation-judge-model)'
+    )
+
+    # Visualization control
+    parser.add_argument(
+        '--enable-visualizations',
+        action='store_true',
+        help='Enable generation of traversal visualizations (overrides config)'
+    )
+
+    parser.add_argument(
+        '--disable-visualizations',
+        action='store_true',
+        help='Disable generation of traversal visualizations (overrides config)'
+    )
+
     return parser.parse_args()
 
 
-class BenchmarkOrchestrator:
-    """Main orchestrator for comprehensive RAG algorithm benchmarking."""
+def load_config(config_path: str) -> Dict[str, Any]:
+    """Load and validate configuration from YAML file."""
+    config_file = Path(config_path)
+    if not config_file.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_file}")
     
-    def __init__(self, args: argparse.Namespace, logger: logging.Logger):
-        """Initialize the benchmark orchestrator with configuration."""
-        self.args = args
-        self.logger = logger
-        self.start_time = datetime.now()
-        
-        # Temporarily enable debug logging for reranking diagnosis
-        reranking_logger = logging.getLogger("RAGBenchmark")
-        reranking_logger.setLevel(logging.DEBUG)
-        
-        # Setup output directories
-        self.output_dir = Path(args.output_dir)
-        self.visualization_dir = self.output_dir / "visualizations"
-        self.results_file = self.output_dir / "benchmark_results.yaml"
-        
-        # Create directories
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        if not args.skip_visualizations:
-            self.visualization_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize core components
-        self.pipeline = None
-        self.knowledge_graph = None
-        self.retrieval_orchestrator = None
-        self.benchmark_evaluator = None
-        
-        self.logger.info(f"🚀 RAG Benchmark Orchestrator initialized")
-        self.logger.info(f"   Questions: {args.questions}")
-        self.logger.info(f"   Algorithms: {args.algorithms}")
-        self.logger.info(f"   K-value: {args.k_value}")
-        self.logger.info(f"   Output: {self.output_dir}")
-        self.logger.info(f"   Visualizations: {'enabled' if not args.skip_visualizations else 'disabled'}")
+    with open(config_file, 'r') as f:
+        config = yaml.safe_load(f)
     
-    def initialize_pipeline(self) -> None:
-        """Initialize the knowledge graph pipeline and load necessary components."""
-        self.logger.info("🔧 Initializing Knowledge Graph Pipeline...")
-        
+    # Validate required configuration sections
+    required_sections = ['directories', 'deepeval']
+    for section in required_sections:
+        if section not in config:
+            raise ValueError(f"Missing required configuration section: {section}")
+    
+    return config
+
+
+def apply_model_overrides(config: Dict[str, Any], args: argparse.Namespace) -> Dict[str, Any]:
+    """Apply command-line overrides to configuration."""
+    logger = logging.getLogger("DeepEvalBenchmark")
+
+    # Model Configuration Overrides
+    if args.embedding_model:
+        config.setdefault('models', {}).setdefault('embedding_models', [])
+        config['models']['embedding_models'] = [args.embedding_model]
+        logger.info(f"🔧 Override: Embedding model -> {args.embedding_model}")
+
+    if args.quality_scoring_provider:
+        config.setdefault('knowledge_graph', {}).setdefault('quality_scoring', {})['provider'] = args.quality_scoring_provider
+        logger.info(f"🔧 Override: Quality scoring provider -> {args.quality_scoring_provider}")
+
+    if args.quality_scoring_model_name:
+        config.setdefault('knowledge_graph', {}).setdefault('quality_scoring', {})['model_name'] = args.quality_scoring_model_name
+        logger.info(f"🔧 Override: Quality scoring model -> {args.quality_scoring_model_name}")
+
+    if args.reranking_model:
+        config.setdefault('reranking', {})['model_name'] = args.reranking_model
+        logger.info(f"🔧 Override: Reranking model -> {args.reranking_model}")
+
+    # DeepEval Model Configuration Overrides
+    if args.question_generation_provider:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('question_generation', {})['provider'] = args.question_generation_provider
+        logger.info(f"🔧 Override: Question generation provider -> {args.question_generation_provider}")
+
+    if args.question_generation_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('question_generation', {})['model_name'] = args.question_generation_model
+        logger.info(f"🔧 Override: Question generation model -> {args.question_generation_model}")
+
+    if args.answer_generation_provider:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('answer_generation', {})['provider'] = args.answer_generation_provider
+        logger.info(f"🔧 Override: Answer generation provider -> {args.answer_generation_provider}")
+
+    if args.answer_generation_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('answer_generation', {})['model_name'] = args.answer_generation_model
+        logger.info(f"🔧 Override: Answer generation model -> {args.answer_generation_model}")
+
+    if args.evaluation_judge_provider:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('evaluation_judge', {})['provider'] = args.evaluation_judge_provider
+        logger.info(f"🔧 Override: Evaluation judge provider -> {args.evaluation_judge_provider}")
+
+    if args.evaluation_judge_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('evaluation_judge', {})['model_name'] = args.evaluation_judge_model
+        logger.info(f"🔧 Override: Evaluation judge model -> {args.evaluation_judge_model}")
+
+    # DeepEval Project Configuration
+    if args.deepeval_project_name:
+        config.setdefault('deepeval', {}).setdefault('project', {})['name'] = args.deepeval_project_name
+        logger.info(f"🔧 Override: DeepEval project name -> {args.deepeval_project_name}")
+
+    # Dataset Configuration Overrides
+    if args.dataset_num_goldens:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('generation', {})['num_goldens'] = args.dataset_num_goldens
+        logger.info(f"🔧 Override: Dataset num goldens -> {args.dataset_num_goldens}")
+
+    if args.dataset_filtration_enabled is not None:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('filtration', {})['enabled'] = args.dataset_filtration_enabled
+        logger.info(f"🔧 Override: Dataset filtration enabled -> {args.dataset_filtration_enabled}")
+
+    if args.dataset_filtration_model:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('filtration', {})['critic_model'] = args.dataset_filtration_model
+        logger.info(f"🔧 Override: Dataset filtration model -> {args.dataset_filtration_model}")
+
+    if args.evolution_enabled is not None:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('evolution', {})['enabled'] = args.evolution_enabled
+        logger.info(f"🔧 Override: Evolution enabled -> {args.evolution_enabled}")
+
+    if args.num_evolutions:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('evolution', {})['num_evolutions'] = args.num_evolutions
+        logger.info(f"🔧 Override: Num evolutions -> {args.num_evolutions}")
+
+    if args.dataset_save_path:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['save_path'] = args.dataset_save_path
+        logger.info(f"🔧 Override: Dataset save path -> {args.dataset_save_path}")
+
+    if args.push_dataset:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['push_to_dashboard'] = True
+        logger.info("🔧 Override: Push dataset to dashboard enabled")
+
+    if args.pull_dataset:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['pull_from_dashboard'] = True
+        logger.info("🔧 Override: Pull dataset from dashboard enabled")
+
+    if args.dataset_name:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['dataset_alias'] = args.dataset_name
+        logger.info(f"🔧 Override: Dataset name -> {args.dataset_name}")
+
+    if args.generate_csv:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('output', {})['generate_csv'] = True
+        logger.info("🔧 Override: Generate CSV enabled")
+
+    if args.evaluation_run_async:
+        config.setdefault('deepeval', {}).setdefault('evaluation', {}).setdefault('async_config', {})['run_async'] = True
+        logger.info("🔧 Override: Async evaluation enabled")
+
+    # Context Grouping Strategy Overrides
+    if args.enable_context_strategies or args.disable_context_strategies:
+        context_strategies = config.setdefault('context_strategies', {})
+
+        # If enabling specific strategies, disable all others first
+        if args.enable_context_strategies is not None:
+            for strategy in context_strategies:
+                context_strategies[strategy]['enabled'] = False
+            for strategy in args.enable_context_strategies:
+                if strategy in context_strategies:
+                    context_strategies[strategy]['enabled'] = True
+                    logger.info(f"🔧 Override: Enabled context strategy -> {strategy}")
+
+        # Disable specific strategies
+        if args.disable_context_strategies:
+            for strategy in args.disable_context_strategies:
+                if strategy in context_strategies:
+                    context_strategies[strategy]['enabled'] = False
+                    logger.info(f"🔧 Override: Disabled context strategy -> {strategy}")
+
+    # Test Algorithms Override
+    if args.test_algorithms:
+        config.setdefault('deepeval', {}).setdefault('evaluation', {}).setdefault('algorithms', {})['test_algorithms'] = args.test_algorithms
+        logger.info(f"🔧 Override: Test algorithms -> {', '.join(args.test_algorithms)}")
+
+    # Evolution Types Override
+    if args.evolution_types:
+        config.setdefault('deepeval', {}).setdefault('dataset', {}).setdefault('evolution', {})['evolution_types'] = args.evolution_types
+        logger.info(f"🔧 Override: Evolution types -> {', '.join(args.evolution_types)}")
+
+    # Legacy model overrides (backward compatibility)
+    if args.question_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('question_generation', {})['provider'] = args.question_model
+        logger.info(f"🔧 Override (legacy): Question generation provider -> {args.question_model}")
+
+    if args.evaluation_model:
+        config.setdefault('deepeval', {}).setdefault('models', {}).setdefault('evaluation_judge', {})['model_name'] = args.evaluation_model
+        logger.info(f"🔧 Override (legacy): Evaluation judge model -> {args.evaluation_model}")
+
+    # Apply visualization overrides
+    if args.enable_visualizations:
+        config.setdefault('visualization', {})['enabled'] = True
+        logger.info("🔧 Override: Visualizations enabled")
+
+    if args.disable_visualizations:
+        config.setdefault('visualization', {})['enabled'] = False
+        logger.info("🔧 Override: Visualizations disabled")
+
+    return config
+
+
+def create_context_grouping_visualizations(context_groups: List[ContextGroup], output_dir: Path,
+                                          config: Dict[str, Any], logger: logging.Logger) -> None:
+    """Create visualizations for context grouping process during dataset generation."""
+    viz_config = config.get('visualization', {}).get('context_grouping', {})
+
+    if not viz_config.get('enabled', True):
+        return
+
+    logger.info("🎨 Creating context grouping visualizations...")
+
+    # Load knowledge graph for visualization with embeddings
+    kg_path = Path(config['directories']['data']) / "knowledge_graph.json"
+    if not kg_path.exists():
+        logger.warning("   ⚠️ Knowledge graph not found, skipping context grouping visualizations")
+        return
+
+    from utils.knowledge_graph import KnowledgeGraph
+    import json
+
+    # Load embeddings for visualization - dynamically determine path from config
+    embedding_model = config.get('models', {}).get('embedding_models', ['sentence-transformers/all-mpnet-base-v2'])[0]
+    safe_model_name = embedding_model.replace("/", "_").replace("-", "_")
+    embeddings_path = Path(f"embeddings/raw/{safe_model_name}_multi_granularity.json")
+    embeddings_data = None
+    if embeddings_path.exists():
+        with open(embeddings_path, 'r') as f:
+            raw_data = json.load(f)
+        model_name = raw_data.get('metadata', {}).get('model_name', embedding_model)
+        embeddings_data = {model_name: raw_data['embeddings']}
+
+    kg = KnowledgeGraph.load(str(kg_path), embeddings_data)
+
+    # Create visualizations for first few context groups (to avoid overwhelming output)
+    max_groups_to_visualize = min(3, len(context_groups))
+
+    for i, context_group in enumerate(context_groups[:max_groups_to_visualize]):
         try:
-            # Initialize pipeline
-            self.pipeline = KnowledgeGraphPipeline()
-            
-            # Load configuration
-            self.pipeline._load_config()
-            self.pipeline._initialize_experiment_tracker()
-            self.pipeline._initialize_logging()
-            
-            # Load existing knowledge graph, or build it if it doesn't exist
-            kg_path = Path(self.pipeline.config['directories']['data']) / "knowledge_graph.json"
-            if not kg_path.exists():
-                self.logger.info("🏗️  Knowledge graph not found. Building it now...")
-                self.pipeline.build()
-                if not kg_path.exists():
-                    raise FileNotFoundError(f"Knowledge graph still not found after building at {kg_path}.")
-            
-            self.logger.info(f"📂 Loading knowledge graph from {kg_path}")
-            self.knowledge_graph = KnowledgeGraph.load(str(kg_path))
-            
-            # Load embeddings if available
-            try:
-                from utils.models import MultiGranularityEmbeddingEngine
-                embedding_engine = MultiGranularityEmbeddingEngine(self.pipeline.config, self.logger)
-                
-                # Try to load cached embeddings for the configured models
-                model_names = list(self.pipeline.config['models']['embedding_models'])
-                if model_names:
-                    primary_model = model_names[0]  # Use first model for compatibility
-                    embeddings = embedding_engine.load_model_embeddings(primary_model)
-                    
-                    if embeddings:
-                        # Convert to the format expected by knowledge graph
-                        formatted_embeddings = {primary_model: embeddings}
-                        self.knowledge_graph.load_phase3_embeddings(formatted_embeddings)
-                        self.logger.info("✅ Loaded cached embeddings into knowledge graph")
-                    else:
-                        self.logger.warning("⚠️ No cached embeddings found - some algorithms may not work optimally")
-                else:
-                    self.logger.warning("⚠️ No embedding models configured")
-                    
-            except Exception as e:
-                self.logger.warning(f"⚠️ Could not load embeddings: {e}")
-            
-            # Initialize retrieval orchestrator
-            self.retrieval_orchestrator = RetrievalOrchestrator(
-                self.knowledge_graph, 
-                self.pipeline.config,
-                self.logger
-            )
-            
-            # Initialize benchmark evaluator
-            self.benchmark_evaluator = BenchmarkEvaluator(self.logger)
-            
-            # Initialize reranker orchestrator
-            self.reranker = create_reranker_orchestrator(self.pipeline.config, self.logger)
-            
-            self.logger.info(f"✅ Pipeline initialized successfully")
-            self.logger.info(f"   Knowledge graph: {len(self.knowledge_graph.chunks)} chunks, "
-                           f"{len(self.knowledge_graph.sentences)} sentences")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Failed to initialize pipeline: {e}")
-            raise
-    
-    def load_or_generate_questions(self) -> EvaluationDataset:
-        """Load questions from canonical location or generate new ones."""
-        # Using data/questions.json as canonical location for all question storage
-        # This eliminates confusion between data/questions.json and data/questions/benchmark_questions.json
-        questions_file = Path("data/questions.json")
-        
-        # Check if cached questions exist and should be used
-        if not self.args.force_regenerate and questions_file.exists():
-            self.logger.info(f"📂 Loading cached questions from {questions_file}")
-            try:
-                dataset = EvaluationDataset.load(str(questions_file), self.logger)
-                
-                # Verify we have enough questions
-                if len(dataset.questions) >= self.args.questions:
-                    # Trim to requested number if we have more
-                    if len(dataset.questions) > self.args.questions:
-                        dataset.questions = dataset.questions[:self.args.questions]
-                        self.logger.info(f"   Using first {self.args.questions} questions from cache")
-                    
-                    self.logger.info(f"✅ Loaded {len(dataset.questions)} questions from cache")
-                    return dataset
-                else:
-                    self.logger.warning(f"⚠️ Cached dataset has only {len(dataset.questions)} questions, "
-                                      f"but {self.args.questions} requested. Generating new questions.")
-                    
-            except Exception as e:
-                self.logger.warning(f"⚠️ Failed to load cached questions: {e}. Generating new questions.")
-        
-        # Generate new questions
-        self.logger.info(f"🧠 Generating {self.args.questions} evaluation questions...")
-        
-        try:
-            # Create dataset generator
-            dataset_generator = DatasetGenerator(
-                self.knowledge_graph,
-                self.pipeline.config,
-                self.logger
-            )
-            
-            # Use the proper LLM-based TraversalQuestionGenerator instead of basic templates
-            from utils.traversal_question_generator import TraversalQuestionGenerator
-            
-            question_generator = TraversalQuestionGenerator(
-                self.knowledge_graph,
-                self.pipeline.config,
-                self.logger
-            )
-            
-            # Override question generation config for benchmarking
-            if 'question_generation' not in self.pipeline.config:
-                self.pipeline.config['question_generation'] = {}
-            
-            self.pipeline.config['question_generation'].update({
-                'generator_model_type': 'ollama',
-                'critic_model_type': 'ollama',
-                'question_distribution': {
-                    'single_hop': 0.2,     # Most reliable for benchmarking
-                    'sequential_flow': 0.2,
-                    'multi_hop': 0.2,
-                    'theme_hop': 0.2,
-                    'hierarchical': 0.2
-                },
-                'max_hops': 3,
-                'max_sentences': 10,
-                'cache_questions': True,
-                'num_questions': self.args.questions
-            })
-            
-            self.logger.info(f"Using LLM-based question generation with:")
-            self.logger.info(f"  Generator model: {self.pipeline.config['question_generation']['generator_model_type']}")
-            self.logger.info(f"  Distribution: {self.pipeline.config['question_generation']['question_distribution']}")
-            
-            # Generate dataset using proper LLM-based approach
-            dataset = question_generator.generate_dataset(
-                num_questions=self.args.questions,
-                cache_name="benchmark_questions"
-            )
-            
-            # Save directly to our simplified location
-            dataset.save(str(questions_file), self.logger)
-            
-            self.logger.info(f"✅ Generated and cached {len(dataset.questions)} questions")
-            
-            return dataset
-            
-        except Exception as e:
-            self.logger.error(f"❌ Failed to generate questions: {e}")
-            raise
-    
-    def run_algorithm_benchmark(self, question: Any, algorithm_name: str) -> AlgorithmBenchmarkResult:
-        """Run a single algorithm on a single question with reranking and calculate all metrics."""
-        self.logger.debug(f"🔍 Running {algorithm_name} on question {question.question_id}")
-        
-        try:
-            # Execute retrieval (raw traversal)
-            raw_retrieval_result = self.retrieval_orchestrator.retrieve(
-                query=question.question_text,
-                algorithm_name=algorithm_name
-            )
-            
-            # Apply reranking to standardize output and optimize relevance
-            reranked_sentences, reranking_metadata = self.reranker.rerank_retrieval_result(
-                raw_retrieval_result, 
-                question.question_text
-            )
-            
-            # Create enhanced retrieval result with reranked content
-            enhanced_result = self._create_enhanced_result(
-                raw_retrieval_result, 
-                reranked_sentences, 
-                reranking_metadata
-            )
-            
-            # Calculate comprehensive metrics on reranked result
-            benchmark_result = self.benchmark_evaluator.evaluate_single_result(
-                retrieval_result=enhanced_result,
-                question=question,
-                algorithm_name=algorithm_name,
-                k=self.args.k_value
-            )
-            
-            # Add reranking metadata to benchmark result
-            if not hasattr(benchmark_result, 'reranking_metadata'):
-                benchmark_result.reranking_metadata = reranking_metadata
-            
-            self.logger.debug(f"   ✅ {algorithm_name} (reranked): "
-                            f"P@{self.args.k_value}={benchmark_result.traditional_metrics['precision_at_k'].value:.3f}, "
-                            f"R@{self.args.k_value}={benchmark_result.traditional_metrics['recall_at_k'].value:.3f}, "
-                            f"Node_overlap={benchmark_result.path_metrics['node_overlap_ratio'].value:.3f}, "
-                            f"Sentences: {len(reranked_sentences)}")
-            
-            return benchmark_result, enhanced_result
-            
-        except Exception as e:
-            self.logger.error(f"❌ {algorithm_name} failed on question {question.question_id}: {e}")
-            raise
-    
-    def generate_visualizations(self, 
-                              question: Any, 
-                              algorithm_name: str, 
-                              retrieval_result: Any) -> Dict[str, str]:
-        """Generate matplotlib visualizations for a single algorithm result."""
-        if self.args.skip_visualizations:
-            return {}
-        
-        self.logger.debug(f"📊 Generating visualizations for {algorithm_name} on {question.question_id}")
-        
-        visualization_paths = {}
-        
-        try:
-            # Create safe filename components
-            safe_question_id = question.question_id.replace('/', '_').replace(' ', '_')[:50]
-            safe_algorithm = algorithm_name.replace('/', '_')
-            
-            # Generate global visualization (strategic overview)
-            global_fig = create_global_visualization(
-                result=retrieval_result,
-                query=question.question_text,
-                knowledge_graph=self.knowledge_graph,
-                figure_size=(24, 10),  # Larger for global view
-                max_documents=self.args.max_documents
-            )
-            
-            global_path = self.visualization_dir / f"{safe_algorithm}_{safe_question_id}_global.png"
-            global_fig.savefig(str(global_path), dpi=300, bbox_inches='tight')
-            plt.close(global_fig)
-            visualization_paths['global'] = str(global_path)
-            
-            # Generate sequential visualization (tactical analysis)
-            sequential_fig = create_sequential_visualization(
-                result=retrieval_result,
-                query=question.question_text,
-                knowledge_graph=self.knowledge_graph,
-                figure_size=(20, 8)
-            )
-            
-            sequential_path = self.visualization_dir / f"{safe_algorithm}_{safe_question_id}_sequential.png"
-            sequential_fig.savefig(str(sequential_path), dpi=300, bbox_inches='tight')
-            plt.close(sequential_fig)
-            visualization_paths['sequential'] = str(sequential_path)
-            
-            self.logger.debug(f"   ✅ Generated 2 visualizations for {algorithm_name}")
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ Visualization generation failed for {algorithm_name}: {e}")
-        
-        return visualization_paths
-    
-    def run_comprehensive_benchmark(self) -> CompleteBenchmarkResult:
-        """Run the complete benchmark across all questions and algorithms."""
-        self.logger.info("🏁 Starting comprehensive benchmark execution...")
-        
-        # Load questions
-        dataset = self.load_or_generate_questions()
-        questions = dataset.questions
-        
-        # Log sample questions for quality assessment
-        self._log_sample_questions(dataset)
-        
-        self.logger.info(f"📝 Benchmarking {len(self.args.algorithms)} algorithms on {len(questions)} questions")
-        
-        # Track results
-        question_results = {}
-        total_combinations = len(questions) * len(self.args.algorithms)
-        completed_combinations = 0
-        
-        # Process each question
-        for question_idx, question in enumerate(questions):
-            self.logger.info(f"\n{'='*80}")
-            self.logger.info(f"Question {question_idx + 1}/{len(questions)}: {question.question_id}")
-            self.logger.info(f"Type: {question.question_type} | Difficulty: {question.difficulty_level}")
-            self.logger.info(f"Text: {question.question_text[:100]}...")
-            self.logger.info(f"{'='*80}")
-            
-            question_results[question.question_id] = {}
-            
-            # Run each algorithm on this question
-            for algorithm_name in self.args.algorithms:
-                self.logger.info(f"🔍 Running {algorithm_name}...")
-                
+            logger.info(f"   📊 Creating visualizations for context group {i+1} ({context_group.strategy})")
+
+            # Convert ContextGroup to RetrievalResult format for visualization compatibility
+            pseudo_result = convert_context_group_to_retrieval_result(context_group)
+
+            viz_types = viz_config.get('visualization_types', ['windowed', 'global', 'sequential'])
+
+            for viz_type in viz_types:
                 try:
-                    # Execute algorithm and calculate metrics
-                    benchmark_result, retrieval_result = self.run_algorithm_benchmark(question, algorithm_name)
-                    
-                    # Generate visualizations
-                    visualization_paths = self.generate_visualizations(question, algorithm_name, retrieval_result)
-                    
-                    # Add visualization paths to benchmark result metadata
-                    if visualization_paths:
-                        if not hasattr(benchmark_result, 'visualization_paths'):
-                            benchmark_result.visualization_paths = visualization_paths
-                    
-                    # Store results
-                    question_results[question.question_id][algorithm_name] = benchmark_result
-                    
-                    # Progress tracking
-                    completed_combinations += 1
-                    progress = (completed_combinations / total_combinations) * 100
-                    
-                    self.logger.info(f"   ✅ {algorithm_name} completed successfully")
-                    self.logger.info(f"      Precision@{self.args.k_value}: {benchmark_result.traditional_metrics['precision_at_k'].value:.3f}")
-                    self.logger.info(f"      Recall@{self.args.k_value}: {benchmark_result.traditional_metrics['recall_at_k'].value:.3f}")
-                    self.logger.info(f"      Node Overlap: {benchmark_result.path_metrics['node_overlap_ratio'].value:.3f}")
-                    self.logger.info(f"      Processing Time: {benchmark_result.performance_metrics['processing_time'].value:.3f}s")
-                    self.logger.info(f"   📊 Progress: {progress:.1f}% ({completed_combinations}/{total_combinations})")
-                    
+                    fig = create_heatmap_visualization(
+                        result=pseudo_result,
+                        query=f"Context Group {i+1}",
+                        knowledge_graph=kg,
+                        visualization_type=viz_type
+                    )
+
+                    # Update title to reflect context grouping
+                    fig.suptitle(f"Context Group {i+1} - {context_group.strategy.title()} Strategy ({viz_type.title()})",
+                                fontsize=16, y=0.95)
+
+                    # Save figure
+                    filename = f"context_group_{i+1}_{context_group.strategy}_{viz_type}.png"
+                    filepath = output_dir / filename
+                    fig.savefig(str(filepath), dpi=config.get('visualization', {}).get('output', {}).get('dpi', 300),
+                               bbox_inches='tight')
+                    plt.close(fig)
+                    logger.info(f"   ✅ {viz_type.title()} saved: {filename}")
+
                 except Exception as e:
-                    self.logger.error(f"   ❌ {algorithm_name} failed: {e}")
-                    completed_combinations += 1
-                    continue
-        
-        # Calculate aggregate scores
-        self.logger.info(f"\n📊 Calculating aggregate scores across all questions...")
-        aggregate_scores = self.benchmark_evaluator.calculate_aggregate_scores(question_results)
-        
-        # Create complete benchmark result
-        benchmark_metadata = {
-            'benchmark_timestamp': self.start_time.isoformat(),
-            'benchmark_duration_seconds': (datetime.now() - self.start_time).total_seconds(),
-            'configuration': {
-                'num_questions': len(questions),
-                'algorithms_tested': self.args.algorithms,
-                'k_value': self.args.k_value,
-                'max_documents': self.args.max_documents,
-                'visualizations_generated': not self.args.skip_visualizations
-            },
-            'dataset_metadata': dataset.dataset_metadata,
-            'question_distribution': {
-                'by_type': self._analyze_question_types(questions),
-                'by_difficulty': self._analyze_question_difficulties(questions)
-            },
-            'knowledge_graph_stats': {
-                'total_chunks': len(self.knowledge_graph.chunks),
-                'total_sentences': len(self.knowledge_graph.sentences),
-                'total_documents': len(self.knowledge_graph.documents) if hasattr(self.knowledge_graph, 'documents') else 'N/A'
-            }
+                    logger.warning(f"   ⚠️ {viz_type.title()} visualization failed: {str(e)}")
+
+        except Exception as e:
+            logger.warning(f"   ⚠️ Context group {i+1} visualization failed: {str(e)}")
+
+
+def convert_context_group_to_retrieval_result(context_group: ContextGroup) -> RetrievalResult:
+    """Convert ContextGroup to RetrievalResult format for visualization compatibility."""
+    # Convert simple traversal path to TraversalPath object
+    traversal_path = TraversalPath(
+        nodes=context_group.traversal_path,
+        connection_types=[ConnectionType.RAW_SIMILARITY] * max(0, len(context_group.traversal_path) - 1),
+        granularity_levels=[GranularityLevel.CHUNK] * len(context_group.traversal_path),
+        total_hops=max(0, len(context_group.traversal_path) - 1),
+        is_valid=True,
+        validation_errors=[]
+    )
+
+    # Create RetrievalResult representing context grouping
+    return RetrievalResult(
+        algorithm_name=f"context_grouping_{context_group.strategy}",
+        traversal_path=traversal_path,
+        retrieved_content=context_group.chunks,
+        confidence_scores=[1.0] * len(context_group.chunks),  # Uniform confidence for context grouping
+        query="Context Grouping Process",  # Pseudo-query
+        total_hops=len(context_group.traversal_path) - 1,
+        final_score=1.0,
+        processing_time=0.0,
+        metadata={
+            "strategy": context_group.strategy,
+            "context_metadata": context_group.metadata,
+            "is_context_grouping": True,  # Flag to identify this as context grouping
+            "sentence_count": len(context_group.sentences)
         }
-        
-        complete_result = CompleteBenchmarkResult(
-            benchmark_metadata=benchmark_metadata,
-            question_results=question_results,
-            aggregate_scores=aggregate_scores
+    )
+
+
+def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_dir: Path,
+                                   config: Dict[str, Any], logger: logging.Logger) -> None:
+    """Create visualizations for algorithm retrieval paths during evaluation."""
+    viz_config = config.get('visualization', {}).get('retrieval_paths', {})
+
+    if not viz_config.get('enabled', True):
+        return
+
+    logger.info("🎨 Creating retrieval path visualizations...")
+
+    # Load knowledge graph for visualization with embeddings
+    kg_path = Path(config['directories']['data']) / "knowledge_graph.json"
+    if not kg_path.exists():
+        logger.warning("   ⚠️ Knowledge graph not found, skipping retrieval visualizations")
+        return
+
+    from utils.knowledge_graph import KnowledgeGraph
+    import json
+
+    # Load embeddings for visualization - dynamically determine path from config
+    embedding_model = config.get('models', {}).get('embedding_models', ['sentence-transformers/all-mpnet-base-v2'])[0]
+    safe_model_name = embedding_model.replace("/", "_").replace("-", "_")
+    embeddings_path = Path(f"embeddings/raw/{safe_model_name}_multi_granularity.json")
+    embeddings_data = None
+    if embeddings_path.exists():
+        with open(embeddings_path, 'r') as f:
+            raw_data = json.load(f)
+        model_name = raw_data.get('metadata', {}).get('model_name', embedding_model)
+        embeddings_data = {model_name: raw_data['embeddings']}
+
+    kg = KnowledgeGraph.load(str(kg_path), embeddings_data)
+
+    # Create safe filename for query
+    safe_query = query.replace(' ', '_').replace('?', '').replace('!', '').replace('.', '')[:50]
+
+    for algorithm_name, result in results.items():
+        if hasattr(result, 'metadata') and result.metadata.get('error'):
+            logger.info(f"   ⏭️  Skipping {algorithm_name} - has errors")
+            continue
+
+        try:
+            logger.info(f"   📊 Creating visualizations for {algorithm_name}...")
+
+            # Create Plotly 3D visualization if enabled
+            if viz_config.get('include_3d_plotly', True):
+                try:
+                    plotly_fig = create_algorithm_visualization(
+                        result=result,
+                        query=query,
+                        knowledge_graph=kg,
+                        method='pca',
+                        max_nodes=viz_config.get('max_nodes', 40),
+                        show_all_visited=viz_config.get('show_all_visited', True)
+                    )
+
+                    plotly_filename = f"{algorithm_name}_{safe_query}_3d.html"
+                    plotly_path = output_dir / plotly_filename
+                    plotly_fig.write_html(str(plotly_path))
+                    logger.info(f"   ✅ Plotly 3D visualization saved: {plotly_filename}")
+
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Plotly visualization failed for {algorithm_name}: {str(e)}")
+
+            # Create matplotlib heatmap visualizations if enabled
+            if viz_config.get('include_heatmaps', True):
+                heatmap_types = ['global', 'sequential']  # Most useful for benchmark comparison
+
+                for heatmap_type in heatmap_types:
+                    try:
+                        if heatmap_type == 'global':
+                            fig = create_global_visualization(
+                                result=result,
+                                query=query,
+                                knowledge_graph=kg,
+                                figure_size=tuple(config.get('visualization', {}).get('output', {}).get('figure_size', [24, 10])),
+                                max_documents=6
+                            )
+                        else:  # sequential
+                            fig = create_sequential_visualization(
+                                result=result,
+                                query=query,
+                                knowledge_graph=kg,
+                                figure_size=tuple(config.get('visualization', {}).get('output', {}).get('figure_size', [20, 8]))
+                            )
+
+                        heatmap_filename = f"{algorithm_name}_{safe_query}_{heatmap_type}_heatmap.png"
+                        heatmap_path = output_dir / heatmap_filename
+                        fig.savefig(str(heatmap_path),
+                                   dpi=config.get('visualization', {}).get('output', {}).get('dpi', 300),
+                                   bbox_inches='tight')
+                        plt.close(fig)
+                        logger.info(f"   ✅ {heatmap_type.title()} heatmap saved: {heatmap_filename}")
+
+                    except Exception as e:
+                        logger.warning(f"   ⚠️ {heatmap_type.title()} heatmap failed for {algorithm_name}: {str(e)}")
+
+        except Exception as e:
+            logger.warning(f"   ⚠️ Visualization creation failed for {algorithm_name}: {str(e)}")
+
+
+def validate_environment() -> None:
+    """Validate environment setup and API keys."""
+    import os
+    
+    # Load environment variables from .env file
+    load_dotenv()
+    
+    # Check for at least one valid model provider configuration
+    providers_available = []
+    
+    if os.getenv('OPENAI_API_KEY'):
+        providers_available.append('OpenAI')
+    
+    if os.getenv('ANTHROPIC_API_KEY'):
+        providers_available.append('Anthropic')
+    
+    if os.getenv('OPENROUTER_API_KEY'):
+        providers_available.append('OpenRouter')
+    
+    # Ollama doesn't require API key, just check if URL is configured
+    ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+    providers_available.append('Ollama (local)')
+    
+    if not providers_available:
+        raise ValueError(
+            "No valid model provider configuration found. "
+            "Please set appropriate API keys in your .env file."
         )
-        
-        self.logger.info(f"✅ Comprehensive benchmark completed successfully!")
-        return complete_result
     
-    def save_results(self, results: CompleteBenchmarkResult) -> None:
-        """Save benchmark results to YAML file."""
-        self.logger.info(f"💾 Saving benchmark results to {self.results_file}")
-        
-        try:
-            self.benchmark_evaluator.save_benchmark_results(results, str(self.results_file))
-            self.logger.info(f"✅ Results saved successfully")
-            
-            # Log summary statistics
-            self.logger.info(f"\n📊 BENCHMARK SUMMARY")
-            self.logger.info(f"{'='*50}")
-            
-            for algorithm in self.args.algorithms:
-                if algorithm in results.aggregate_scores:
-                    scores = results.aggregate_scores[algorithm]
-                    self.logger.info(f"{algorithm.upper()}:")
-                    self.logger.info(f"  Precision@{self.args.k_value}: {scores.get('precision_at_k', 0.0):.3f}")
-                    self.logger.info(f"  Recall@{self.args.k_value}: {scores.get('recall_at_k', 0.0):.3f}")
-                    self.logger.info(f"  F1@{self.args.k_value}: {scores.get('f1_at_k', 0.0):.3f}")
-                    self.logger.info(f"  MRR: {scores.get('mrr', 0.0):.3f}")
-                    self.logger.info(f"  Node Overlap: {scores.get('node_overlap_ratio', 0.0):.3f}")
-                    self.logger.info(f"  Avg Processing Time: {scores.get('processing_time', 0.0):.3f}s")
-                    
-                    if f"composite_score_overall" in scores:
-                        self.logger.info(f"  Overall Composite Score: {scores['composite_score_overall']:.3f}")
-                    self.logger.info("")
-            
-            # Calculate and log totals
-            total_visualizations = 0
-            if not self.args.skip_visualizations:
-                total_visualizations = len(results.question_results) * len(self.args.algorithms) * 2
-            
-            self.logger.info(f"TOTALS:")
-            self.logger.info(f"  Questions processed: {len(results.question_results)}")
-            self.logger.info(f"  Algorithm runs: {len(results.question_results) * len(self.args.algorithms)}")
-            self.logger.info(f"  Visualizations generated: {total_visualizations}")
-            self.logger.info(f"  Total duration: {results.benchmark_metadata['benchmark_duration_seconds']:.1f}s")
-            
-        except Exception as e:
-            self.logger.error(f"❌ Failed to save results: {e}")
-            raise
+    logging.getLogger("DeepEvalBenchmark").info(f"✅ Available providers: {', '.join(providers_available)}")
+
+
+def run_kg_pipeline_phase(config: Dict[str, Any], force_rebuild: bool, logger: logging.Logger) -> Dict[str, Any]:
+    """Execute Phase 1: Knowledge Graph Construction."""
+    logger.info("📊 Phase 1: Knowledge Graph Construction")
+    logger.info("=" * 50)
     
-    def _analyze_question_types(self, questions: List[Any]) -> Dict[str, int]:
-        """Analyze distribution of question types."""
-        type_counts = {}
-        for question in questions:
-            q_type = question.question_type
-            type_counts[q_type] = type_counts.get(q_type, 0) + 1
-        return type_counts
-    
-    def _create_enhanced_result(self, raw_result: Any, reranked_sentences: List[str], reranking_metadata: Dict) -> Any:
-        """Create enhanced retrieval result with reranked content for fair evaluation."""
-        # Create a copy of the original result with reranked content
-        enhanced_result = raw_result
+    try:
+        # Check if KG already exists and force_rebuild is False
+        kg_path = Path(config['directories']['data']) / "knowledge_graph.json"
         
-        # Update the retrieved content with reranked sentences
-        enhanced_result.retrieved_content = reranked_sentences
-        enhanced_result.reranking_applied = True
-        enhanced_result.reranking_metadata = reranking_metadata
+        if kg_path.exists() and not force_rebuild:
+            logger.info(f"✅ Knowledge graph found at {kg_path} - skipping rebuild")
+            logger.info("   Use --force-rebuild-kg to force regeneration")
+            return {"status": "loaded_existing", "path": str(kg_path)}
         
-        # Preserve original metadata while ensuring standardized output
-        enhanced_result.final_sentence_count = len(reranked_sentences)
+        # Build knowledge graph using existing pipeline
+        logger.info("🏗️ Building knowledge graph from Wikipedia data...")
+        pipeline = KnowledgeGraphPipeline()
+        result = pipeline.build()
         
-        return enhanced_result
-    
-    def _analyze_question_difficulties(self, questions: List[Any]) -> Dict[str, int]:
-        """Analyze distribution of question difficulties."""
-        difficulty_counts = {}
-        for question in questions:
-            difficulty = question.difficulty_level
-            difficulty_counts[difficulty] = difficulty_counts.get(difficulty, 0) + 1
-        return difficulty_counts
-    
-    def _log_sample_questions(self, dataset: Any) -> None:
-        """Log sample questions for human review and quality assessment."""
-        questions = dataset.questions
+        logger.info(f"✅ Knowledge graph construction completed")
+        logger.info(f"   Result: {result}")
         
-        self.logger.info(f"\n🔍 SAMPLE GENERATED QUESTIONS FOR QUALITY REVIEW")
-        self.logger.info(f"{'='*80}")
+        return {"status": "built_new", "result": result}
         
-        # Group questions by type
-        questions_by_type = {}
-        for question in questions:
-            q_type = question.question_type
-            if q_type not in questions_by_type:
-                questions_by_type[q_type] = []
-            questions_by_type[q_type].append(question)
-        
-        # Show up to 2 samples per type
-        for q_type, type_questions in questions_by_type.items():
-            self.logger.info(f"\n📝 {q_type.upper()} Questions ({len(type_questions)} total):")
-            
-            samples_to_show = min(2, len(type_questions))
-            for i in range(samples_to_show):
-                question = type_questions[i]
-                
-                self.logger.info(f"   Q{i+1} [{question.difficulty_level}]: {question.question_text}")
-                self.logger.info(f"       Expected Answer: {question.expected_answer[:100]}{'...' if len(question.expected_answer) > 100 else ''}")
-                self.logger.info(f"       Ground Truth Nodes: {len(question.ground_truth_path.nodes)} nodes")
-                self.logger.info(f"       Connection Types: {[str(ct) for ct in question.ground_truth_path.connection_types]}")
-                
-                if i < samples_to_show - 1:  # Add separator between questions
-                    self.logger.info("       ---")
-        
-        # Log generation success rates
-        self.logger.info(f"\n📊 QUESTION GENERATION SUCCESS SUMMARY:")
-        total_requested = sum(dataset.dataset_metadata.get('questions_by_type', {}).values())
-        total_generated = len(questions)
-        
-        for q_type in ['single_hop', 'sequential_flow', 'multi_hop', 'theme_hop', 'hierarchical']:
-            generated_count = len(questions_by_type.get(q_type, []))
-            self.logger.info(f"   {q_type}: {generated_count} questions generated")
-        
-        success_rate = (total_generated / total_requested * 100) if total_requested > 0 else 0
-        self.logger.info(f"\n   Overall Success Rate: {total_generated}/{total_requested} ({success_rate:.1f}%)")
-        
-        self.logger.info(f"{'='*80}\n")
-    
-    def run(self) -> None:
-        """Execute the complete benchmarking process."""
-        try:
-            # Initialize all components
-            self.initialize_pipeline()
-            
-            # Run comprehensive benchmark
-            results = self.run_comprehensive_benchmark()
-            
-            # Save results
-            self.save_results(results)
-            
-            # Final summary
-            total_duration = (datetime.now() - self.start_time).total_seconds()
-            self.logger.info(f"\n🎉 BENCHMARK COMPLETED SUCCESSFULLY!")
-            self.logger.info(f"   Total Duration: {total_duration:.1f}s ({total_duration/60:.1f}m)")
-            self.logger.info(f"   Results File: {self.results_file}")
-            self.logger.info(f"   Visualizations: {self.visualization_dir}")
-            
-        except Exception as e:
-            self.logger.error(f"💥 Benchmark failed: {e}")
-            import traceback
-            self.logger.error(traceback.format_exc())
-            sys.exit(1)
+    except Exception as e:
+        logger.error(f"❌ Phase 1 failed: {e}")
+        raise RuntimeError(f"Knowledge graph construction failed: {e}")
+
+
+def run_dataset_generation_phase(config: Dict[str, Any], force_rebuild: bool, logger: logging.Logger,
+                                visualization_output_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Execute Phase 2: Synthetic Dataset Generation with optional visualization."""
+    logger.info("🧠 Phase 2: Synthetic Dataset Generation")
+    logger.info("=" * 50)
+
+    try:
+        # Initialize dataset builder
+        dataset_builder = DatasetBuilder(config, logger)
+
+        # Generate synthetic dataset with evolution techniques
+        dataset = dataset_builder.build(force_regenerate=force_rebuild)
+
+        logger.info(f"✅ Dataset generation completed")
+        logger.info(f"   Generated: {len(dataset.goldens)} synthetic questions")
+
+        # Log evolution statistics if available
+        generation_stats = getattr(dataset_builder, 'generation_stats', {})
+        evolution_dist = generation_stats.get('evolution_distribution', {})
+
+        if evolution_dist:
+            logger.info("   Evolution technique distribution:")
+            for evolution_type, count in evolution_dist.items():
+                logger.info(f"      {evolution_type}: {count}")
+
+        # Create context grouping visualizations if enabled and output directory provided
+        if visualization_output_dir and config.get('visualization', {}).get('enabled', False):
+            context_groups = getattr(dataset_builder, 'context_groups', [])
+
+            if context_groups:
+                logger.info(f"🎨 Creating visualizations for {len(context_groups)} context groups...")
+                try:
+                    create_context_grouping_visualizations(context_groups, visualization_output_dir, config, logger)
+                    logger.info("✅ Context grouping visualizations completed")
+                except Exception as e:
+                    logger.warning(f"⚠️ Context grouping visualization failed: {e}")
+            else:
+                logger.info("📊 No context groups available for visualization")
+
+        return {
+            "status": "generated",
+            "dataset_size": len(dataset.goldens),
+            "evolution_distribution": evolution_dist,
+            "context_groups_count": len(getattr(dataset_builder, 'context_groups', []))
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Phase 2 failed: {e}")
+        raise RuntimeError(f"Dataset generation failed: {e}")
+
+
+def run_evaluation_phase(config: Dict[str, Any], algorithm: Optional[str],
+                        output_prefix: Optional[str], logger: logging.Logger,
+                        visualization_output_dir: Optional[Path] = None) -> Dict[str, Any]:
+    """Execute Phase 3: Algorithm Evaluation with optional visualization."""
+    logger.info("🔍 Phase 3: Algorithm Evaluation")
+    logger.info("=" * 50)
+
+    try:
+        # Initialize evaluation orchestrator
+        evaluation_orchestrator = EvaluationOrchestrator(config, logger)
+
+        if algorithm:
+            # Single algorithm evaluation
+            logger.info(f"🎯 Evaluating single algorithm: {algorithm}")
+
+            result = evaluation_orchestrator.run(
+                algorithm_name=algorithm,
+                output_prefix=output_prefix
+            )
+
+            logger.info(f"✅ Single algorithm evaluation completed")
+            logger.info(f"   Algorithm: {result.algorithm_name}")
+            logger.info(f"   Success rate: {result.summary_statistics['overall_success_rate']:.1%}")
+            logger.info(f"   Average score: {result.summary_statistics['average_metric_score']:.3f}")
+
+            # Create retrieval visualizations if enabled and we have retrieval results
+            if visualization_output_dir and config.get('visualization', {}).get('enabled', False):
+                retrieval_results = getattr(evaluation_orchestrator, 'retrieval_results', {})
+
+                if retrieval_results:
+                    # For single algorithm, create visualizations for a sample of test cases
+                    sample_results = list(retrieval_results.items())[:3]  # Visualize first 3 test cases
+
+                    for query, algo_results in sample_results:
+                        if algorithm in algo_results:
+                            single_algo_result = {algorithm: algo_results[algorithm]}
+                            try:
+                                create_retrieval_visualizations(single_algo_result, query,
+                                                              visualization_output_dir, config, logger)
+                            except Exception as e:
+                                logger.warning(f"⚠️ Retrieval visualization failed for query '{query}': {e}")
+
+            return {
+                "status": "single_algorithm",
+                "algorithm": result.algorithm_name,
+                "success_rate": result.summary_statistics['overall_success_rate'],
+                "average_score": result.summary_statistics['average_metric_score'],
+                "hyperparameters": result.algorithm_hyperparameters
+            }
+
+        else:
+            # Comparative evaluation across all algorithms
+            logger.info("🏁 Evaluating all configured algorithms...")
+
+            results = evaluation_orchestrator.run_comparison(output_prefix=output_prefix)
+
+            logger.info(f"✅ Comparative evaluation completed")
+            logger.info(f"   Algorithms tested: {len(results)}")
+
+            # Log summary comparison with hyperparameters
+            logger.info("📊 Algorithm Performance Summary:")
+            for algorithm_name, result in results.items():
+                avg_score = result.summary_statistics['average_metric_score']
+                success_rate = result.summary_statistics['overall_success_rate']
+                hyperparams = result.algorithm_hyperparameters
+
+                logger.info(f"   {algorithm_name}:")
+                logger.info(f"      Average score: {avg_score:.3f}")
+                logger.info(f"      Success rate: {success_rate:.1%}")
+                logger.info(f"      Hyperparameters: {hyperparams}")
+
+            # Identify best performing algorithm
+            best_algorithm = max(results.keys(),
+                               key=lambda k: results[k].summary_statistics['average_metric_score'])
+            logger.info(f"🏆 Best performing algorithm: {best_algorithm}")
+
+            # Create retrieval visualizations if enabled
+            if visualization_output_dir and config.get('visualization', {}).get('enabled', False):
+                retrieval_results = getattr(evaluation_orchestrator, 'retrieval_results', {})
+
+                if retrieval_results:
+                    # For comparison, create visualizations for a sample of test cases
+                    sample_results = list(retrieval_results.items())[:2]  # Visualize first 2 test cases
+
+                    for query, algo_results in sample_results:
+                        try:
+                            create_retrieval_visualizations(algo_results, query,
+                                                          visualization_output_dir, config, logger)
+                        except Exception as e:
+                            logger.warning(f"⚠️ Retrieval visualization failed for query '{query}': {e}")
+
+            return {
+                "status": "comparative_evaluation",
+                "algorithms_tested": list(results.keys()),
+                "best_algorithm": best_algorithm,
+                "results_summary": {
+                    alg: {
+                        "average_score": res.summary_statistics['average_metric_score'],
+                        "success_rate": res.summary_statistics['overall_success_rate'],
+                        "hyperparameters": res.algorithm_hyperparameters
+                    }
+                    for alg, res in results.items()
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"❌ Phase 3 failed: {e}")
+        raise RuntimeError(f"Algorithm evaluation failed: {e}")
 
 
 def main():
-    """Main entry point for the benchmarking system."""
-    # Parse arguments
+    """Main orchestrator function - coordinates all three phases."""
+    # Parse arguments and setup logging
     args = parse_arguments()
+    logger = setup_logging(args.verbose)
     
-    # Setup logging
-    logger = setup_logging()
-    logger.info("🚀 RAG Algorithm Benchmarking System Starting...")
+    logger.info("🚀 DeepEval Semantic Traversal Benchmark Starting")
+    logger.info("=" * 70)
+    logger.info(f"Timestamp: {datetime.now().isoformat()}")
     
-    # Create and run orchestrator
-    orchestrator = BenchmarkOrchestrator(args, logger)
-    orchestrator.run()
+    total_start_time = datetime.now()
+    
+    try:
+        # Load and validate configuration
+        logger.info("🔧 Loading configuration and validating environment...")
+        config = load_config(args.config)
+        config = apply_model_overrides(config, args)
+        validate_environment()
+        
+        # Determine force rebuild flags
+        force_rebuild_kg = args.force_rebuild_kg or args.force_rebuild_all
+        force_rebuild_dataset = args.force_rebuild_dataset or args.force_rebuild_all
+
+        # Setup visualization output directory if enabled
+        visualization_output_dir = setup_visualization_output(config, args.output_prefix)
+        if visualization_output_dir:
+            logger.info(f"🎨 Visualizations will be saved to: {visualization_output_dir}")
+
+            # Force dataset regeneration if context grouping visualizations are enabled
+            context_viz_enabled = config.get('visualization', {}).get('context_grouping', {}).get('enabled', False)
+            if context_viz_enabled and not force_rebuild_dataset:
+                logger.info("🔄 Forcing dataset regeneration to capture context groups for visualization")
+                force_rebuild_dataset = True
+
+        phase_results = {}
+
+        # Phase 1: Knowledge Graph Construction (unless evaluation-only)
+        if not args.evaluation_only:
+            kg_result = run_kg_pipeline_phase(config, force_rebuild_kg, logger)
+            phase_results['knowledge_graph'] = kg_result
+
+        # Phase 2: Synthetic Dataset Generation (unless evaluation-only or dataset-only completed)
+        if not args.evaluation_only:
+            dataset_result = run_dataset_generation_phase(config, force_rebuild_dataset, logger, visualization_output_dir)
+            phase_results['dataset'] = dataset_result
+
+            # Exit early if dataset-only mode
+            if args.dataset_only:
+                logger.info("🎯 Dataset-only mode completed successfully!")
+                logger.info(f"   Generated: {dataset_result['dataset_size']} questions")
+                if dataset_result.get('context_groups_count', 0) > 0:
+                    logger.info(f"   Context groups: {dataset_result['context_groups_count']}")
+                if visualization_output_dir:
+                    logger.info(f"   Visualizations saved to: {visualization_output_dir}")
+                return
+
+        # Phase 3: Algorithm Evaluation (unless dataset-only)
+        if not args.dataset_only:
+            evaluation_result = run_evaluation_phase(config, args.algorithm, args.output_prefix, logger, visualization_output_dir)
+            phase_results['evaluation'] = evaluation_result
+        
+        # Final summary
+        total_duration = datetime.now() - total_start_time
+        logger.info("🎉 BENCHMARK PIPELINE COMPLETED SUCCESSFULLY!")
+        logger.info("=" * 70)
+        logger.info(f"Total Duration: {total_duration}")
+        
+        # Log phase summaries
+        for phase_name, result in phase_results.items():
+            logger.info(f"{phase_name.title()}: {result['status']}")
+        
+        # Special summary for evaluation results
+        if 'evaluation' in phase_results:
+            eval_result = phase_results['evaluation']
+            if eval_result['status'] == 'comparative_evaluation':
+                logger.info(f"🏆 Champion Algorithm: {eval_result['best_algorithm']}")
+            elif eval_result['status'] == 'single_algorithm':
+                logger.info(f"🎯 Algorithm Tested: {eval_result['algorithm']} (Score: {eval_result['average_score']:.3f})")
+        
+        logger.info("📁 Results saved to benchmark_results/ directory")
+        if visualization_output_dir:
+            logger.info(f"🎨 Visualizations saved to: {visualization_output_dir}")
+            logger.info("   📊 Generated traversal path visualizations for context grouping and retrieval")
+        else:
+            logger.info("📊 Use existing visualization tools to analyze results")
+        
+    except KeyboardInterrupt:
+        logger.info("⚠️ Benchmark interrupted by user")
+        sys.exit(1)
+        
+    except Exception as e:
+        logger.error(f"💥 Benchmark failed: {e}")
+        
+        if args.verbose:
+            logger.error("Full traceback:")
+            logger.error(traceback.format_exc())
+        else:
+            logger.error("Use --verbose for full traceback")
+        
+        sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -24,10 +24,15 @@ from dataclasses import dataclass, asdict
 
 try:
     import ollama
-
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
+
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 from utils.wiki import WikipediaArticle
 from utils.models import ChunkEmbedding, SentenceEmbedding, DocumentSummaryEmbedding
@@ -234,6 +239,169 @@ JSON Array:"""
         return detected_themes[:self.num_themes], 'fallback'
 
 
+class OpenAIThemeExtractor:
+    """OpenAI-based theme extraction for document summaries."""
+
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
+        """Initialize OpenAI theme extractor."""
+        self.config = config
+        self.logger = logger or logging.getLogger(__name__)
+        theme_config = config.get('theme_extraction', {})
+        self.model = theme_config.get('openai_model', 'gpt-4o-mini')
+        self.num_themes = theme_config.get('num_themes', 5)
+        self.temperature = theme_config.get('temperature', 0.1)
+        self.available = self._test_openai_connection()
+
+    def _test_openai_connection(self) -> bool:
+        """Test if OpenAI is available."""
+        if not OPENAI_AVAILABLE:
+            self.logger.warning("⚠️  OpenAI library not available")
+            return False
+
+        try:
+            import os
+            api_key = os.environ.get('OPENAI_API_KEY')
+            if not api_key:
+                self.logger.warning("⚠️  OPENAI_API_KEY environment variable not set")
+                return False
+
+            self.client = OpenAI(api_key=api_key)
+            self.logger.info(f"✅ OpenAI client initialized with model {self.model}")
+            return True
+        except Exception as e:
+            self.logger.warning(f"⚠️  OpenAI initialization failed: {e}")
+            return False
+
+    def extract_themes(self, doc_summary: str, doc_id: str, doc_title: str) -> ThemeExtractionResult:
+        """Extract themes from document summary using OpenAI."""
+        start_time = time.time()
+
+        if self.available:
+            themes, method = self._extract_with_openai(doc_summary, doc_title)
+        else:
+            themes, method = self._extract_with_fallback(doc_summary, doc_title)
+
+        extraction_time = time.time() - start_time
+
+        return ThemeExtractionResult(
+            doc_id=doc_id,
+            doc_title=doc_title,
+            source_text=doc_summary,
+            themes=themes,
+            extraction_method=method,
+            extraction_time=extraction_time,
+            model_used=self.model if self.available else 'fallback'
+        )
+
+    def _extract_with_openai(self, doc_summary: str, doc_title: str) -> Tuple[List[str], str]:
+        """Extract themes using OpenAI with structured JSON output."""
+        prompt = self._build_theme_extraction_prompt(doc_summary, doc_title)
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that extracts conceptual themes from document summaries. Always respond with valid JSON arrays only."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=self.temperature,
+                max_tokens=200,
+                response_format={"type": "json_object"}
+            )
+
+            response_text = response.choices[0].message.content.strip()
+            themes = self._parse_openai_response(response_text)
+
+            if themes:
+                return themes, 'openai'
+            else:
+                self.logger.warning(f"OpenAI returned empty themes for doc {doc_title}, using fallback")
+                return self._extract_with_fallback(doc_summary, doc_title)[0], 'openai_fallback'
+
+        except Exception as e:
+            self.logger.warning(f"OpenAI theme extraction failed for {doc_title}: {e}")
+            return self._extract_with_fallback(doc_summary, doc_title)[0], 'openai_error'
+
+    def _build_theme_extraction_prompt(self, doc_summary: str, doc_title: str) -> str:
+        """Build the prompt for OpenAI theme extraction."""
+        prompt = f"""Extract {self.num_themes} main themes from this document summary. Return a JSON object with a "themes" key containing an array of theme names.
+
+Document Title: {doc_title}
+
+Document Summary:
+{doc_summary}
+
+Requirements:
+- Extract {self.num_themes} conceptual themes that capture the main topics
+- Use clean, readable theme names (e.g., "Artificial Intelligence", not "artificial_intelligence")
+- Focus on substantive concepts, not specific entities
+- Return JSON format: {{"themes": ["Theme 1", "Theme 2", ...]}}"""
+
+        return prompt
+
+    def _parse_openai_response(self, response_text: str) -> List[str]:
+        """Parse OpenAI response to extract themes from JSON."""
+        try:
+            # Parse JSON response
+            data = json.loads(response_text)
+
+            # Extract themes array
+            themes = data.get('themes', [])
+
+            # Validate themes are strings and clean them
+            cleaned_themes = []
+            for theme in themes:
+                if isinstance(theme, str) and len(theme.strip()) > 0:
+                    # Clean and format theme
+                    clean_theme = theme.strip().strip('"').strip("'")
+                    if len(clean_theme) > 0:
+                        cleaned_themes.append(clean_theme)
+
+            return cleaned_themes[:self.num_themes]  # Limit to requested number
+
+        except json.JSONDecodeError as e:
+            self.logger.warning(f"Failed to parse OpenAI JSON response: {e}")
+            return []
+        except Exception as e:
+            self.logger.warning(f"Error parsing OpenAI response: {e}")
+            return []
+
+    def _extract_with_fallback(self, doc_summary: str, doc_title: str) -> Tuple[List[str], str]:
+        """Fallback theme extraction using keyword-based approach."""
+        # Use the same fallback as OllamaThemeExtractor
+        text = f"{doc_title} {doc_summary}".lower()
+
+        theme_patterns = {
+            "Artificial Intelligence": ["artificial intelligence", "ai", "machine intelligence"],
+            "Machine Learning": ["machine learning", "ml", "learning algorithms"],
+            "Neural Networks": ["neural networks", "neural nets", "artificial neural"],
+            "Deep Learning": ["deep learning", "deep neural", "convolutional"],
+            "Natural Language Processing": ["natural language", "nlp", "text processing"],
+            "Computer Vision": ["computer vision", "image recognition", "visual"],
+            "Data Science": ["data science", "data analysis", "big data"],
+            "Robotics": ["robotics", "robots", "autonomous"],
+            "Psychology": ["psychology", "psychological", "behavior", "cognitive"],
+            "Neuroscience": ["neuroscience", "brain", "neural", "cognitive science"],
+            "History": ["history", "historical", "past", "century"],
+            "Technology": ["technology", "technological", "computing", "computer"],
+            "Research": ["research", "study", "studies", "investigation"],
+            "Education": ["education", "learning", "teaching", "academic"]
+        }
+
+        detected_themes = []
+        for theme, patterns in theme_patterns.items():
+            if any(pattern in text for pattern in patterns):
+                detected_themes.append(theme)
+
+        # If no themes detected, extract capitalized phrases as potential themes
+        if not detected_themes:
+            capitalized_phrases = re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', doc_summary)
+            unique_phrases = list(dict.fromkeys(capitalized_phrases))
+            detected_themes = unique_phrases[:self.num_themes]
+
+        return detected_themes[:self.num_themes], 'fallback'
+
+
 class ThemeExtractionEngine:
     """Main engine for Phase 5: Theme Extraction."""
 
@@ -243,8 +411,14 @@ class ThemeExtractionEngine:
         self.logger = logger or logging.getLogger(__name__)
         self.data_dir = Path(config['directories']['data'])
 
-        # Initialize theme extractor only
-        self.theme_extractor = OllamaThemeExtractor(config, self.logger)
+        # Initialize theme extractor based on configuration
+        theme_config = config.get('theme_extraction', {})
+        use_openai = theme_config.get('use_openai', False)
+
+        if use_openai:
+            self.theme_extractor = OpenAIThemeExtractor(config, self.logger)
+        else:
+            self.theme_extractor = OllamaThemeExtractor(config, self.logger)
 
         # REFACTORED: Store theme extraction data directly in data directory
         # This eliminates the themes/ subdirectory and simplifies path management
@@ -255,8 +429,9 @@ class ThemeExtractionEngine:
 
     def _log_extractor_status(self):
         """Log the status of available extractors."""
+        extractor_type = "OpenAI" if isinstance(self.theme_extractor, OpenAIThemeExtractor) else "Ollama"
         self.logger.info(
-            f"   Theme extraction (Ollama): {'✅ Available' if self.theme_extractor.available else '⚠️  Fallback mode'}")
+            f"   Theme extraction ({extractor_type}): {'✅ Available' if self.theme_extractor.available else '⚠️  Fallback mode'}")
 
     def extract_themes(self, multi_granularity_embeddings: Dict[str, Dict[str, List[Any]]],
                       articles: List[WikipediaArticle],

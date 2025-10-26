@@ -16,9 +16,10 @@ from ..traversal import TraversalPath, GranularityLevel, ConnectionType
 class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm 2: Query similarity-guided graph traversal."""
     
-    def __init__(self, knowledge_graph, config: Dict[str, Any], 
-                 query_similarity_cache: Dict[str, float], logger=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger)
+    def __init__(self, knowledge_graph, config: Dict[str, Any],
+                 query_similarity_cache: Dict[str, float], logger=None,
+                 shared_embedding_model=None):
+        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
         
         self.logger.info(f"QueryTraversalAlgorithm initialized: max_hops={self.max_hops}, "
                         f"min_sentences={self.min_sentence_threshold}")
@@ -46,12 +47,21 @@ class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
         connection_types = []
         granularity_levels = [GranularityLevel.CHUNK]
         hop_count = 0
+        early_stop_triggered = False
+        best_sentence_similarity = 0.0  # Track best sentence found so far
         
         # Extract sentences from anchor chunk initially
         anchor_sentences = self.get_chunk_sentences(anchor_chunk)
         extracted_sentences.extend(anchor_sentences)
-        
-        self.logger.info(f"   Extracted {len(anchor_sentences)} sentences from anchor")
+
+        # Track best sentence similarity from anchor
+        for sentence in anchor_sentences:
+            sentence_id = self._find_sentence_id(sentence)
+            if sentence_id and sentence_id in self.query_similarity_cache:
+                sentence_sim = self.query_similarity_cache[sentence_id]
+                best_sentence_similarity = max(best_sentence_similarity, sentence_sim)
+
+        self.logger.info(f"   Extracted {len(anchor_sentences)} sentences from anchor (best_sim: {best_sentence_similarity:.3f})")
         
         # Main traversal loop
         while len(extracted_sentences) < self.min_sentence_threshold and hop_count < self.max_hops:
@@ -64,7 +74,16 @@ class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
                 chunk_sentences = self.get_chunk_sentences(current_chunk)
                 newly_extracted = self.deduplicate_sentences(chunk_sentences, extracted_sentences)
                 extracted_sentences.extend(newly_extracted)
-                self.logger.info(f"📦 EXTRACTED: {len(newly_extracted)} new sentences from {current_chunk}")
+
+                # Update best sentence similarity from newly extracted sentences
+                for sentence in newly_extracted:
+                    sentence_id = self._find_sentence_id(sentence)
+                    if sentence_id and sentence_id in self.query_similarity_cache:
+                        sentence_sim = self.query_similarity_cache[sentence_id]
+                        best_sentence_similarity = max(best_sentence_similarity, sentence_sim)
+
+                self.logger.info(f"📦 EXTRACTED: {len(newly_extracted)} new sentences from {current_chunk} "
+                               f"(best_sentence_sim: {best_sentence_similarity:.3f})")
             
             # Get hybrid connections (chunks + sentences within current chunk)
             hybrid_nodes = self.get_hybrid_connections(current_chunk)
@@ -73,22 +92,41 @@ class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
                 self.logger.debug(f"   No hybrid connections found for {current_chunk}")
                 break
             
+            # Content-quality-anchored early stopping check BEFORE choosing next destination
+            if self.enable_early_stopping and len(extracted_sentences) >= 8:  # Need some sentences to compare
+                # Get best chunk option
+                best_chunk_nodes = [(nid, ntype, sim) for nid, ntype, sim in hybrid_nodes if ntype == "chunk"]
+                if best_chunk_nodes:
+                    best_chunk_similarity = best_chunk_nodes[0][2]  # Highest chunk similarity
+
+                    # Early stopping if best extracted sentence > best potential chunk
+                    if best_sentence_similarity > best_chunk_similarity:
+                        early_stop_triggered = True
+                        self.logger.info(f"🎯 CONTENT-QUALITY EARLY STOPPING: Best extracted sentence ({best_sentence_similarity:.3f}) > "
+                                       f"best potential chunk ({best_chunk_similarity:.3f}). "
+                                       f"Stopping with {len(extracted_sentences)} sentences.")
+                        break
+
             # Find node with highest query similarity
             best_node_id, best_node_type, best_similarity = hybrid_nodes[0]
-            
+
             self.logger.info(f"   Best node: {best_node_id[:30]}... ({best_node_type}) "
                            f"query_sim={best_similarity:.3f}")
-            
+
             if best_node_type == "sentence":
-                # SENTENCE FOCUS: Best node is sentence - extract it but continue searching for more content
+                # Extract the high-similarity sentence
                 sentence_text = self.get_sentence_text(best_node_id)
                 if sentence_text and sentence_text not in extracted_sentences:
                     extracted_sentences.append(sentence_text)
                     path_nodes.append(best_node_id)
                     connection_types.append(ConnectionType.RAW_SIMILARITY)
                     granularity_levels.append(GranularityLevel.SENTENCE)
+
+                    # Update best sentence similarity
+                    best_sentence_similarity = max(best_sentence_similarity, best_similarity)
+
                     self.logger.info(f"📝 EXTRACTED: High-similarity sentence (sim: {best_similarity:.3f})")
-                
+
                 # Continue traversal - look for next best chunk to explore
                 next_chunk = self.find_next_chunk(hybrid_nodes, visited_chunks)
                 if next_chunk:
@@ -165,7 +203,8 @@ class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
                 'anchor_chunk': anchor_chunk,
                 'hops_completed': hop_count,
                 'chunks_visited': len(visited_chunks),
-                'extraction_strategy': 'query_similarity_priority'
+                'extraction_strategy': 'query_similarity_priority',
+                'early_stop_triggered': early_stop_triggered
             },
             extraction_metadata={
                 'total_extracted': len(extracted_sentences),

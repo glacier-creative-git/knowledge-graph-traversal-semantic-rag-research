@@ -24,6 +24,13 @@ import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Neural reranking imports (optional dependencies)
+try:
+    from sentence_transformers import CrossEncoder
+    HAS_SENTENCE_TRANSFORMERS = True
+except ImportError:
+    HAS_SENTENCE_TRANSFORMERS = False
+
 
 @dataclass
 class RankedSentence:
@@ -68,10 +75,16 @@ class BaseReranker(ABC):
             padded = ranked_sentences[:]
             while len(padded) < target_count:
                 if ranked_sentences:
-                    # Duplicate the last sentence but mark it
-                    duplicate = ranked_sentences[-1]
-                    duplicate.score_components['is_padding'] = 1.0
-                    duplicate.rerank_score *= 0.1  # Heavily penalize padding
+                    # Create a copy of the last sentence to avoid modifying the original
+                    last_sentence = ranked_sentences[-1]
+                    duplicate = RankedSentence(
+                        sentence_id=f"{last_sentence.sentence_id}_padding_{len(padded)}",
+                        content=last_sentence.content,
+                        original_rank=last_sentence.original_rank,
+                        rerank_score=last_sentence.rerank_score * 0.1,  # Heavily penalize padding
+                        score_components={**last_sentence.score_components, 'is_padding': 1.0},
+                        source_chunk=last_sentence.source_chunk
+                    )
                     padded.append(duplicate)
                 else:
                     break
@@ -182,13 +195,81 @@ class TFIDFReranker(BaseReranker):
 
 
 class SemanticReranker(BaseReranker):
-    """Semantic similarity reranking using sentence transformers (placeholder for future implementation)."""
-    
+    """Neural semantic reranking using HuggingFace cross-encoders."""
+
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
+        super().__init__(config, logger)
+        self.cross_encoder = None
+        self.model_name = config.get('reranking', {}).get('model_name', 'cross-encoder/ms-marco-MiniLM-L-6-v2')
+        self._initialize_model()
+
+    def _initialize_model(self):
+        """Initialize the cross-encoder model with error handling."""
+        if not HAS_SENTENCE_TRANSFORMERS:
+            self.logger.warning("sentence-transformers not installed. Install with: pip install sentence-transformers")
+            return
+
+        try:
+            self.logger.info(f"Loading cross-encoder model: {self.model_name}")
+            self.cross_encoder = CrossEncoder(self.model_name)
+            self.logger.info("✅ Cross-encoder model loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Failed to load cross-encoder model: {e}")
+            self.cross_encoder = None
+
     def rerank(self, sentences: List[str], query: str, metadata: Optional[Dict] = None) -> List[RankedSentence]:
-        """Placeholder for semantic reranking - falls back to TF-IDF for now."""
-        self.logger.warning("SemanticReranker not fully implemented, falling back to TF-IDF")
-        tfidf_reranker = TFIDFReranker(self.config, self.logger)
-        return tfidf_reranker.rerank(sentences, query, metadata)
+        """Neural reranking using cross-encoder with TF-IDF fallback."""
+        if not sentences:
+            return []
+
+        # Fallback to TF-IDF if model not available
+        if self.cross_encoder is None:
+            self.logger.warning("Cross-encoder not available, falling back to TF-IDF")
+            tfidf_reranker = TFIDFReranker(self.config, self.logger)
+            return tfidf_reranker.rerank(sentences, query, metadata)
+
+        self.logger.debug(f"Neural reranking: {len(sentences)} sentences with cross-encoder")
+
+        try:
+            # Prepare query-sentence pairs for cross-encoder
+            query_sentence_pairs = [[query, sentence] for sentence in sentences]
+
+            # Get cross-encoder scores
+            cross_encoder_scores = self.cross_encoder.predict(query_sentence_pairs)
+
+            # Create ranked sentences with cross-encoder scores
+            ranked_sentences = []
+            for i, (sentence, score) in enumerate(zip(sentences, cross_encoder_scores)):
+                score_components = {
+                    'cross_encoder_score': float(score),
+                    'original_rank': i,
+                    'model_name': self.model_name
+                }
+
+                ranked_sentence = RankedSentence(
+                    sentence_id=f"sentence_{i}",
+                    content=sentence,
+                    original_rank=i,
+                    rerank_score=float(score),
+                    score_components=score_components,
+                    source_chunk=metadata.get('chunks', [f"chunk_{i}"])[i] if metadata and 'chunks' in metadata and i < len(metadata['chunks']) else f"chunk_{i}"
+                )
+                ranked_sentences.append(ranked_sentence)
+
+            # Sort by cross-encoder score (descending)
+            ranked_sentences.sort(key=lambda x: x.rerank_score, reverse=True)
+
+            result = self._ensure_target_count(ranked_sentences, self.config.get('target_count', 10))
+            self.logger.debug(f"Neural reranking: Returning {len(result)} ranked sentences")
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Neural reranking failed: {e}")
+            # Fallback to TF-IDF on error
+            self.logger.warning("Falling back to TF-IDF reranking")
+            tfidf_reranker = TFIDFReranker(self.config, self.logger)
+            return tfidf_reranker.rerank(sentences, query, metadata)
 
 
 class HybridReranker(BaseReranker):

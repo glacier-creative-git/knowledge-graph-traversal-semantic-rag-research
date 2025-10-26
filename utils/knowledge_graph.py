@@ -31,6 +31,20 @@ class Document:
     doc_themes: List[str]
     chunk_ids: List[str]  # List of chunk IDs in this document
 
+    # Theme-based connections to other documents
+    theme_similar_documents: List[str] = None  # Doc IDs of theme-similar documents
+    theme_similarity_scores: Dict[str, float] = None  # doc_id -> theme_similarity_score
+    theme_embedding_ref: Dict[str, str] = None  # Reference to theme embedding: {"model": "model_name", "id": "doc_id"}
+
+    def __post_init__(self):
+        """Initialize optional fields as empty containers."""
+        if self.theme_similar_documents is None:
+            self.theme_similar_documents = []
+        if self.theme_similarity_scores is None:
+            self.theme_similarity_scores = {}
+        if self.theme_embedding_ref is None:
+            self.theme_embedding_ref = {}
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
@@ -51,6 +65,24 @@ class Chunk:
     inter_doc_connections: List[str]  # Chunk IDs in different documents
     connection_scores: Dict[str, float]  # chunk_id -> similarity_score mapping
 
+    # Theme-based connections inherited from parent document
+    theme_similar_documents: List[str] = None  # Doc IDs of theme-similar documents (inherited from parent)
+    theme_similarity_scores: Dict[str, float] = None  # doc_id -> theme_similarity_score (inherited from parent)
+
+    # Quality scoring metadata (DeepEval-style LLM assessment)
+    quality_score: Optional[float] = None  # Overall quality score (0-1, average of components)
+    quality_components: Optional[Dict[str, float]] = None  # Individual component scores
+    quality_tier: Optional[str] = None  # "high", "medium", "low" based on score thresholds
+
+    def __post_init__(self):
+        """Initialize optional fields as empty containers."""
+        if self.theme_similar_documents is None:
+            self.theme_similar_documents = []
+        if self.theme_similarity_scores is None:
+            self.theme_similarity_scores = {}
+        if self.quality_components is None:
+            self.quality_components = {}
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return asdict(self)
@@ -66,6 +98,17 @@ class Sentence:
     sentence_index: int  # Index within the source document
     inherited_themes: List[str]
     embedding_ref: Dict[str, str]  # Reference to embedding: {"model": "model_name", "id": "sentence_id"}
+
+    # Theme-based connections inherited from parent document
+    theme_similar_documents: List[str] = None  # Doc IDs of theme-similar documents (inherited from parent)
+    theme_similarity_scores: Dict[str, float] = None  # doc_id -> theme_similarity_score (inherited from parent)
+
+    def __post_init__(self):
+        """Initialize optional fields as empty containers."""
+        if self.theme_similar_documents is None:
+            self.theme_similar_documents = []
+        if self.theme_similarity_scores is None:
+            self.theme_similarity_scores = {}
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -107,7 +150,7 @@ class KnowledgeGraph:
         """
         for model_name, granularity_embeddings in embeddings_data.items():
             if model_name not in self._embedding_cache:
-                self._embedding_cache[model_name] = {}
+                self._embedding_cache[model_name] = {'chunks': {}, 'sentences': {}, 'documents': {}}
 
             # Load chunk embeddings
             chunk_embeddings = granularity_embeddings.get('chunks', [])
@@ -121,8 +164,8 @@ class KnowledgeGraph:
                     # Dictionary format (from JSON cache)
                     chunk_id = chunk_emb['chunk_id']
                     embedding = chunk_emb['embedding']
-                
-                self._embedding_cache[model_name][chunk_id] = np.array(embedding)
+
+                self._embedding_cache[model_name]['chunks'][chunk_id] = np.array(embedding)
 
             # Load sentence embeddings
             sentence_embeddings = granularity_embeddings.get('sentences', [])
@@ -137,9 +180,29 @@ class KnowledgeGraph:
                     sentence_id = sent_emb['sentence_id']
                     embedding = sent_emb['embedding']
                 
-                self._embedding_cache[model_name][sentence_id] = np.array(embedding)
+                self._embedding_cache[model_name]['sentences'][sentence_id] = np.array(embedding)
 
-        total_embeddings = sum(len(model_cache) for model_cache in self._embedding_cache.values())
+            # Load document theme embeddings
+            document_embeddings = granularity_embeddings.get('documents', [])
+            for doc_emb in document_embeddings:
+                # Handle both object attributes and dictionary keys
+                if hasattr(doc_emb, 'doc_id'):
+                    # Object format (from original pipeline)
+                    doc_id = doc_emb.doc_id
+                    theme_embedding = doc_emb.theme_embedding
+                else:
+                    # Dictionary format (from JSON cache)
+                    doc_id = doc_emb['doc_id']
+                    theme_embedding = doc_emb['theme_embedding']
+
+                self._embedding_cache[model_name]['documents'][doc_id] = np.array(theme_embedding)
+
+        # Count total embeddings across all models and granularities
+        total_embeddings = 0
+        for model_cache in self._embedding_cache.values():
+            total_embeddings += len(model_cache.get('chunks', {}))
+            total_embeddings += len(model_cache.get('documents', {}))
+            total_embeddings += len(model_cache.get('sentences', {}))
         print(f"✅ Loaded {total_embeddings} embeddings into cache for {len(self._embedding_cache)} models")
 
     def get_chunk_connections(self, chunk_id: str) -> List[str]:
@@ -158,7 +221,16 @@ class KnowledgeGraph:
         model_name = chunk.embedding_ref["model"]
         chunk_ref_id = chunk.embedding_ref["id"]
 
-        return self._embedding_cache.get(model_name, {}).get(chunk_ref_id)
+        # Debug: Check the first lookup to see model name mismatch
+        if not hasattr(self, '_debug_logged'):
+            available_models = list(self._embedding_cache.keys())
+            print(f"🔍 DEBUG: Looking for model '{model_name}', available: {available_models}")
+            if model_name in self._embedding_cache:
+                chunk_cache_size = len(self._embedding_cache[model_name].get('chunks', {}))
+                print(f"🔍 DEBUG: Model '{model_name}' has {chunk_cache_size} chunks in cache")
+            self._debug_logged = True
+
+        return self._embedding_cache.get(model_name, {}).get('chunks', {}).get(chunk_ref_id)
 
     def get_sentence_embedding(self, sentence_id: str) -> Optional[np.ndarray]:
         """Get embedding for a sentence using reference system."""
@@ -169,7 +241,18 @@ class KnowledgeGraph:
         model_name = sentence.embedding_ref["model"]
         sentence_ref_id = sentence.embedding_ref["id"]
 
-        return self._embedding_cache.get(model_name, {}).get(sentence_ref_id)
+        return self._embedding_cache.get(model_name, {}).get('sentences', {}).get(sentence_ref_id)
+
+    def get_document_theme_embedding(self, doc_id: str) -> Optional[np.ndarray]:
+        """Get theme embedding for a document using reference system."""
+        document = self.documents.get(doc_id)
+        if not document or not document.theme_embedding_ref:
+            return None
+
+        model_name = document.theme_embedding_ref["model"]
+        doc_ref_id = document.theme_embedding_ref["id"]
+
+        return self._embedding_cache.get(model_name, {}).get('documents', {}).get(doc_ref_id)
 
     def get_chunk_sentences(self, chunk_id: str) -> List[Sentence]:
         """Get all sentences in a chunk."""
@@ -177,6 +260,450 @@ class KnowledgeGraph:
         if not chunk:
             return []
         return [self.sentences[sent_id] for sent_id in chunk.sentence_ids if sent_id in self.sentences]
+
+    def calculate_theme_similarities(self, config: Dict[str, Any]) -> None:
+        """
+        Calculate theme similarities between documents and build theme-based connections.
+
+        Uses theme embeddings to find semantically similar documents and creates
+        sparse connections based on config parameters (top_r and similarity threshold).
+
+        Args:
+            config: Configuration dictionary with theme_bridging settings
+        """
+        theme_config = config.get('knowledge_graph_assembly', {}).get('theme_bridging', {})
+        top_r = theme_config.get('top_k_bridges', 1)  # Number of theme-similar docs per document
+        min_similarity = theme_config.get('min_bridge_similarity', 0.2)
+
+        print(f"🌉 Calculating theme similarities with top_r={top_r}, min_similarity={min_similarity}")
+
+        # Get all document IDs with theme embeddings
+        doc_ids_with_embeddings = []
+        for doc_id in self.documents.keys():
+            if self.get_document_theme_embedding(doc_id) is not None:
+                doc_ids_with_embeddings.append(doc_id)
+
+        print(f"📊 Found {len(doc_ids_with_embeddings)} documents with theme embeddings")
+
+        if len(doc_ids_with_embeddings) < 2:
+            print("⚠️ Not enough documents with theme embeddings for similarity calculation")
+            return
+
+        # Calculate pairwise theme similarities
+        for i, doc_id_1 in enumerate(doc_ids_with_embeddings):
+            theme_emb_1 = self.get_document_theme_embedding(doc_id_1)
+            if theme_emb_1 is None:
+                continue
+
+            similarities = []
+
+            for doc_id_2 in doc_ids_with_embeddings:
+                if doc_id_1 == doc_id_2:
+                    continue
+
+                theme_emb_2 = self.get_document_theme_embedding(doc_id_2)
+                if theme_emb_2 is None:
+                    continue
+
+                # Calculate cosine similarity between theme embeddings
+                try:
+                    from sklearn.metrics.pairwise import cosine_similarity
+                    similarity = cosine_similarity([theme_emb_1], [theme_emb_2])[0][0]
+                except ImportError:
+                    # Fallback to numpy-based cosine similarity
+                    similarity = np.dot(theme_emb_1, theme_emb_2) / (np.linalg.norm(theme_emb_1) * np.linalg.norm(theme_emb_2))
+
+                if similarity >= min_similarity:
+                    similarities.append((doc_id_2, float(similarity)))
+
+            # Sort by similarity (descending) and take top_r
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            top_similar_docs = similarities[:top_r]
+
+            # Update document with theme-similar documents and scores
+            document = self.documents[doc_id_1]
+            document.theme_similar_documents = [doc_id for doc_id, _ in top_similar_docs]
+            document.theme_similarity_scores = {doc_id: score for doc_id, score in top_similar_docs}
+
+            if top_similar_docs:
+                print(f"   📎 {doc_id_1} -> {len(top_similar_docs)} theme-similar docs "
+                      f"(best: {top_similar_docs[0][1]:.3f})")
+
+        # Count total theme connections created
+        total_connections = sum(len(doc.theme_similar_documents) for doc in self.documents.values())
+        print(f"✅ Created {total_connections} theme-based document connections")
+
+        # Propagate theme similarities to all child nodes
+        self._propagate_theme_similarities_to_children()
+
+    def get_theme_similar_documents(self, doc_id: str) -> List[str]:
+        """Get list of theme-similar document IDs for a given document."""
+        document = self.documents.get(doc_id)
+        if not document:
+            return []
+        return document.theme_similar_documents or []
+
+    def get_theme_similar_documents_by_title(self, doc_title: str) -> List[str]:
+        """Get list of theme-similar document IDs for a given document title."""
+        # Find document by title
+        for doc_id, document in self.documents.items():
+            if document.title == doc_title:
+                return document.theme_similar_documents or []
+        return []
+
+    def _propagate_theme_similarities_to_children(self) -> None:
+        """
+        Propagate document-level theme similarities to all child chunks and sentences.
+        This ensures that all nodes have access to theme-based navigation capabilities.
+        """
+        propagated_chunks = 0
+        propagated_sentences = 0
+
+        print(f"🌊 Propagating theme similarities to child nodes...")
+
+        # Iterate through all documents and propagate their theme similarities
+        for doc_id, document in self.documents.items():
+            if not document.theme_similar_documents:
+                continue  # Skip documents without theme connections
+
+            # Propagate to all chunks in this document
+            for chunk_id in document.chunk_ids:
+                if chunk_id in self.chunks:
+                    chunk = self.chunks[chunk_id]
+                    chunk.theme_similar_documents = document.theme_similar_documents.copy()
+                    chunk.theme_similarity_scores = document.theme_similarity_scores.copy()
+                    propagated_chunks += 1
+
+                    # Propagate to all sentences in this chunk
+                    for sentence_id in chunk.sentence_ids:
+                        if sentence_id in self.sentences:
+                            sentence = self.sentences[sentence_id]
+                            sentence.theme_similar_documents = document.theme_similar_documents.copy()
+                            sentence.theme_similarity_scores = document.theme_similarity_scores.copy()
+                            propagated_sentences += 1
+
+        print(f"✅ Propagated theme similarities to {propagated_chunks} chunks and {propagated_sentences} sentences")
+
+    def get_document_title_by_id(self, doc_id: str) -> str:
+        """Get document title from document ID."""
+        document = self.documents.get(doc_id)
+        if document:
+            return document.title
+        return ""
+
+    def get_theme_similarity_score(self, doc_id_1: str, doc_id_2: str) -> float:
+        """Get theme similarity score between two documents."""
+        document = self.documents.get(doc_id_1)
+        if not document or not document.theme_similarity_scores:
+            return 0.0
+        return document.theme_similarity_scores.get(doc_id_2, 0.0)
+
+    def score_chunk_quality(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None) -> None:
+        """
+        Score quality of all chunks using LLM-based assessment (DeepEval-style).
+
+        Adds quality scores and components to each chunk as permanent metadata.
+        Uses the configured model provider (Ollama, OpenRouter, or OpenAI).
+
+        Args:
+            config: System configuration containing quality scoring settings
+            logger: Optional logger for progress tracking
+        """
+        if logger is None:
+            logger = logging.getLogger(__name__)
+
+        quality_config = config.get('knowledge_graph', {}).get('quality_scoring', {})
+
+        if not quality_config.get('enabled', True):
+            logger.info("🔍 Quality scoring disabled - skipping chunk quality assessment")
+            return
+
+        logger.info(f"🎯 Starting chunk quality scoring for {len(self.chunks)} chunks")
+
+        # Initialize model manager for quality scoring
+        from evaluation.models import ModelManager
+        model_manager = ModelManager(config, logger)
+
+        # Create a temporary model config for quality scoring
+        temp_model_config = {
+            'deepeval': {
+                'models': {
+                    'quality_scorer': {
+                        'provider': quality_config.get('provider', 'ollama'),
+                        'model_name': quality_config.get('model_name', 'llama3.1:8b'),
+                        'temperature': quality_config.get('temperature', 0.1),
+                        'max_tokens': quality_config.get('max_tokens', 500)
+                    }
+                }
+            }
+        }
+
+        # Update model manager config temporarily
+        original_config = model_manager.deepeval_config
+        model_manager.deepeval_config = temp_model_config['deepeval']
+
+        try:
+            # Get quality scoring model
+            quality_model = model_manager._get_model('quality_scorer')
+
+            # Quality scoring statistics
+            scores_computed = 0
+            scores_failed = 0
+            quality_distribution = {'high': 0, 'medium': 0, 'low': 0}
+
+            batch_size = quality_config.get('batch_size', 10)
+            retry_attempts = quality_config.get('retry_attempts', 3)
+            quality_threshold = quality_config.get('quality_threshold', 0.7)
+
+            chunk_items = list(self.chunks.items())
+            total_chunks = len(chunk_items)
+
+            for i in range(0, total_chunks, batch_size):
+                batch = chunk_items[i:i + batch_size]
+                logger.info(f"📊 Processing chunk quality batch {i//batch_size + 1}/{(total_chunks + batch_size - 1)//batch_size}")
+
+                for chunk_id, chunk in batch:
+                    # Skip if already scored (for resumability)
+                    if chunk.quality_score is not None:
+                        logger.debug(f"   ⏭️  Skipping {chunk_id} - already scored")
+                        continue
+
+                    score, components = self._score_single_chunk(chunk.chunk_text, quality_model, retry_attempts, logger)
+
+                    if score is not None:
+                        # Store quality metadata in chunk
+                        chunk.quality_score = score
+                        chunk.quality_components = components
+                        chunk.quality_tier = self._determine_quality_tier(score, quality_threshold)
+
+                        # Update statistics
+                        scores_computed += 1
+                        quality_distribution[chunk.quality_tier] += 1
+
+                        logger.debug(f"   ✅ {chunk_id}: {score:.3f} ({chunk.quality_tier})")
+                    else:
+                        scores_failed += 1
+                        logger.warning(f"   ❌ Failed to score {chunk_id}")
+
+            # Log final statistics
+            logger.info(f"🎯 Quality scoring complete!")
+            logger.info(f"   ✅ Scored: {scores_computed}/{total_chunks} chunks")
+            logger.info(f"   ❌ Failed: {scores_failed} chunks")
+            logger.info(f"   📊 Distribution: High={quality_distribution['high']}, "
+                       f"Medium={quality_distribution['medium']}, Low={quality_distribution['low']}")
+
+            # Filter low-quality chunks if enabled
+            if quality_config.get('enable_filtering', True):
+                self._filter_low_quality_chunks(quality_threshold, logger)
+
+        finally:
+            # Restore original model manager config
+            model_manager.deepeval_config = original_config
+
+    def _score_single_chunk(self, chunk_text: str, quality_model, retry_attempts: int,
+                           logger: logging.Logger) -> Tuple[Optional[float], Optional[Dict[str, float]]]:
+        """
+        Score a single chunk using DeepEval's context evaluation template.
+
+        Args:
+            chunk_text: Text content of the chunk to score
+            quality_model: Model instance for scoring
+            retry_attempts: Number of retry attempts for failed scoring
+            logger: Logger instance
+
+        Returns:
+            Tuple of (overall_score, component_scores) or (None, None) if scoring fails
+        """
+        # Use DeepEval's exact context evaluation prompt
+        prompt = f"""Given a context, complete the following task and return the result in VALID JSON format: Evaluate the supplied context and assign a numerical score between 0 (Low) and 1 (High) for each of the following criteria in your JSON response:
+
+- **clarity**: Assess how clear and comprehensible the information is. A score of 1 indicates that the context is straightforward and easily understandable, while a score of 0 reflects vagueness or confusion in the information presented.
+- **depth**: Evaluate the extent of detailed analysis and the presence of original insights within the context. A high score (1) suggests a thorough and thought-provoking examination, while a low score (0) indicates a shallow overview of the subject.
+- **structure**: Review how well the content is organized and whether it follows a logical progression. A score of 1 is given to contexts that are coherently structured and flow well, whereas a score of 0 is for those that lack organization or clarity in their progression.
+- **relevance**: Analyze the importance of the content in relation to the main topic, awarding a score of 1 for contexts that stay focused on the subject without unnecessary diversions, and a score of 0 for those that include unrelated or irrelevant information.
+
+**
+IMPORTANT: Please make sure to only return in JSON format, with the 'clarity', 'depth', 'structure', and 'relevance' keys.
+
+Example context: "Artificial intelligence is rapidly changing various sectors, from healthcare to finance, by enhancing efficiency and enabling better decision-making."
+Example JSON:
+{{
+    "clarity": 1,
+    "depth": 0.8,
+    "structure": 0.9,
+    "relevance": 1
+}}
+
+Context:
+{chunk_text}
+
+JSON:
+"""
+
+        for attempt in range(retry_attempts):
+            try:
+                # Generate quality assessment
+                response = quality_model.generate(prompt)
+
+                # Handle tuple response from some models (e.g., OllamaModel returns (response, cost))
+                if isinstance(response, tuple):
+                    response = response[0]
+
+                # Parse JSON response
+                import json
+                import re
+
+                # Extract JSON from response (handle cases where model adds extra text)
+                json_match = re.search(r'\{[^}]*\}', response, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group()
+                    components = json.loads(json_str)
+                else:
+                    # Try parsing the entire response as JSON
+                    components = json.loads(response.strip())
+
+                # Validate component scores
+                required_keys = ['clarity', 'depth', 'structure', 'relevance']
+                if not all(key in components for key in required_keys):
+                    logger.warning(f"   ⚠️  Missing required quality components (attempt {attempt + 1})")
+                    continue
+
+                # Ensure scores are valid floats between 0 and 1
+                valid_components = {}
+                for key in required_keys:
+                    score = float(components[key])
+                    if 0 <= score <= 1:
+                        valid_components[key] = score
+                    else:
+                        logger.warning(f"   ⚠️  Invalid score for {key}: {score} (attempt {attempt + 1})")
+                        break
+                else:
+                    # All components valid - calculate overall score
+                    overall_score = sum(valid_components.values()) / len(valid_components)
+                    return overall_score, valid_components
+
+            except Exception as e:
+                logger.warning(f"   ⚠️  Quality scoring attempt {attempt + 1} failed: {e}")
+
+        return None, None
+
+    def _determine_quality_tier(self, score: float, threshold: float) -> str:
+        """
+        Determine quality tier based on score and threshold.
+
+        Args:
+            score: Overall quality score (0-1)
+            threshold: Quality threshold from config
+
+        Returns:
+            Quality tier: "high", "medium", or "low"
+        """
+        if score >= threshold:
+            return "high"
+        elif score >= threshold * 0.7:  # Medium: 70% of threshold
+            return "medium"
+        else:
+            return "low"
+
+    def _filter_low_quality_chunks(self, threshold: float, logger: logging.Logger) -> None:
+        """
+        Filter out chunks below quality threshold.
+
+        Args:
+            threshold: Minimum quality score to keep
+            logger: Logger instance
+        """
+        original_count = len(self.chunks)
+
+        # Identify chunks to remove
+        chunks_to_remove = []
+        for chunk_id, chunk in self.chunks.items():
+            if chunk.quality_score is not None and chunk.quality_score < threshold:
+                chunks_to_remove.append(chunk_id)
+
+        if not chunks_to_remove:
+            logger.info(f"🎯 Quality filtering: All {original_count} chunks meet quality threshold ({threshold})")
+            return
+
+        # Remove low-quality chunks
+        for chunk_id in chunks_to_remove:
+            # Remove chunk
+            removed_chunk = self.chunks.pop(chunk_id)
+
+            # Remove chunk from parent document's chunk list
+            if removed_chunk.source_document in self.documents:
+                doc = self.documents[removed_chunk.source_document]
+                if chunk_id in doc.chunk_ids:
+                    doc.chunk_ids.remove(chunk_id)
+
+            # Remove associated sentences
+            for sentence_id in removed_chunk.sentence_ids:
+                if sentence_id in self.sentences:
+                    del self.sentences[sentence_id]
+
+        remaining_count = len(self.chunks)
+        filtered_count = original_count - remaining_count
+
+        logger.info(f"🧹 Quality filtering complete!")
+        logger.info(f"   ❌ Removed: {filtered_count} low-quality chunks (< {threshold})")
+        logger.info(f"   ✅ Remaining: {remaining_count} high-quality chunks")
+
+    def get_chunks_above_quality(self, min_quality: float) -> Dict[str, Chunk]:
+        """
+        Get all chunks with quality score above threshold.
+
+        Args:
+            min_quality: Minimum quality score required
+
+        Returns:
+            Dictionary of chunk_id -> Chunk for chunks meeting quality criteria
+        """
+        high_quality_chunks = {}
+        for chunk_id, chunk in self.chunks.items():
+            if chunk.quality_score is not None and chunk.quality_score >= min_quality:
+                high_quality_chunks[chunk_id] = chunk
+        return high_quality_chunks
+
+    def get_quality_statistics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive quality statistics for the knowledge graph.
+
+        Returns:
+            Dictionary containing quality distribution and statistics
+        """
+        stats = {
+            'total_chunks': len(self.chunks),
+            'scored_chunks': 0,
+            'unscored_chunks': 0,
+            'quality_distribution': {'high': 0, 'medium': 0, 'low': 0},
+            'average_quality': 0.0,
+            'component_averages': {'clarity': 0.0, 'depth': 0.0, 'structure': 0.0, 'relevance': 0.0}
+        }
+
+        scored_chunks = []
+        component_sums = {'clarity': 0.0, 'depth': 0.0, 'structure': 0.0, 'relevance': 0.0}
+
+        for chunk in self.chunks.values():
+            if chunk.quality_score is not None:
+                stats['scored_chunks'] += 1
+                scored_chunks.append(chunk.quality_score)
+                stats['quality_distribution'][chunk.quality_tier] += 1
+
+                # Accumulate component scores
+                if chunk.quality_components:
+                    for component, score in chunk.quality_components.items():
+                        if component in component_sums:
+                            component_sums[component] += score
+            else:
+                stats['unscored_chunks'] += 1
+
+        # Calculate averages
+        if scored_chunks:
+            stats['average_quality'] = sum(scored_chunks) / len(scored_chunks)
+            for component in component_sums:
+                stats['component_averages'][component] = component_sums[component] / len(scored_chunks)
+
+        return stats
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -274,8 +801,29 @@ class KnowledgeGraphBuilder:
         # Step 1: Extract themes by document for easy lookup
         doc_themes_lookup = self._extract_document_themes(theme_data)
 
-        # Step 2: Create document nodes
-        documents = self._create_document_nodes(chunks, granularity_embeddings, doc_themes_lookup)
+        # Step 2: Create document nodes with theme embeddings
+        documents = self._create_document_nodes(chunks, granularity_embeddings, doc_themes_lookup, model_name)
+
+        # Generate theme embeddings for documents
+        theme_embeddings = self._generate_theme_embeddings(documents, model_name)
+
+        # Add theme embeddings to the knowledge graph cache
+        if model_name not in multi_granularity_embeddings:
+            multi_granularity_embeddings[model_name] = {}
+        if 'documents' not in multi_granularity_embeddings[model_name]:
+            multi_granularity_embeddings[model_name]['documents'] = []
+
+        # Add theme embeddings to the embeddings data
+        for doc_id, theme_embedding in theme_embeddings.items():
+            multi_granularity_embeddings[model_name]['documents'].append({
+                'doc_id': doc_id,
+                'theme_embedding': theme_embedding.tolist()
+            })
+
+        # Reload embeddings into KG cache to include theme embeddings
+        kg.load_phase3_embeddings(multi_granularity_embeddings)
+
+        # Add documents to KG
         for document in documents:
             kg.add_document(document)
 
@@ -295,7 +843,34 @@ class KnowledgeGraphBuilder:
         # Step 6: Populate chunk-sentence relationships
         self._populate_chunk_sentence_relationships(kg)
 
-        # Step 7: Add metadata
+        # Step 7: Calculate theme-based document similarities
+        self.logger.info("🌉 Calculating theme-based document similarities...")
+        kg.calculate_theme_similarities(self.config)
+
+        # Count theme connections for reporting
+        total_theme_connections = sum(len(doc.theme_similar_documents) for doc in kg.documents.values())
+
+        # Debug: Check if theme connections are properly stored
+        docs_with_connections = [(doc_id, len(doc.theme_similar_documents))
+                               for doc_id, doc in kg.documents.items()
+                               if doc.theme_similar_documents]
+        self.logger.info(f"🔍 Debug: {len(docs_with_connections)} documents have theme connections")
+        if docs_with_connections:
+            self.logger.info(f"🔍 Sample connections: {docs_with_connections[:3]}")
+
+        # Step 8: Score chunk quality using LLM-based assessment
+        self.logger.info("🎯 Starting chunk quality scoring...")
+        kg.score_chunk_quality(self.config, self.logger)
+
+        # Log quality statistics after scoring
+        quality_stats = kg.get_quality_statistics()
+        self.logger.info(f"📊 Quality scoring results:")
+        self.logger.info(f"   Average quality: {quality_stats['average_quality']:.3f}")
+        self.logger.info(f"   High quality chunks: {quality_stats['quality_distribution']['high']}")
+        self.logger.info(f"   Medium quality chunks: {quality_stats['quality_distribution']['medium']}")
+        self.logger.info(f"   Low quality chunks: {quality_stats['quality_distribution']['low']}")
+
+        # Step 9: Add metadata including quality information
         build_time = time.time() - start_time
         kg.metadata = {
             'created_at': datetime.now().isoformat(),
@@ -305,10 +880,12 @@ class KnowledgeGraphBuilder:
             'total_sentences': len(kg.sentences),
             'total_chunk_connections': sum(len(chunk.intra_doc_connections) + len(chunk.inter_doc_connections)
                                            for chunk in kg.chunks.values()),
+            'total_theme_connections': total_theme_connections,
             'build_time': build_time,
             'model_used': model_name,
             'config': self.config.get('knowledge_graph', {}),
-            'embedding_cache_loaded': True
+            'embedding_cache_loaded': True,
+            'quality_scoring': quality_stats
         }
 
         self.logger.info(f"🎉 Knowledge graph built successfully in {build_time:.2f}s")
@@ -316,6 +893,7 @@ class KnowledgeGraphBuilder:
         self.logger.info(f"   Chunks: {len(kg.chunks)}")
         self.logger.info(f"   Sentences: {len(kg.sentences)}")
         self.logger.info(f"   Chunk connections: {kg.metadata['total_chunk_connections']}")
+        self.logger.info(f"   Theme connections: {total_theme_connections}")
 
         return kg
 
@@ -339,7 +917,8 @@ class KnowledgeGraphBuilder:
 
     def _create_document_nodes(self, chunks: List[Dict[str, Any]],
                                granularity_embeddings: Dict[str, List[Any]],
-                               doc_themes_lookup: Dict[str, List[str]]) -> List[Document]:
+                               doc_themes_lookup: Dict[str, List[str]],
+                               model_name: str) -> List[Document]:
         """Create document-level nodes."""
         documents = []
         doc_summaries = granularity_embeddings.get('doc_summaries', [])
@@ -352,7 +931,7 @@ class KnowledgeGraphBuilder:
                 doc_chunk_mapping[doc_name] = []
             doc_chunk_mapping[doc_name].append(chunk['chunk_id'])
 
-        # Create document nodes
+        # Create document nodes with theme embeddings
         for doc_emb in doc_summaries:
             doc_title = doc_emb.source_article
             doc_themes = doc_themes_lookup.get(doc_title, [])
@@ -363,11 +942,53 @@ class KnowledgeGraphBuilder:
                 title=doc_title,
                 doc_summary=doc_emb.summary_text,
                 doc_themes=doc_themes,
-                chunk_ids=chunk_ids
+                chunk_ids=chunk_ids,
+                theme_embedding_ref={
+                    "model": model_name,
+                    "id": doc_emb.doc_id  # Use doc_id as theme embedding ID
+                }
             )
             documents.append(document)
 
         return documents
+
+    def _generate_theme_embeddings(self, documents: List[Document], model_name: str) -> Dict[str, np.ndarray]:
+        """
+        Generate theme embeddings for documents by combining their themes.
+
+        Args:
+            documents: List of Document objects with themes
+            model_name: Name of the embedding model to use
+
+        Returns:
+            Dictionary mapping doc_id to theme embedding
+        """
+        from utils.models import EmbeddingModel
+
+        self.logger.info(f"🏷️  Generating theme embeddings for {len(documents)} documents")
+
+        # Initialize embedding model
+        embedding_model = EmbeddingModel(model_name, "cpu", self.logger)
+
+        theme_embeddings = {}
+
+        for document in documents:
+            if not document.doc_themes:
+                # Create zero embedding for documents without themes
+                theme_embeddings[document.doc_id] = np.zeros(embedding_model.embedding_dimension)
+                continue
+
+            # Combine themes into a single text string as planned
+            theme_text = " ".join(document.doc_themes)
+
+            # Generate embedding for combined themes
+            theme_embedding = embedding_model.encode_batch([theme_text], batch_size=1)[0]
+            theme_embeddings[document.doc_id] = theme_embedding
+
+            self.logger.debug(f"   📎 {document.title}: '{theme_text}' -> embedding shape {theme_embedding.shape}")
+
+        self.logger.info(f"✅ Generated {len(theme_embeddings)} theme embeddings")
+        return theme_embeddings
 
     def _create_chunk_nodes(self, chunks: List[Dict[str, Any]],
                             granularity_embeddings: Dict[str, List[Any]],
@@ -456,8 +1077,10 @@ class KnowledgeGraphBuilder:
             # Inherit themes from document
             inherited_themes = doc_themes_lookup.get(source_document, [])
 
-            # Find source chunk (first containing chunk)
-            source_chunk = sent_emb.containing_chunks[0] if sent_emb.containing_chunks else ""
+            # Store all containing chunks for proper sliding window overlap handling
+            containing_chunks = sent_emb.containing_chunks if sent_emb.containing_chunks else []
+            # Use first chunk as primary source for backwards compatibility
+            source_chunk = containing_chunks[0] if containing_chunks else ""
 
             sentence_node = Sentence(
                 sentence_id=sent_emb.sentence_id,
@@ -468,16 +1091,23 @@ class KnowledgeGraphBuilder:
                 inherited_themes=inherited_themes,
                 embedding_ref={"model": model_name, "id": sent_emb.sentence_id}  # Reference instead of full embedding
             )
+            # Store containing chunks for population logic
+            sentence_node._containing_chunks = containing_chunks
             sentence_nodes.append(sentence_node)
 
         return sentence_nodes
 
     def _populate_chunk_sentence_relationships(self, kg: KnowledgeGraph):
-        """Populate sentence_ids in chunks based on sentence data."""
+        """Populate sentence_ids in chunks based on ALL containing chunks for proper sliding window overlap."""
         for sentence in kg.sentences.values():
-            source_chunk = kg.chunks.get(sentence.source_chunk)
-            if source_chunk and sentence.sentence_id not in source_chunk.sentence_ids:
-                source_chunk.sentence_ids.append(sentence.sentence_id)
+            # Get all containing chunks for this sentence (handles sliding window overlap)
+            containing_chunks = getattr(sentence, '_containing_chunks', [sentence.source_chunk])
+
+            # Add this sentence to ALL chunks that contain it
+            for chunk_id in containing_chunks:
+                chunk = kg.chunks.get(chunk_id)
+                if chunk and sentence.sentence_id not in chunk.sentence_ids:
+                    chunk.sentence_ids.append(sentence.sentence_id)
 
 
 # Factory function for backward compatibility

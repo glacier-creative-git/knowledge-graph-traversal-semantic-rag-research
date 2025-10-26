@@ -39,30 +39,37 @@ class RetrievalResult:
 
 class BaseRetrievalAlgorithm(ABC):
     """Abstract base class defining the interface for all retrieval algorithms."""
-    
-    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any], 
-                 query_similarity_cache: Dict[str, float], 
-                 logger: Optional[logging.Logger] = None):
+
+    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any],
+                 query_similarity_cache: Dict[str, float],
+                 logger: Optional[logging.Logger] = None,
+                 shared_embedding_model=None):
         """
         Initialize base algorithm with shared resources.
-        
+
         Args:
             knowledge_graph: The knowledge graph to traverse
-            config: Configuration dictionary 
+            config: Configuration dictionary
             query_similarity_cache: Pre-computed query similarities for all nodes
             logger: Optional logger instance
+            shared_embedding_model: Shared embedding model from orchestrator (memory optimization)
         """
         self.kg = knowledge_graph
         self.config = config
         self.query_similarity_cache = query_similarity_cache
         self.logger = logger or logging.getLogger(self.__class__.__name__)
         self.traversal_config = config['retrieval']['semantic_traversal']
-        
+
         # Algorithm parameters from config
         self.max_hops = self.traversal_config.get('max_safety_hops', 20)
         self.similarity_threshold = self.traversal_config.get('similarity_threshold', 0.3)
         self.min_sentence_threshold = self.traversal_config.get('min_sentence_threshold', 10)
         self.max_results = self.traversal_config.get('max_results', 10)
+        self.enable_early_stopping = self.traversal_config.get('enable_early_stopping', True)
+
+        # Use shared embedding model if provided (CRITICAL memory optimization)
+        # This prevents loading the SentenceTransformer model multiple times
+        self._embedding_model = shared_embedding_model
     
     @abstractmethod
     def retrieve(self, query: str, anchor_chunk: str) -> RetrievalResult:
@@ -175,3 +182,14 @@ class BaseRetrievalAlgorithm(ABC):
             if sentence_obj.sentence_text == sentence_text:
                 return sentence_id
         return None
+    
+    def _get_query_embedding(self, query: str) -> np.ndarray:
+        """Get query embedding using the configured embedding model."""
+        if self._embedding_model is None:
+            # Lazy-load embedding model
+            from ..models import EmbeddingModel
+            model_name = list(self.config['models']['embedding_models'])[0]
+            device = self.config['system']['device']
+            self._embedding_model = EmbeddingModel(model_name, device, self.logger)
+        
+        return self._embedding_model.encode_single(query)

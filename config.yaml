@@ -1,14 +1,9 @@
-# Semantic RAG Pipeline Configuration - Enhanced Multi-Granularity Architecture
-# =============================================================================
+# Semantic RAG Pipeline Configuration - Cleaned & Reorganized
+# ==========================================================
 
-# Experiment Configuration
-experiment:
-  name: "semantic_rag_pipeline"
-  description: "Enhanced multi-granularity semantic graph traversal RAG system"
-  version: "2.0.0"
-  tags: ["multi_granularity", "graph_traversal", "rag", "ollama"]
+# === STATIC CONFIGURATION (rarely changed) ===
 
-# System Configuration
+# System & Infrastructure
 system:
   device: "mps"  # auto, cpu, cuda, mps
   max_memory_gb: 8
@@ -31,51 +26,7 @@ logging:
   max_log_file_mb: 100
   backup_count: 5
 
-# Pipeline Execution
-execution:
-  mode: "full_pipeline"
-  skip_phases: []
-  force_recompute: []
-
-# Enhanced Models Configuration - Multi-Granularity Embeddings
-models:
-  embedding_models:
-    - "sentence-transformers/all-mpnet-base-v2"
-  embedding_batch_size: 32
-  embedding_cache: true
-  
-  # Multi-granularity embedding configuration
-  granularity_types:
-    chunks:
-      enabled: true
-      description: "3-sentence sliding windows (existing)"
-    sentences:
-      enabled: true
-      description: "Individual sentences for fine-grained navigation"
-    doc_summaries:
-      enabled: true
-      description: "Document-level summaries for high-level navigation"
-      method: "extractive"  # extractive, ollama
-      max_sentences: 5
-
-# Wikipedia Configuration (unchanged)
-wikipedia:
-  use_cached_articles: true
-  topics:
-    - "Neuroscience"
-    - "Psychology"
-    - "Cognition"
-    - "Neural Networks"
-    - "Carl Jung"
-  articles_per_topic: 10
-  max_article_length: 5000000
-  min_article_length: 1000
-  language: "en"
-  rate_limit_delay: 1.0
-  retry_attempts: 3
-  timeout_seconds: 30
-
-# Text Processing (unchanged)
+# Text Processing Pipeline
 text_processing:
   clean_html: true
   remove_references: true
@@ -86,234 +37,390 @@ text_processing:
   min_sentence_length: 10
   max_sentence_length: 500
 
-# Chunking Configuration (unchanged)
+# Chunking Strategy
 chunking:
   strategy: "sliding_window"
   window_size: 3
   overlap: 2
-  window_visualization_buffer_size: 3  # Number of chunks to extend visualization window in each direction
+  window_visualization_buffer_size: 3
 
-# Enhanced Retrieval Configuration - Hybrid Query-Aware Traversal
-retrieval:
-  algorithm: "semantic_traversal"
-  cache_graphs: true
+# Model Configuration
+models:
+  embedding_models:
+    - "mixedbread-ai/mxbai-embed-large-v1"  # New: mxbai-embed-large with special prompt support
+  embedding_batch_size: 32
+  embedding_cache: true
 
-  semantic_traversal:
-    num_anchors: 1  # Single anchor mode based on convergence insight
-    max_hops: 3  # Deprecated - now uses dynamic termination
-    similarity_threshold: 0.3
-    max_results: 10
-    min_sentence_threshold: 10  # Minimum sentences to extract
-    max_safety_hops: 20  # Safety limit to prevent infinite traversal
-    enable_reranking: true  # Enable reranking of extracted content
-    single_anchor_mode: true  # Use single anchor for efficiency
+  granularity_types:
+    chunks:
+      enabled: true
+      description: "3-sentence sliding windows (existing)"
+    sentences:
+      enabled: true
+      description: "Individual sentences for fine-grained navigation"
+    doc_summaries:
+      enabled: true
+      description: "Document-level summaries for high-level navigation"
+      method: "extractive"
+      max_sentences: 5
 
-  baseline_vector:
-    top_k: 10
-    similarity_threshold: 0.5
-
-# Reranking Configuration - Standardizes Output and Optimizes Relevance
-reranking:
-  strategy: "hybrid"  # Options: "tfidf", "semantic", "hybrid"
-  target_count: 10    # Standardized output: exactly 10 sentences per algorithm
-  
-  # TF-IDF reranking parameters
-  max_features: 5000
-  ngram_range: [1, 2]
-  
-  # Hybrid reranking weights
-  hybrid_weights:
-    tfidf: 0.6           # Primary relevance signal
-    length: 0.2          # Moderate-length sentence preference
-    question_overlap: 0.2 # Bonus for question keyword overlap
-  
-  # Quality control
-  enable_fallback: true
-  log_reranking_decisions: false  # Set to true for debugging
-
-# Enhanced Similarity Matrix Configuration - Multi-Granularity
+# Similarity Matrix Configuration
 similarities:
   use_cached: true
   similarity_metric: "cosine"
   batch_size: 1000
   max_memory_gb: 4
-  
-  # Multi-granularity similarity computation
+
   granularity_types:
-    # Existing chunk-to-chunk similarities
     chunk_to_chunk:
       enabled: true
       intra_document:
         enabled: true
-        top_k: 15  # Per chunk, within same document
+        top_k: 15
         min_threshold: 0.4
       inter_document:
         enabled: true
-        top_x: 5   # Per chunk, across different documents
+        top_x: 5
         min_threshold: 0.3
-    
-    # New document-to-document similarities
+
     doc_to_doc:
       enabled: true
-      top_k: 10  # Per document, most similar documents
+      top_k: 10
       min_threshold: 0.2
-      
-    # New sentence-to-sentence similarities
+
     sentence_to_sentence:
       enabled: true
       semantic:
         enabled: true
-        top_k: 3  # Per sentence, semantically similar sentences
+        top_k: 3
         min_threshold: 0.4
       sequential:
         enabled: true
         description: "Adjacent sentence connections for reading flow"
-        
-    # New cross-granularity similarities
+
     cross_granularity:
       enabled: true
       sentence_to_chunk:
         enabled: true
-        top_k: 3  # Per sentence, containing chunks
+        top_k: 3
         min_threshold: 0.3
       chunk_to_doc:
         enabled: true
         description: "Chunk to parent document summary similarity"
 
-# Phase 5: Entity/Theme Extraction Configuration
-entity_theme_extraction:
-  use_cached: true
-
-  # Theme extraction settings
-  theme_extraction:
-    num_themes: 5                           # Number of themes to extract per document
-    method: "ollama"                        # "ollama" or "fallback"
-    fallback_method: "keyword_patterns"     # Fallback when Ollama unavailable
-
-    # Ollama-specific settings (inherits from main ollama config)
-    prompt_template: "structured_json"      # Template style for theme extraction
-    max_theme_length: 50                    # Maximum characters per theme name
-
-  # Quality filters
-  quality_filters:
-    min_entities_per_item: 0               # Minimum entities required (0 = no filter)
-    min_themes_per_document: 1             # Minimum themes required per document
-    filter_common_words: true              # Filter out common words from entities
-
-# Phase 6: Knowledge Graph Assembly Configuration
-knowledge_graph_assembly:
-  use_cached: true
-
-  # Theme bridging configuration (NEW)
-  theme_bridging:
-    enabled: true
-    top_k_bridges: 1                    # Number of cross-document theme connections per theme
-    min_bridge_similarity: 0.2          # Minimum similarity for theme bridges
-    exclude_intra_document: true        # Only create cross-document bridges
-
-# Simplified Knowledge Graph Configuration
+# Knowledge Graph Assembly
 knowledge_graph:
   use_cached: true
-  architecture: "multi_granularity_three_tier"  # Document → Chunk → Sentence hierarchy
-  
-  # Note: Sparsity is now controlled in similarities section
-  # This section focuses on graph structure and entity extraction
+  architecture: "multi_granularity_three_tier"
+
+  quality_scoring:
+    enabled: false  # Disabled for this run
+    provider: "openrouter"
+    model_name: "meta-llama/llama-3.3-70b-instruct"
+    temperature: 0.1
+    max_tokens: 5000
+    quality_threshold: 0.7
+    enable_filtering: false
+
+    scoring_criteria:
+      clarity: "Assess how clear and comprehensible the information is"
+      depth: "Evaluate the extent of detailed analysis and original insights"
+      structure: "Review how well content is organized with logical progression"
+      relevance: "Analyze importance and focus without unnecessary diversions"
+
+    batch_size: 10
+    retry_attempts: 3
+    cache_scores: true
+
   extractors:
     ner:
-      enabled: true
+      enabled: false
       entity_types: ["PERSON", "ORG", "GPE", "PRODUCT", "EVENT", "MISC"]
     keyphrases:
-      enabled: true
+      enabled: false
       max_features: 15
     summary:
-      enabled: true
+      enabled: false
       max_sentences: 2
 
-# Question Generation Models Configuration (Phase 7)
-question_generation:
-  # Model selection: "ollama" or "openai"
-  generator_model_type: "ollama"  # Primary model for question generation
-  critic_model_type: "ollama"     # Secondary model for question critique
-  
-  # Question type distribution (must sum to 1.0)
-  question_distribution:
-    single_hop: 0.3        # Same document, raw similarity
-    sequential_flow: 0.25  # Same document, 1-10 chunks
-    multi_hop: 0.2         # 3 documents, raw KG similarity
-    theme_hop: 0.15        # 3 documents, theme similarity  
-    hierarchical: 0.1      # doc_summary → chunk → sentence
-  
-  # Generation parameters
-  num_questions: 50        # Total number of questions to generate
-  max_hops: 3              # Maximum hops for multi-hop questions
-  max_sentences: 10        # Maximum sentences to pull
-  enable_early_stopping: false  # Disabled for now
-  cache_questions: true    # Cache generated questions
-  
-  # Quality control
-  retry_failed_questions: true
-  max_retries: 3
-  min_question_length: 20
-  max_question_length: 200
+# === CUSTOMIZABLE CONFIGURATION ===
 
-# Ollama Configuration
-ollama:
-  model: "llama3.1:8b"
-  base_url: "http://localhost:11434"
-  options:
-    temperature: 0.1
-    num_predict: 150
-    stop: ["\n\n", "Text:", "Summary:", "Topics:"]
+# Experiment Configuration
+experiment:
+  name: "semantic_rag_pipeline_mxbai_bge"
+  description: "mxbai-embed-large + ollama 8.1b + 4 metrics only"
+  version: "2.0.0"
+  tags: ["multi_granularity", "graph_traversal", "rag", "ollama", "mxbai", "bge-reranker"]
 
-# OpenAI Configuration (for interchangeable use)
-openai:
-  generator_model: "gpt-4o-mini"     # Cheaper model for generation
-  critic_model: "gpt-4o"             # More expensive model for critique
-  api_key: ""  # Set via environment variable OPENAI_API_KEY
-  options:
-    temperature: 0.1
-    max_tokens: 150
+  tracking:
+    notes: "Testing mxbai-embed-large embeddings, ollama 8.1b for generation, GPT-4o-mini for judge, 4 metrics only"
+    run_type: "custom_model_comparison"
+    dataset_type: "sequential_multi_hop"
+    baseline_comparison: true
+    expected_improvements: ["precision", "recall", "faithfulness", "relevancy"]
 
-# Evaluation Configuration
-evaluation:
-  include_custom_metrics: true
-  include_baseline_comparison: true
-  baselines:
-    - "bm25"
-    - "traditional_vector"
-    - "dense_passage_retrieval"
-  metrics:
-    standard: ["f1", "exact_match", "mrr", "ndcg"]
-    custom: ["traversal_efficiency", "multi_hop_success", "semantic_coherence"]
-  
-  # Benchmarking configuration
-  benchmarking:
-    enable_reranking: true     # Apply reranking before evaluation
-    standardize_output: true   # Ensure all algorithms produce same output count
-    include_content_preview: true  # Add content previews to YAML output
-    detailed_logging: true     # Enhanced logging for algorithm behavior analysis
+# Pipeline Execution Control
+execution:
+  mode: "full_pipeline"
+  skip_phases: []
+  force_recompute: []
 
-# Visualization Configuration (unchanged)
+# Wikipedia Data Source
+wikipedia:
+  use_cached_articles: true
+  topics:
+    - "Machine Learning"
+    - "Artificial Intelligence"
+  articles_per_topic: 5
+  max_article_length: 5000000
+  min_article_length: 1000
+  language: "en"
+  rate_limit_delay: 1.0
+  retry_attempts: 3
+  timeout_seconds: 30
+
+# Retrieval Configuration
+retrieval:
+  algorithm: "semantic_traversal"
+  cache_graphs: true
+
+  semantic_traversal:
+    num_anchors: 1
+    max_hops: 3
+    similarity_threshold: 0.3
+    max_results: 10
+    min_sentence_threshold: 10
+    max_safety_hops: 20
+    enable_reranking: false
+    single_anchor_mode: true
+
+    causal_threshold: 0.6
+    path_coherence_threshold: 0.7
+    mst_max_edges: 5
+    cot_segment_length: 3
+
+    # LLM-guided traversal parameters
+    llm_top_k_candidates: 5
+    llm_model: "llama3.2:3b"
+    llm_temperature: 0.1
+
+  baseline_vector:
+    top_k: 10
+    similarity_threshold: 0.5
+
+# Reranking Configuration
+reranking:
+  strategy: "semantic"  
+  target_count: 10
+  model_name: "BAAI/bge-reranker-large"  # New: bge-reranker-large
+
+  max_features: 5000
+  ngram_range: [1, 2]
+
+  hybrid_weights:
+    tfidf: 0.6
+    length: 0.2
+    question_overlap: 0.2
+
+  enable_fallback: true
+  log_reranking_decisions: false
+
+# Visualization Configuration
 visualization:
   enabled: true
+
+  # Traditional visualizations
   similarity_matrices: true
   traversal_paths: true
   chunk_boundaries: true
   question_distribution: true
   knowledge_graph_structure: true
 
-# Output Configuration (unchanged)
-output:
-  create_report: true
-  export_data: true
-  save_models: false
-  include_question_analysis: true
+  # Benchmark visualizations
+  context_grouping:
+    enabled: true
+    include_traversal_paths: true
+    visualization_types: ["windowed", "global", "sequential"]
 
-# Cleanup Configuration (unchanged)
-cleanup:
-  remove_temp_files: false
-  compress_large_files: true
+  retrieval_paths:
+    enabled: true
+    include_3d_plotly: true
+    include_heatmaps: true
+    max_nodes: 40
+    show_all_visited: true
 
-# Notifications (unchanged)
-notifications:
-  enabled: false
+  output:
+    formats: ["plotly", "matplotlib"]
+    figure_size: [20, 8]
+    dpi: 300
+    save_html: true
+    save_png: true
+
+# DeepEval Configuration
+deepeval:
+  api_rate_limiting:
+    enabled: true
+    delay_between_calls: 10.0
+    delay_after_failure: 10.0
+    delay_for_large_requests: 15.0
+
+  models:
+    question_generation: # GOLDEN GENERATION MODEL
+      provider: "openai"  # Using OpenRouter for reliability
+      model_name: "gpt-4o"  # OpenRouter's llama 3.1 8b
+      temperature: 0.1
+      max_tokens: 20000
+
+    answer_generation:
+      provider: "openai"  # Using OpenRouter for reliability
+      model_name: "gpt-5-nano"  # OpenRouter's llama 3.1 8b
+      temperature: 0.1
+      max_tokens: 5000
+
+    evaluation_judge:
+      provider: "openai"  # Using OpenAI for judge
+      model_name: "gpt-5-nano"  # GPT-4o-mini as judge
+      temperature: 0.0
+      max_tokens: 50000
+
+  project:
+    name: "semantic-rag-chunking-research"
+    id: "cmfpz4kpj03i62ad3v3a098kv"
+    description: "Benchmarking semantic RAG chunking strategies using knowledge graph traversal algorithms"
+    version: "1.0.0"
+    tags: ["rag", "knowledge-graph", "semantic-chunking", "retrieval"]
+
+  dataset:
+    generation:
+      num_goldens: 50
+      max_goldens_per_context: 1
+      include_expected_output: true
+
+    filtration:
+      enabled: true  # DeepEval FiltrationConfig only supports OpenAI models, not Ollama
+      critic_model: "gpt-4o-mini"  # Only used if enabled=true
+      synthetic_input_quality_threshold: 0.8
+      max_quality_retries: 5
+
+    evolution:
+      enabled: true
+      num_evolutions: 1
+      evolution_types:
+        - "REASONING"
+        - "COMPARATIVE"
+        - "MULTICONTEXT"
+      evolution_distribution:
+        REASONING: 0.4
+        COMPARATIVE: 0.2
+        MULTICONTEXT: 0.4
+
+    output:
+      save_path: "data/synthetic_dataset.json"
+      cache_enabled: true
+      force_regenerate: true
+      push_to_dashboard: false
+      dataset_alias: "50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext"
+      pull_from_dashboard: true
+      generate_csv: true
+      csv_context_delimiter: " | "
+
+  evaluation:
+    async_config:
+      run_async: false
+      max_concurrent: 1
+      throttle_value: 3.0
+
+    metrics:
+      rag_metrics:
+        # ONLY 4 METRICS: precision, recall, faithfulness, relevancy
+        - "contextual_precision"   # Precision
+        - "contextual_recall"      # Recall
+        - "faithfulness"           # Faithfulness
+        - "answer_relevancy"   # Relevancy
+        # REMOVED: contextual_relevancy and custom metrics
+
+      custom_metrics: []  # Disabled all custom metrics
+
+    algorithms:
+      test_algorithms:
+        # - "basic_retrieval"
+        # - "query_traversal"
+        # - "kg_traversal"
+        # - "triangulation_average"
+        # - "triangulation_geometric_3d"
+        # - "triangulation_geometric_fulldim"
+        - "llm_guided_traversal"
+
+      algorithm_hyperparameters:
+        basic_retrieval:
+          top_k: 10
+          similarity_threshold: 0.5
+        query_traversal:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+        kg_traversal:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+        triangulation_average:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+          max_results: 10
+        triangulation_geometric_3d:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+          max_results: 10
+        triangulation_geometric_fulldim:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+          max_results: 10
+        llm_guided_traversal:
+          max_hops: 5
+          similarity_threshold: 0.3
+          min_sentence_threshold: 10
+          max_results: 10
+          llm_top_k_candidates: 5
+          llm_model: "llama3.2:3b"
+          llm_temperature: 0.1
+
+    output:
+      results_directory: "benchmark_results"
+      save_individual_results: true
+      save_comparison_report: true
+      include_visualizations: true
+
+# Context Grouping Strategies
+context_strategies:
+  intra_document:
+    enabled: false
+    weight: 0.33
+    max_sentences: 10
+    description: "Semantic coherence within single documents using similarity-based chunk traversal"
+
+  theme_based:
+    enabled: false
+    weight: 0.33
+    max_sentences: 10
+    fallback_to_inter_document: true
+    description: "Cross-document theme overlap traversal with semantic fallback"
+
+  sequential_multi_hop:
+    enabled: true
+    weight: 0.33
+    num_reading_hops: 3
+    num_paragraph_sentences: 5
+    num_cross_doc_hops: 3
+    description: "Structured reading simulation: 3 docs × 5 sentences = 15-sentence narratives"
+
+  deepeval_native:
+    enabled: false
+    weight: 0.2
+    max_sentences: 10
+    extraction_mode: "random"
+    chunks_per_group: 3
+    ensure_document_diversity: true
+    description: "Simple random/sequential extraction with DeepEval FiltrationConfig quality filtering - no semantic traversal"

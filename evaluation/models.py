@@ -1,0 +1,691 @@
+#!/usr/bin/env python3
+"""
+Model Configuration and Management System
+========================================
+
+Centralized model configuration, instantiation, and validation for deepeval integration.
+Supports multiple LLM providers with proper error handling and caching.
+
+Key Features:
+- Multi-provider support: OpenAI, Ollama, Anthropic, OpenRouter
+- Model validation and availability checking
+- Intelligent caching to avoid re-instantiation
+- Environment variable management
+- Provider-specific configuration handling
+"""
+
+import os
+import logging
+from typing import Dict, Any, Optional, Union
+from dataclasses import dataclass
+from pathlib import Path
+
+# DeepEval imports
+from deepeval.models.base_model import DeepEvalBaseModel, DeepEvalBaseLLM
+from deepeval.models import GPTModel, OllamaModel, AnthropicModel
+import openai
+import json
+from pydantic import BaseModel
+
+# Environment variable management
+from dotenv import load_dotenv
+
+# Data validation
+from pydantic import ValidationError
+
+
+class OpenRouterModel(DeepEvalBaseLLM):
+    """
+    Custom DeepEval model for OpenRouter integration.
+
+    Implements the DeepEvalBaseLLM interface to properly work with DeepEval's
+    evaluation framework while using OpenRouter's unified API.
+    """
+
+    def __init__(self, model_name: str, api_key: str, temperature: float = 0.1, max_tokens: int = 2000, config: dict = None):
+        self.model_name = model_name
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.client = openai.OpenAI(
+            base_url="https://openrouter.ai/api/v1/",
+            api_key=api_key
+        )
+        # Initialize logger
+        import logging
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+        # Rate limiting configuration
+        self.config = config or {}
+        self.rate_limiting = self._get_rate_limiting_config()
+        self._last_api_call_time = 0
+
+    def load_model(self):
+        """Return the OpenAI client for OpenRouter."""
+        return self.client
+
+    def _get_rate_limiting_config(self) -> dict:
+        """Extract rate limiting configuration from config."""
+        deepeval_config = self.config.get('deepeval', {})
+        rate_limiting = deepeval_config.get('api_rate_limiting', {})
+
+        return {
+            'enabled': rate_limiting.get('enabled', True),
+            'delay_between_calls': rate_limiting.get('delay_between_calls', 3.0),
+            'delay_after_failure': rate_limiting.get('delay_after_failure', 5.0),
+            'delay_for_large_requests': rate_limiting.get('delay_for_large_requests', 5.0)
+        }
+
+    def _apply_rate_limiting(self, prompt: str, failed_attempt: bool = False):
+        """Apply rate limiting delays based on configuration."""
+        if not self.rate_limiting.get('enabled', True):
+            return
+
+        import time
+        current_time = time.time()
+        time_since_last_call = current_time - self._last_api_call_time
+
+        # Calculate required delay
+        base_delay = self.rate_limiting.get('delay_between_calls', 3.0)
+
+        # Extra delay for large requests
+        prompt_length = len(prompt)
+        if prompt_length > 30000:  # Large request threshold
+            base_delay += self.rate_limiting.get('delay_for_large_requests', 5.0)
+            self.logger.info(f"Large request detected ({prompt_length} chars), adding extra delay")
+
+        # Extra delay after failures
+        if failed_attempt:
+            base_delay += self.rate_limiting.get('delay_after_failure', 5.0)
+            self.logger.info(f"Previous failure detected, adding extra delay")
+
+        # Apply delay if needed
+        if time_since_last_call < base_delay:
+            sleep_time = base_delay - time_since_last_call
+            self.logger.info(f"⏱️  Rate limiting: sleeping {sleep_time:.1f}s (last call {time_since_last_call:.1f}s ago)")
+            time.sleep(sleep_time)
+
+        self._last_api_call_time = time.time()
+
+    def generate(self, prompt: str, schema: BaseModel = None) -> str:
+        """
+        Generate text using OpenRouter model.
+
+        Args:
+            prompt: The input prompt
+            schema: Optional Pydantic schema for structured output
+
+        Returns:
+            Generated text response
+        """
+        client = self.load_model()
+
+        messages = [{"role": "user", "content": prompt}]
+
+        # Prepare request kwargs
+        request_kwargs = {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens
+        }
+
+        # Add structured output if schema provided
+        if schema:
+            request_kwargs["response_format"] = {"type": "json_object"}
+            # Also add a system message to encourage proper JSON formatting
+            request_kwargs["messages"] = [
+                {"role": "system", "content": "Always respond with valid JSON only. Do not include any text outside the JSON structure."},
+                {"role": "user", "content": prompt}
+            ]
+
+        import time
+        max_retries = 3
+        for attempt in range(max_retries):
+            # Apply rate limiting before each attempt
+            failed_previous_attempt = attempt > 0
+            self._apply_rate_limiting(prompt, failed_attempt=failed_previous_attempt)
+
+            try:
+                response = client.chat.completions.create(**request_kwargs)
+                content = response.choices[0].message.content
+
+                # COMPREHENSIVE DEBUGGING: Log raw content on all calls
+                self.logger.debug(f"OpenRouter raw response (attempt {attempt + 1}): {type(content)}, length: {len(str(content))}")
+                self.logger.debug(f"OpenRouter content preview: {str(content)[:500]}...")
+
+                # Quick check if we got HTML instead of expected content
+                if isinstance(content, str) and content.strip().startswith('<'):
+                    self.logger.error(f"OpenRouter returned HTML content: {content[:1000]}...")
+                    raise RuntimeError("OpenRouter returned HTML content (possible rate limit or error page)")
+
+                # Check for large responses that might contain mixed content
+                if isinstance(content, str) and len(content) > 5000:
+                    self.logger.warning(f"OpenRouter returned large response ({len(content)} chars) - checking for HTML mixed in")
+                    # Look for HTML patterns in large responses
+                    if '<html>' in content.lower() or '<!doctype' in content.lower() or '<body>' in content.lower():
+                        self.logger.error(f"OpenRouter returned mixed HTML content in large response: {content[:2000]}...")
+                        raise RuntimeError("OpenRouter returned mixed HTML content in large response")
+
+                break  # Success, exit retry loop
+
+            except Exception as e:
+                # Enhanced error logging
+                self.logger.error(f"OpenRouter API attempt {attempt + 1} failed with error: {type(e).__name__}: {str(e)}")
+                if hasattr(e, 'response') and e.response:
+                    self.logger.error(f"HTTP Status: {getattr(e.response, 'status_code', 'unknown')}")
+                    self.logger.error(f"Response headers: {getattr(e.response, 'headers', {})}")
+
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # Exponential backoff
+                    self.logger.warning(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    self.logger.error(f"All {max_retries} attempts failed. Final error: {e}")
+                    raise  # Re-raise on final attempt
+
+        # If schema provided, validate and return structured output
+        if schema:
+            # Special handling for DeepEval's Response schema
+            if hasattr(schema, 'model_fields') and 'response' in schema.model_fields:
+                # First, try to parse content as JSON to see if it's a dict-in-string
+                parsed_content = None
+                if isinstance(content, str):
+                    try:
+                        import json
+                        parsed_content = json.loads(content)
+                    except json.JSONDecodeError as e:
+                        self.logger.error(f"🚨 JSON PARSE FAILURE - This is the bug!")
+                        self.logger.error(f"JSON parse error: {e}")
+                        self.logger.error(f"Error line {e.lineno}, column {e.colno}, position {e.pos}")
+                        self.logger.error(f"Content length: {len(content)} chars")
+                        self.logger.error(f"Content type: {type(content)}")
+                        self.logger.error(f"First 1000 chars: {content[:1000]}")
+                        self.logger.error(f"Content around error position {e.pos}: {content[max(0, e.pos-100):e.pos+100]}")
+                        self.logger.error(f"Last 500 chars: {content[-500:]}")
+
+                        # Try to identify the issue
+                        if '<html>' in content.lower():
+                            self.logger.error("🎯 FOUND IT: Content contains HTML - this is the source of JSON parse failures!")
+                        if 'cloudflare' in content.lower():
+                            self.logger.error("🎯 FOUND IT: Content contains Cloudflare - likely rate limiting page!")
+                        if 'error' in content.lower():
+                            self.logger.error("🎯 FOUND IT: Content contains error messages!")
+
+                        parsed_content = None
+
+                # Handle case where content is a dict (either directly or parsed from JSON string)
+                if isinstance(content, dict) or isinstance(parsed_content, dict):
+                    dict_to_process = content if isinstance(content, dict) else parsed_content
+                    # Extract the actual content from the dict
+                    clean_content = self._extract_content_from_dict(dict_to_process)
+                    return schema(response=clean_content)
+                else:
+                    # For regular string content, clean and wrap in Response
+                    clean_content = self._clean_response_content(content)
+                    return schema(response=clean_content)
+            else:
+                # For non-Response schemas, try normal JSON validation
+                try:
+                    return schema.model_validate_json(content)
+                except Exception as validation_error:
+                    self.logger.warning(f"Schema validation failed: {validation_error}")
+                    self.logger.debug(f"Content type: {type(content)}")
+                    self.logger.debug(f"Content preview: {content[:500] if isinstance(content, str) else content}")
+
+                    # Try to parse the JSON content and create the schema object manually
+                    try:
+                        import json
+                        if isinstance(content, str):
+                            parsed_content = json.loads(content)
+
+                            # Create the schema object using parsed content
+                            if isinstance(parsed_content, dict):
+                                return schema(**parsed_content)
+                            else:
+                                self.logger.warning(f"Parsed content is not a dict: {type(parsed_content)}")
+                                return content
+                        else:
+                            self.logger.warning(f"Content is not a string for JSON parsing: {type(content)}")
+                            return content
+                    except Exception as parse_error:
+                        self.logger.error(f"Manual JSON parsing failed: {parse_error}")
+                        # For other schemas, return raw content as fallback
+                        return content
+
+        return content
+
+    async def a_generate(self, prompt: str, schema: BaseModel = None):
+        """
+        Async version of generate. For now, falls back to sync.
+
+        Args:
+            prompt: The input prompt
+            schema: Optional Pydantic schema for structured output
+
+        Returns:
+            Generated text response or structured output
+        """
+        # For now, use sync version. Could be improved with async client
+        return self.generate(prompt, schema)
+
+    def get_model_name(self):
+        """Return descriptive model name for logging."""
+        return f"OpenRouter: {self.model_name}"
+
+    def _extract_content_from_dict(self, parsed_dict: dict) -> str:
+        """
+        Extract the actual content from a parsed dict response.
+        This mirrors the logic in _clean_response_content for consistency.
+        """
+        if isinstance(parsed_dict, dict):
+            # Common evolution patterns
+            if "rewritten_input" in parsed_dict:
+                return str(parsed_dict["rewritten_input"])
+            elif "input" in parsed_dict:
+                return str(parsed_dict["input"])
+            elif "question" in parsed_dict:
+                return str(parsed_dict["question"])
+            elif "expected_output" in parsed_dict:
+                return str(parsed_dict["expected_output"])
+            elif "comparison" in parsed_dict:
+                return str(parsed_dict["comparison"])
+            elif "reasoning" in parsed_dict:
+                return str(parsed_dict["reasoning"])
+            elif "breadth" in parsed_dict:
+                return str(parsed_dict["breadth"])
+            elif "multicontext" in parsed_dict:
+                return str(parsed_dict["multicontext"])
+            elif "volatile" in parsed_dict:
+                return str(parsed_dict["volatile"])
+            elif len(parsed_dict) == 1:
+                # Single key-value pair, return the value
+                value = list(parsed_dict.values())[0]
+                # Don't return empty values
+                if value and str(value).strip() != "{}":
+                    return str(value)
+            else:
+                # Multiple keys - try to find the most likely content key
+                # Look for keys that contain actual content (longer values)
+                best_key = None
+                best_value = ""
+                for key, value in parsed_dict.items():
+                    if isinstance(value, str) and len(str(value)) > len(best_value):
+                        best_key = key
+                        best_value = str(value)
+
+                if best_key and best_value.strip():
+                    return best_value
+
+        # Fallback: convert entire dict to JSON string
+        import json
+        return json.dumps(parsed_dict)
+
+    def _clean_response_content(self, content: str) -> str:
+        """
+        Clean malformed response content before wrapping in Response schema.
+
+        Removes excessive whitespace, repeated newlines, and extracts actual content.
+        """
+        import re
+
+        # Remove excessive newlines and whitespace
+        cleaned = re.sub(r'\n\s*\n\s*', '\n\n', content)  # Collapse multiple newlines
+        cleaned = re.sub(r'\s+', ' ', cleaned)  # Collapse multiple spaces
+        cleaned = cleaned.strip()
+
+        # If content looks like it has JSON structure, try to extract the actual content
+        if '{' in cleaned and '}' in cleaned:
+            # Try to extract JSON content between first { and last }
+            start = cleaned.find('{')
+            end = cleaned.rfind('}') + 1
+            if start != -1 and end > start:
+                potential_json = cleaned[start:end]
+                try:
+                    import json
+                    parsed = json.loads(potential_json)
+
+                    # For DeepEval evolution responses, extract the actual content
+                    if isinstance(parsed, dict):
+                        # Common evolution patterns
+                        if "rewritten_input" in parsed:
+                            return parsed["rewritten_input"]
+                        elif "input" in parsed:
+                            return parsed["input"]
+                        elif "question" in parsed:
+                            return parsed["question"]
+                        elif "expected_output" in parsed:
+                            return parsed["expected_output"]
+                        elif "comparison" in parsed:
+                            return parsed["comparison"]
+                        elif "reasoning" in parsed:
+                            return parsed["reasoning"]
+                        elif "breadth" in parsed:
+                            return parsed["breadth"]
+                        elif "multicontext" in parsed:
+                            return parsed["multicontext"]
+                        elif len(parsed) == 1:
+                            # Single key-value pair, return the value
+                            value = list(parsed.values())[0]
+                            # Don't return empty values
+                            if value and str(value).strip() != "{}":
+                                return value
+
+                    # If we can't extract meaningful content but JSON is valid, return as-is
+                    if potential_json.strip() != "{}":
+                        return potential_json
+                except:
+                    pass  # Not valid JSON, continue with cleaning
+
+        # If we end up with just "{}", return the original uncleaned content
+        if cleaned.strip() == "{}":
+            return content
+
+        # Limit length to prevent excessively long responses
+        if len(cleaned) > 500:
+            cleaned = cleaned[:500] + "..."
+
+        return cleaned
+
+
+@dataclass
+class ModelConfig:
+    """Configuration container for a specific model provider."""
+    provider: str
+    model_name: str
+    temperature: float = 0.1
+    max_tokens: int = 200
+    base_url: Optional[str] = None
+    
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        valid_providers = ["openai", "ollama", "anthropic", "openrouter"]
+        if self.provider.lower() not in valid_providers:
+            raise ValueError(f"Unsupported provider: {self.provider}. Must be one of {valid_providers}")
+        
+        if self.temperature < 0 or self.temperature > 2:
+            raise ValueError(f"Invalid temperature: {self.temperature}. Must be between 0 and 2")
+        
+        if self.max_tokens < 1:
+            raise ValueError(f"Invalid max_tokens: {self.max_tokens}. Must be positive")
+
+
+
+class ModelManager:
+    """
+    Centralized model configuration, instantiation, and validation system.
+    
+    Handles multiple LLM providers with intelligent caching and comprehensive
+    error handling. Integrates with environment variables and configuration files.
+    """
+    
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
+        """
+        Initialize ModelManager with configuration and optional logger.
+        
+        Args:
+            config: Complete system configuration dictionary
+            logger: Optional logger instance (creates default if None)
+        """
+        self.config = config
+        self.logger = logger or logging.getLogger(__name__)
+        self.deepeval_config = config.get('deepeval', {})
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Model instance cache to avoid re-instantiation
+        self._model_cache: Dict[str, DeepEvalBaseModel] = {}
+        
+        # Validate configuration structure
+        self._validate_configuration()
+        
+        self.logger.info("ModelManager initialized successfully")
+    
+    def get_question_generation_model(self) -> DeepEvalBaseModel:
+        """
+        Get configured model for synthetic question generation.
+        
+        Returns:
+            DeepEvalBaseModel: Ready-to-use model instance for question generation
+            
+        Raises:
+            ValueError: If model configuration is invalid
+            RuntimeError: If model instantiation fails
+        """
+        return self._get_model('question_generation')
+    
+    def get_evaluation_judge_model(self) -> DeepEvalBaseModel:
+        """
+        Get configured model for evaluation judging (LLM-as-a-judge).
+
+        Returns:
+            DeepEvalBaseModel: Ready-to-use model instance for evaluation
+
+        Raises:
+            ValueError: If model configuration is invalid
+            RuntimeError: If model instantiation fails
+        """
+        return self._get_model('evaluation_judge')
+
+    def get_answer_generation_model(self) -> DeepEvalBaseModel:
+        """
+        Get configured model for answer generation during retrieval testing.
+
+        Returns:
+            DeepEvalBaseModel: Ready-to-use model instance for answer generation
+
+        Raises:
+            ValueError: If model configuration is invalid
+            RuntimeError: If model instantiation fails
+        """
+        return self._get_model('answer_generation')
+    
+    def validate_model_availability(self) -> Dict[str, bool]:
+        """
+        Validate that all configured models are accessible and functional.
+
+        Returns:
+            Dict[str, bool]: Mapping of model types to availability status
+        """
+        results = {}
+
+        for model_type in ['question_generation', 'evaluation_judge', 'answer_generation']:
+            try:
+                model = self._get_model(model_type)
+
+                # Test with simple prompt to verify functionality
+                test_response = model.generate("Test prompt: respond with 'OK'")
+
+                # Validate response is not empty
+                if test_response and len(test_response.strip()) > 0:
+                    results[model_type] = True
+                    self.logger.info(f"✅ {model_type} model validation successful")
+                else:
+                    results[model_type] = False
+                    self.logger.error(f"❌ {model_type} model returned empty response")
+
+            except Exception as e:
+                results[model_type] = False
+                self.logger.error(f"❌ {model_type} model validation failed: {e}")
+
+        return results
+    
+    def get_model_info(self, model_type: str) -> Dict[str, Any]:
+        """
+        Get detailed information about a configured model.
+
+        Args:
+            model_type: Type of model ('question_generation', 'evaluation_judge', or 'answer_generation')
+
+        Returns:
+            Dict containing model configuration and status information
+        """
+        if model_type not in ['question_generation', 'evaluation_judge', 'answer_generation']:
+            raise ValueError(f"Invalid model_type: {model_type}")
+
+        model_config = ModelConfig(**self.deepeval_config['models'][model_type])
+
+        return {
+            'provider': model_config.provider,
+            'model_name': model_config.model_name,
+            'temperature': model_config.temperature,
+            'max_tokens': model_config.max_tokens,
+            'base_url': model_config.base_url,
+            'cached': model_type in self._model_cache,
+            'environment_ready': self._check_environment_for_provider(model_config.provider)
+        }
+    
+    def _get_model(self, model_type: str) -> DeepEvalBaseModel:
+        """
+        Internal method to instantiate and cache models.
+        
+        Args:
+            model_type: Type of model to retrieve
+            
+        Returns:
+            DeepEvalBaseModel: Instantiated model ready for use
+        """
+        # Return cached instance if available
+        if model_type in self._model_cache:
+            self.logger.debug(f"Returning cached {model_type} model")
+            return self._model_cache[model_type]
+        
+        # Create new model instance
+        model_config = ModelConfig(**self.deepeval_config['models'][model_type])
+        
+        self.logger.info(f"Instantiating {model_type} model: {model_config.provider}/{model_config.model_name}")
+        
+        # Create provider-specific model
+        if model_config.provider.lower() == "openai":
+            model = self._create_openai_model(model_config)
+        elif model_config.provider.lower() == "ollama":
+            model = self._create_ollama_model(model_config)
+        elif model_config.provider.lower() == "anthropic":
+            model = self._create_anthropic_model(model_config)
+        elif model_config.provider.lower() == "openrouter":
+            model = self._create_openrouter_model(model_config)
+        else:
+            raise ValueError(f"Unsupported model provider: {model_config.provider}")
+        
+        # Cache and return
+        self._model_cache[model_type] = model
+        self.logger.info(f"✅ {model_type} model instantiated and cached successfully")
+        
+        return model
+    
+    def _create_openai_model(self, config: ModelConfig) -> GPTModel:
+        """Create OpenAI GPT model instance with proper configuration."""
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY not found in environment variables. "
+                "Please set it in your .env file or environment."
+            )
+
+        return GPTModel(
+            model=config.model_name,
+            temperature=config.temperature
+        )
+    
+    def _create_ollama_model(self, config: ModelConfig) -> OllamaModel:
+        """Create Ollama model instance with proper configuration."""
+        base_url = config.base_url or os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+
+        # Validate Ollama server is accessible
+        self._validate_ollama_server(base_url)
+
+        return OllamaModel(
+            model=config.model_name,
+            base_url=base_url,
+            temperature=config.temperature,
+            generation_kwargs={'temperature': config.temperature}
+        )
+    
+    def _create_anthropic_model(self, config: ModelConfig) -> AnthropicModel:
+        """Create Anthropic model instance with proper configuration."""
+        api_key = os.getenv('ANTHROPIC_API_KEY')
+        if not api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY not found in environment variables. "
+                "Please set it in your .env file or environment."
+            )
+
+        return AnthropicModel(
+            model=config.model_name,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens
+        )
+
+    def _create_openrouter_model(self, config: ModelConfig) -> OpenRouterModel:
+        """Create OpenRouter model instance using custom DeepEvalBaseLLM implementation."""
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY not found in environment variables. "
+                "Please set it in your .env file or environment."
+            )
+
+        # Use custom OpenRouterModel that properly implements DeepEvalBaseLLM
+        return OpenRouterModel(
+            model_name=config.model_name,
+            api_key=api_key,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            config=self.config  # Pass full config for rate limiting access
+        )
+    
+    def _validate_configuration(self) -> None:
+        """Validate deepeval configuration structure."""
+        if 'models' not in self.deepeval_config:
+            raise ValueError("Missing 'models' section in deepeval configuration")
+
+        required_models = ['question_generation', 'evaluation_judge', 'answer_generation']
+        for model_type in required_models:
+            if model_type not in self.deepeval_config['models']:
+                raise ValueError(f"Missing {model_type} configuration in deepeval.models")
+    
+    def _check_environment_for_provider(self, provider: str) -> bool:
+        """Check if environment is properly configured for a provider."""
+        if provider.lower() == "openai":
+            return bool(os.getenv('OPENAI_API_KEY'))
+        elif provider.lower() == "ollama":
+            return bool(os.getenv('OLLAMA_BASE_URL')) or True  # Default URL available
+        elif provider.lower() == "anthropic":
+            return bool(os.getenv('ANTHROPIC_API_KEY'))
+        elif provider.lower() == "openrouter":
+            return bool(os.getenv('OPENROUTER_API_KEY'))
+        else:
+            return False
+    
+    def _validate_ollama_server(self, base_url: str) -> None:
+        """Validate that Ollama server is accessible."""
+        try:
+            import requests
+            
+            # Test connection to Ollama server
+            response = requests.get(f"{base_url.rstrip('/')}/api/tags", timeout=5)
+            
+            if response.status_code != 200:
+                raise RuntimeError(f"Ollama server not accessible at {base_url}")
+                
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(
+                f"Failed to connect to Ollama server at {base_url}. "
+                f"Please ensure Ollama is running. Error: {e}"
+            )
+        except ImportError:
+            self.logger.warning("requests package not available - skipping Ollama server validation")
+    
+    def clear_cache(self) -> None:
+        """Clear model cache - useful for testing or configuration changes."""
+        self._model_cache.clear()
+        self.logger.info("Model cache cleared")
+    
+    def get_cache_status(self) -> Dict[str, bool]:
+        """Get current cache status for all model types."""
+        return {
+            'question_generation': 'question_generation' in self._model_cache,
+            'evaluation_judge': 'evaluation_judge' in self._model_cache,
+            'answer_generation': 'answer_generation' in self._model_cache
+        }

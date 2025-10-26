@@ -47,7 +47,8 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def visualize_retrieval_result(self, result: RetrievalResult, query: str,
                                    method: str = "pca", max_nodes: int = 50,
-                                   show_all_visited: bool = True) -> go.Figure:
+                                   show_all_visited: bool = True,
+                                   edge_threshold: float = 0.75) -> go.Figure:
         """
         Create 3D visualization of algorithm traversal results.
         Matches the style and functionality of the perfect reference examples.
@@ -76,7 +77,7 @@ class KnowledgeGraphPlotlyVisualizer:
             print(f"🎯 Limited to {len(nodes)} nodes for performance")
 
         # Create the 3D plot (like reference examples)
-        return self._create_3d_plot(nodes, result, query, method)
+        return self._create_3d_plot(nodes, result, query, method, edge_threshold)
 
     def _extract_visualization_nodes(self, result: RetrievalResult, query: str, 
                                    show_all_visited: bool) -> List[VisualizationNode]:
@@ -225,66 +226,316 @@ class KnowledgeGraphPlotlyVisualizer:
         return nodes
 
     def _create_3d_plot(self, nodes: List[VisualizationNode], result: RetrievalResult,
-                        query: str, method: str) -> go.Figure:
-        """Create the 3D scatter plot (matching reference examples style)"""
+                        query: str, method: str, edge_threshold: float = 0.75) -> go.Figure:
+        """Create the 3D scatter plot showing full knowledge graph with traversal path highlighted"""
 
         if len(nodes) < 2:
             print("❌ Not enough nodes for 3D visualization")
             return self._create_basic_plotly_visualization(result, query)
 
-        # Get embeddings and reduce dimensionality (like reference examples)
-        embeddings = np.array([node.embedding for node in nodes])
+        # ENHANCEMENT: Load ALL chunks from knowledge graph for full context
+        print(f"🌐 Loading full knowledge graph for context...")
+        all_kg_chunks = self._get_all_kg_chunks()
 
-        # Normalize embeddings for better visualization
-        embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+        # Get embeddings for ALL chunks in KG (+ query if present)
+        all_embeddings = []
+        all_chunk_ids = []
+        all_chunk_docs = []
+        all_chunk_texts = []
 
+        # Add query embedding first if present
+        query_in_graph = False
+        if nodes and nodes[0].node_type == 'query':
+            # Ensure query embedding is a 1D numpy array
+            query_embedding = np.array(nodes[0].embedding).flatten()
+            all_embeddings.append(query_embedding)
+            all_chunk_ids.append('QUERY')
+            all_chunk_docs.append('QUERY')
+            all_chunk_texts.append(nodes[0].text[:100] + '...' if len(nodes[0].text) > 100 else nodes[0].text)
+            query_in_graph = True
+            print(f"   📍 Added query to graph")
+
+        # Add all KG chunks
+        for chunk_id, chunk_obj in all_kg_chunks.items():
+            embedding = self._get_chunk_embedding(chunk_id)
+            if embedding is not None:
+                # Ensure embedding is a 1D numpy array
+                embedding = np.array(embedding).flatten()
+                all_embeddings.append(embedding)
+                all_chunk_ids.append(chunk_id)
+                # Get document
+                doc = self._get_chunk_document(chunk_id)
+                all_chunk_docs.append(doc)
+                # Get text preview
+                text = chunk_obj.chunk_text if hasattr(chunk_obj, 'chunk_text') else ''
+                all_chunk_texts.append(text[:100] + '...' if len(text) > 100 else text)
+
+        if len(all_embeddings) < 2:
+            print("⚠️ Not enough chunks in knowledge graph, falling back to traversal-only view")
+            return self._create_3d_plot_traversal_only(nodes, result, query, method)
+
+        print(f"   📊 Total chunks in KG: {len(all_embeddings)}")
+
+        # Debug: Check embedding types
+        embedding_types = set(type(emb).__name__ for emb in all_embeddings if emb is not None)
+        print(f"   🔍 Embedding types found: {embedding_types}")
+
+        # Verify all embeddings have the same dimension BEFORE converting to array
+        # Check for None values first
+        all_embeddings_clean = []
+        all_chunk_ids_clean = []
+        all_chunk_docs_clean = []
+        all_chunk_texts_clean = []
+
+        for i, emb in enumerate(all_embeddings):
+            if emb is not None and isinstance(emb, np.ndarray) and emb.size > 0:
+                all_embeddings_clean.append(emb)
+                all_chunk_ids_clean.append(all_chunk_ids[i])
+                all_chunk_docs_clean.append(all_chunk_docs[i])
+                all_chunk_texts_clean.append(all_chunk_texts[i])
+            else:
+                print(f"   ⚠️ Skipping invalid embedding at index {i}: type={type(emb)}, chunk_id={all_chunk_ids[i] if i < len(all_chunk_ids) else 'unknown'}")
+
+        print(f"   ✅ Kept {len(all_embeddings_clean)}/{len(all_embeddings)} valid embeddings")
+
+        all_embeddings = all_embeddings_clean
+        all_chunk_ids = all_chunk_ids_clean
+        all_chunk_docs = all_chunk_docs_clean
+        all_chunk_texts = all_chunk_texts_clean
+
+        # Now check dimensions
+        embedding_dims = [emb.shape[0] for emb in all_embeddings]
+        unique_dims = set(embedding_dims)
+
+        if len(unique_dims) > 1:
+            # Filter to keep only the most common dimension
+            from collections import Counter
+            most_common_dim = Counter(embedding_dims).most_common(1)[0][0]
+            print(f"⚠️ Found embeddings with inconsistent dimensions: {unique_dims}")
+            print(f"   Keeping only embeddings with dimension {most_common_dim}")
+
+            filtered_embeddings = []
+            filtered_chunk_ids = []
+            filtered_chunk_docs = []
+            filtered_chunk_texts = []
+
+            for i, emb in enumerate(all_embeddings):
+                if emb.shape[0] == most_common_dim:
+                    filtered_embeddings.append(emb)
+                    filtered_chunk_ids.append(all_chunk_ids[i])
+                    filtered_chunk_docs.append(all_chunk_docs[i])
+                    filtered_chunk_texts.append(all_chunk_texts[i])
+
+            all_embeddings = filtered_embeddings
+            all_chunk_ids = filtered_chunk_ids
+            all_chunk_docs = filtered_chunk_docs
+            all_chunk_texts = filtered_chunk_texts
+
+            print(f"   Kept {len(all_embeddings)} embeddings with dimension {most_common_dim}")
+
+        # Now safely convert to numpy array
+        embeddings_array = np.array(all_embeddings)
+        embeddings_array = embeddings_array / np.linalg.norm(embeddings_array, axis=1, keepdims=True)
+
+        # Apply dimensionality reduction to ALL chunks
         if method == "pca":
             reducer = PCA(n_components=3, random_state=42)
-            coords_3d = reducer.fit_transform(embeddings)
+            coords_3d = reducer.fit_transform(embeddings_array)
             explained_variance = reducer.explained_variance_ratio_
             subtitle = f"PCA (explained variance: {explained_variance.sum():.1%})"
         else:  # t-SNE
-            perplexity = min(30, len(embeddings) - 1)
+            perplexity = min(30, len(embeddings_array) - 1)
             perplexity = max(5, perplexity)
             reducer = TSNE(n_components=3, random_state=42, perplexity=perplexity, n_iter=1000)
-            coords_3d = reducer.fit_transform(embeddings)
+            coords_3d = reducer.fit_transform(embeddings_array)
             subtitle = "t-SNE"
 
-        print(f"🔬 Applied {method.upper()} dimensionality reduction to {len(embeddings)} embeddings")
+        # Scale coordinates to spread out the visualization
+        scale_factor = 6.0
+        coords_3d = coords_3d * scale_factor
 
-        # Create the figure (like reference examples)
+        print(f"🔬 Applied {method.upper()} dimensionality reduction to {len(embeddings_array)} embeddings")
+        print(f"📏 Applied {scale_factor}x scaling for better spacing")
+
+        # Create the figure
         fig = go.Figure()
 
-        # Group nodes by type and status for different visual treatment
-        node_groups = self._group_nodes_for_visualization(nodes, coords_3d)
+        # STEP 1: Add graph structure edges (thin black/gray lines at configurable similarity threshold)
+        print(f"🔗 Computing knowledge graph structure...")
+        from sklearn.metrics.pairwise import cosine_similarity
+        sim_matrix = cosine_similarity(embeddings_array)
 
-        # Plot each group with appropriate styling (like reference examples)
-        for group_name, group_data in node_groups.items():
-            if not group_data['nodes']:
-                continue
+        # Use configurable threshold (higher = fewer edges, less dense visualization)
+        edge_pairs = []
+        for i in range(len(all_embeddings)):
+            for j in range(i+1, len(all_embeddings)):
+                if sim_matrix[i, j] > edge_threshold:
+                    edge_pairs.append((i, j))
 
-            self._add_node_group_trace(fig, group_name, group_data)
+        print(f"   ✅ Found {len(edge_pairs)} connections above {edge_threshold} threshold")
 
-        # Add traversal path lines (like reference examples)
-        self._add_traversal_path_lines(fig, nodes, coords_3d, result)
+        # Add graph edges (thin gray/black lines like the demo)
+        edge_x, edge_y, edge_z = [], [], []
+        for src, dst in edge_pairs:
+            edge_x.extend([coords_3d[src, 0], coords_3d[dst, 0], None])
+            edge_y.extend([coords_3d[src, 1], coords_3d[dst, 1], None])
+            edge_z.extend([coords_3d[src, 2], coords_3d[dst, 2], None])
 
-        # Update layout (matching reference style)
+        if edge_x:
+            fig.add_trace(go.Scatter3d(
+                x=edge_x, y=edge_y, z=edge_z,
+                mode='lines',
+                line=dict(color='rgba(0,0,0,0.15)', width=1),  # Black with low opacity - subtle but defined
+                hoverinfo='none',
+                showlegend=False,
+                name='Graph Structure'
+            ))
+
+        # STEP 2: Add all KG nodes (colored by document, matching demo style)
+        unique_docs = list(set(all_chunk_docs))
+        # Remove QUERY from background nodes (it will be added separately later)
+        unique_docs = [doc for doc in unique_docs if doc != 'QUERY']
+        colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan']
+        doc_color_map = {doc: colors[i % len(colors)] for i, doc in enumerate(unique_docs)}
+
+        print(f"   📚 Documents in KG: {unique_docs}")
+
+        # Add nodes grouped by document (matching demo density/visibility)
+        for doc in unique_docs:
+            doc_mask = [d == doc for d in all_chunk_docs]
+            doc_coords = coords_3d[doc_mask]
+            doc_texts = [all_chunk_texts[i] for i, mask in enumerate(doc_mask) if mask]
+
+            fig.add_trace(go.Scatter3d(
+                x=doc_coords[:, 0],
+                y=doc_coords[:, 1],
+                z=doc_coords[:, 2],
+                mode='markers',
+                marker=dict(
+                    size=5,  # Slightly larger like demo
+                    color=doc_color_map[doc],
+                    line=dict(color='black', width=0.5),  # More visible border
+                    opacity=1.0  # Full opacity like demo
+                ),
+                text=doc_texts,
+                hovertemplate='<b>%{text}</b><extra></extra>',
+                name=doc,  # Cleaner legend name
+                showlegend=True
+            ))
+
+        # STEP 3: Highlight traversal path with thick black bold edges
+        print(f"🎯 Highlighting traversal path...")
+        traversal_chunk_ids = set()
+        for node in nodes:
+            if node.node_type == 'chunk':
+                traversal_chunk_ids.add(node.node_id)
+
+        # Create mapping from chunk_id to index in coords_3d
+        chunk_id_to_idx = {chunk_id: i for i, chunk_id in enumerate(all_chunk_ids)}
+
+        # Highlight traversed nodes
+        traversal_indices = []
+        traversal_texts = []
+        traversal_steps = []
+
+        for node in nodes:
+            if node.node_type == 'chunk' and node.node_id in chunk_id_to_idx:
+                idx = chunk_id_to_idx[node.node_id]
+                traversal_indices.append(idx)
+                traversal_texts.append(f"Step {node.step_number}: {node.text}")
+                traversal_steps.append(node.step_number)
+
+        if traversal_indices:
+            traversal_coords = coords_3d[traversal_indices]
+
+            # Separate query node from other traversal nodes
+            query_node_idx = None
+            if nodes and nodes[0].node_type == 'query':
+                # Query is the first node in our arrays (index 0) if we added it
+                if query_in_graph and 'QUERY' in all_chunk_ids:
+                    query_node_idx = all_chunk_ids.index('QUERY')
+
+            # Add query node separately with special styling
+            if query_node_idx is not None and query_node_idx < len(coords_3d):
+                fig.add_trace(go.Scatter3d(
+                    x=[coords_3d[query_node_idx, 0]],
+                    y=[coords_3d[query_node_idx, 1]],
+                    z=[coords_3d[query_node_idx, 2]],
+                    mode='markers+text',
+                    marker=dict(
+                        size=20,
+                        color='gold',
+                        symbol='diamond',
+                        line=dict(color='black', width=3),
+                        opacity=1.0
+                    ),
+                    text=['Q'],
+                    textposition="middle center",
+                    textfont=dict(size=14, color='black', family='Arial Black'),
+                    hovertemplate=f'<b>QUERY</b><br>{nodes[0].text}<extra></extra>',
+                    name='Query',
+                    showlegend=True
+                ))
+
+            # Add traversal path nodes (larger and more visible)
+            fig.add_trace(go.Scatter3d(
+                x=traversal_coords[:, 0],
+                y=traversal_coords[:, 1],
+                z=traversal_coords[:, 2],
+                mode='markers+text',
+                marker=dict(
+                    size=15,  # Larger nodes
+                    color='gold',
+                    line=dict(color='black', width=2.5),  # Thicker border
+                    opacity=1.0
+                ),
+                text=[str(s) for s in traversal_steps],
+                textposition="middle center",
+                textfont=dict(size=11, color='black', family='Arial Black'),
+                hovertemplate='%{hovertext}<extra></extra>',
+                hovertext=traversal_texts,
+                name='Traversal Path',
+                showlegend=True
+            ))
+
+        # Add thick black traversal edges (very prominent)
+        if len(nodes) > 1:
+            step_ordered_nodes = [n for n in nodes if n.node_type == 'chunk' and n.node_id in chunk_id_to_idx]
+            step_ordered_nodes.sort(key=lambda x: x.step_number)
+
+            for i in range(len(step_ordered_nodes) - 1):
+                current_node = step_ordered_nodes[i]
+                next_node = step_ordered_nodes[i + 1]
+
+                current_idx = chunk_id_to_idx[current_node.node_id]
+                next_idx = chunk_id_to_idx[next_node.node_id]
+
+                # Very thick black edges for traversal path (more prominent than graph edges)
+                fig.add_trace(go.Scatter3d(
+                    x=[coords_3d[current_idx, 0], coords_3d[next_idx, 0]],
+                    y=[coords_3d[current_idx, 1], coords_3d[next_idx, 1]],
+                    z=[coords_3d[current_idx, 2], coords_3d[next_idx, 2]],
+                    mode='lines',
+                    line=dict(color='black', width=8),  # Even thicker
+                    hovertemplate=f"Step {current_node.step_number} → {next_node.step_number}<extra></extra>",
+                    showlegend=False,
+                    name='Traversal Edge'
+                ))
+
+        # Update layout
         fig.update_layout(
-            title=f"{result.algorithm_name} Semantic Traversal Visualization<br>" +
+            title=f"{result.algorithm_name} - Full Knowledge Graph with Traversal Path<br>" +
                   f"Query: '{query[:80]}...'<br>" +
-                  f"Retrieved: {len(result.retrieved_content)} sentences | " +
-                  f"Traversed: {len(nodes)} nodes | " +
+                  f"KG: {len(all_embeddings)} chunks, {len(edge_pairs)} connections | " +
+                  f"Traversal: {len(traversal_indices)} steps | " +
                   f"Score: {result.final_score:.3f}<br>" +
                   f"<i>{subtitle}</i>",
             scene=dict(
-                xaxis_title=f"Dimension 1 ({method.upper()})",
-                yaxis_title=f"Dimension 2 ({method.upper()})",
-                zaxis_title=f"Dimension 3 ({method.upper()})",
+                xaxis_title=f"PC1" if method == "pca" else "Dim 1",
+                yaxis_title=f"PC2" if method == "pca" else "Dim 2",
+                zaxis_title=f"PC3" if method == "pca" else "Dim 3",
                 camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
-                bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(showspikes=False, showgrid=True, gridcolor='lightgray'),
-                yaxis=dict(showspikes=False, showgrid=True, gridcolor='lightgray'),
-                zaxis=dict(showspikes=False, showgrid=True, gridcolor='lightgray')
+                bgcolor='rgba(240,240,240,0.9)'
             ),
             height=900,
             font=dict(size=12),
@@ -300,7 +551,7 @@ class KnowledgeGraphPlotlyVisualizer:
             margin=dict(l=0, r=0, t=150, b=0)
         )
 
-        print(f"✅ 3D visualization created successfully")
+        print(f"✅ Full knowledge graph visualization created successfully")
         return fig
 
     def _group_nodes_for_visualization(self, nodes: List[VisualizationNode], 
@@ -518,15 +769,15 @@ class KnowledgeGraphPlotlyVisualizer:
             if hasattr(self.kg, 'embedding_model'):
                 return self.kg.embedding_model.encode([text])[0]
             else:
-                # Fallback: create model once and reuse
+                # Fallback: create model once and reuse (use CURRENT model, not old one!)
                 if not hasattr(self, '_fallback_model'):
                     from sentence_transformers import SentenceTransformer
-                    self._fallback_model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
+                    self._fallback_model = SentenceTransformer('mixedbread-ai/mxbai-embed-large-v1')
                 return self._fallback_model.encode([text])[0]
         except Exception as e:
             print(f"⚠️ Warning: Could not encode text '{text[:50]}...': {e}")
             # Return a dummy embedding if all else fails
-            return np.random.normal(0, 1, 768)  # Fixed dimension to 768
+            return np.random.normal(0, 1, 1024)  # Updated dimension to 1024 for mxbai
 
     def _get_sentence_embedding(self, sentence_id: str) -> Optional[np.ndarray]:
         """Get cached embedding for a sentence"""
@@ -541,6 +792,13 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _get_chunk_embedding(self, chunk_id: str) -> Optional[np.ndarray]:
         """Get cached embedding for a chunk"""
+        # Use knowledge graph's built-in method first (it has the embedding cache!)
+        if hasattr(self.kg, 'get_chunk_embedding'):
+            embedding = self.kg.get_chunk_embedding(chunk_id)
+            if embedding is not None:
+                return np.array(embedding)
+
+        # Fallback: try to get from chunk object attributes
         chunk_obj = self.kg.chunks.get(chunk_id)
         if chunk_obj:
             for attr in ['embedding', 'embeddings', 'vector']:
@@ -591,7 +849,7 @@ class KnowledgeGraphPlotlyVisualizer:
         if hasattr(result, 'query_similarities') and result.query_similarities:
             if node_id in result.query_similarities:
                 return result.query_similarities[node_id]
-            
+
             # For chunks, find max similarity among sentences
             if hasattr(self.kg, 'get_chunk_sentences'):
                 chunk_sentences = self.kg.get_chunk_sentences(node_id)
@@ -602,20 +860,92 @@ class KnowledgeGraphPlotlyVisualizer:
                         similarity = result.query_similarities.get(sentence_text, 0.0)
                         max_similarity = max(max_similarity, similarity)
                     return max_similarity
-        
+
         # Try metadata
         if hasattr(result, 'metadata') and result.metadata:
             extraction_metadata = result.metadata.get('extraction_metadata', {})
             if node_id in extraction_metadata:
                 return extraction_metadata[node_id].get('similarity_score', 0.5)
-        
+
         return 0.5  # Default
+
+    def _get_all_kg_chunks(self) -> Dict:
+        """Get all chunks from the knowledge graph"""
+        return self.kg.chunks
+
+    def _create_3d_plot_traversal_only(self, nodes: List[VisualizationNode], result: RetrievalResult,
+                                      query: str, method: str) -> go.Figure:
+        """Fallback method that creates visualization with only traversal nodes (old behavior)"""
+        # Get embeddings and reduce dimensionality
+        embeddings = np.array([node.embedding for node in nodes])
+        embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+
+        if method == "pca":
+            reducer = PCA(n_components=3, random_state=42)
+            coords_3d = reducer.fit_transform(embeddings)
+            explained_variance = reducer.explained_variance_ratio_
+            subtitle = f"PCA (explained variance: {explained_variance.sum():.1%})"
+        else:  # t-SNE
+            perplexity = min(30, len(embeddings) - 1)
+            perplexity = max(5, perplexity)
+            reducer = TSNE(n_components=3, random_state=42, perplexity=perplexity, n_iter=1000)
+            coords_3d = reducer.fit_transform(embeddings)
+            subtitle = "t-SNE"
+
+        fig = go.Figure()
+
+        # Group nodes by type and status
+        node_groups = self._group_nodes_for_visualization(nodes, coords_3d)
+
+        # Plot each group
+        for group_name, group_data in node_groups.items():
+            if not group_data['nodes']:
+                continue
+            self._add_node_group_trace(fig, group_name, group_data)
+
+        # Add traversal path lines
+        self._add_traversal_path_lines(fig, nodes, coords_3d, result)
+
+        # Update layout
+        fig.update_layout(
+            title=f"{result.algorithm_name} Semantic Traversal Visualization<br>" +
+                  f"Query: '{query[:80]}...'<br>" +
+                  f"Retrieved: {len(result.retrieved_content)} sentences | " +
+                  f"Traversed: {len(nodes)} nodes | " +
+                  f"Score: {result.final_score:.3f}<br>" +
+                  f"<i>{subtitle}</i>",
+            scene=dict(
+                xaxis_title=f"Dimension 1 ({method.upper()})",
+                yaxis_title=f"Dimension 2 ({method.upper()})",
+                zaxis_title=f"Dimension 3 ({method.upper()})",
+                camera=dict(eye=dict(x=1.5, y=1.5, z=1.5)),
+                bgcolor='rgba(0,0,0,0)',
+                xaxis=dict(showspikes=False, showgrid=True, gridcolor='lightgray'),
+                yaxis=dict(showspikes=False, showgrid=True, gridcolor='lightgray'),
+                zaxis=dict(showspikes=False, showgrid=True, gridcolor='lightgray')
+            ),
+            height=900,
+            font=dict(size=12),
+            legend=dict(
+                yanchor="top",
+                y=0.99,
+                xanchor="left",
+                x=0.01,
+                bgcolor='rgba(255,255,255,0.8)',
+                bordercolor='gray',
+                borderwidth=1
+            ),
+            margin=dict(l=0, r=0, t=150, b=0)
+        )
+
+        return fig
 
 
 def create_algorithm_visualization(result: RetrievalResult, query: str,
                                    knowledge_graph: KnowledgeGraph,
                                    method: str = "pca", max_nodes: int = 50,
-                                   show_all_visited: bool = True) -> go.Figure:
+                                   show_all_visited: bool = True,
+                                   edge_threshold: float = 0.75) -> go.Figure:
     """
     Main entry point for creating 3D visualizations of algorithm results.
     Matches the style and functionality of the perfect reference examples.
@@ -627,13 +957,15 @@ def create_algorithm_visualization(result: RetrievalResult, query: str,
         method: Dimensionality reduction method ('pca' or 'tsne')
         max_nodes: Maximum nodes to show for performance
         show_all_visited: Whether to show all visited nodes or just final results
+        edge_threshold: Similarity threshold for showing edges (0.0-1.0, higher = fewer edges)
+                       Default 0.75. Try 0.8-0.85 for less dense visualizations.
 
     Returns:
         Plotly Figure ready for display or saving
     """
     visualizer = KnowledgeGraphPlotlyVisualizer(knowledge_graph)
     return visualizer.visualize_retrieval_result(
-        result, query, method, max_nodes, show_all_visited
+        result, query, method, max_nodes, show_all_visited, edge_threshold
     )
 
 

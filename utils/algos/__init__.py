@@ -11,13 +11,19 @@ from .base_algorithm import BaseRetrievalAlgorithm, RetrievalResult
 from .basic_retrieval import BasicRetrievalAlgorithm
 from .query_traversal import QueryTraversalAlgorithm
 from .kg_traversal import KGTraversalAlgorithm
-from .triangulation_centroid import TriangulationCentroidAlgorithm
+from .triangulation_average import TriangulationAverageAlgorithm
+from .triangulation_geometric_3d import TriangulationGeometric3DAlgorithm
+from .triangulation_geometric_fulldim import TriangulationGeometricFullDimAlgorithm
+from .llm_guided_traversal import LLMGuidedTraversalAlgorithm
 
 __all__ = [
     "BaseRetrievalAlgorithm",
-    "RetrievalResult", 
+    "RetrievalResult",
     "BasicRetrievalAlgorithm",
     "QueryTraversalAlgorithm",
     "KGTraversalAlgorithm",
-    "TriangulationCentroidAlgorithm"
+    "TriangulationAverageAlgorithm",
+    "TriangulationGeometric3DAlgorithm",
+    "TriangulationGeometricFullDimAlgorithm",
+    "LLMGuidedTraversalAlgorithm"
 ]
