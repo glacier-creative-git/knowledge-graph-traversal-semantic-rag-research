@@ -68,6 +68,8 @@ To understand the knowledge graph structure, take a look at the following visual
 
 ![sample.png](docs/sample.png)
 
+*<h4 align="center">Figure A: Similarity matrix of the "Neuroscience" document on Wikipedia, with all possible 3-sentence pairwise cosine similarity comparisons visualized. Red indicates high similarity, blue, indicates low similarity.</h4>*
+
 A *similarity matrix* is a `numpy` array that contains all possible cosine similarity comparisons between the embeddings of every single chunk within a document. For this research, `mixedbread-ai/mxbai-embed-large-v1` was used, as it is a high 1024-dimensional model and has been used in other publications.
 
 This visualization shows the "Neuroscience" article on Wikipedia and it is very clear where larger, thematic groupings are throughout the document symmetrically along the diagonal, where every chunk is completely red due to being compared directly to itself. It is very apparent in the visualization that sentences 1 through 15 are very dissimilar to the rest of the document, as evidenced by the deep blue hue.
@@ -77,7 +79,12 @@ Similarity matrices are best indexed at the sentence level (one entry per senten
 To create our knowledge graph edges, we simply take our top intra-document cosine similarities (denoted `top_k`) and our top inter-document cosine simliarities (denoted `top_x`) as graph edges. This allows us to effectively "connect" sparse similariy matrices together.
 
 ![TRAVERAL_EXAMPLE_GLOBAL](docs/TRAVERAL_EXAMPLE_GLOBAL.png)
+*<h4 align="center">Figure B: Global raversal path an LLM took between the "Machine learning" and "Artificial intelligece" articles on Wikipedia. Traversal begins with "Machine learning," then at step 5, briefly hops to "Artificial intelligence" before hopping back.</h4>*
+
+
 ![TRAVERAL_EXAMPLE_SEQUENTIAL](docs/TRAVERAL_EXAMPLE_SEQUENTIAL.png)
+*<h4 align="center">Figure C: Sequential traversal path from Figure B. The LLM found sentences ~89 to ~94 to be highly relevant to the query, then jumped to "Artificial Intelligence" before immediately returning back to the previous document.</h4>*
+
 
 ### Adding Hierarchical Properties
 
@@ -89,13 +96,16 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 ![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
 
-*Below is a Plotly visualization generated of an LLM traversal through a knowledge graph using assets in this repository. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/Leviathanium/semantic-rag-chunking-research/releases/download/html/KG_PLOTLY.html)*
+*<h4 align="center">Figure D: Multi-layer knowledge graph architecture. At the document level, themes are extracted for their similarity and all chunk/sentence nodes inherit these themes. At the chunk level, we sparsely store intrachunk and interchunk cosine similarity connections between all documents. At the sentence level, each sentence is stored as a child to the parent chunk, and sentence are only compared to other sentences in the same chunk, and to the query, to keep the knowledge graph lightweight.</h4>*
 
 https://github.com/user-attachments/assets/eb2d7433-b884-4c9d-91bd-04b4a9169fc0
 
-*You can see how the LLM traverses the graph to retrieve relevant context to the query.*
+*<h4 align="center">Figure E: Plotly visualization generated of a knowledge graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/Leviathanium/semantic-rag-chunking-research/releases/download/html/KG_PLOTLY.html)</h4>*
 
 https://github.com/user-attachments/assets/b6f7539b-8fc6-4cb0-89aa-aac32dc02c0c
+
+*<h4 align="center">Figure F: Closer inspection of the LLM traversal path through the knowledge graph to retrieve relevant context to the query.</h4>*
+
 
 ---
 
@@ -345,7 +355,7 @@ context_strategies:
     enabled: true
     weight: 0.33
     max_sentences: 10
-    description: "Semantic coherence within single documents using similarity-based chunk traversal"
+    description: "Within-document exploratory context grouping."
 ```
 
 ---
@@ -360,7 +370,7 @@ context_strategies:
     weight: 0.33
     max_sentences: 10
     fallback_to_inter_document: true
-    description: "Cross-document theme overlap traversal with semantic fallback"
+    description: "Cross-document thematic context grouping."
 ```
 
 ---
@@ -376,7 +386,7 @@ context_strategies:
     num_reading_hops: 3
     num_paragraph_sentences: 5
     num_cross_doc_hops: 3
-    description: "Structured reading simulation: 3 docs × 5 sentences = 15-sentence narratives"
+    description: "Cross-document thematic reading simulation: 3 docs × 5 sentences = 15-sentence narratives"
 ```
 
 ---
@@ -457,3 +467,19 @@ This evaluation was significantly more robust. Immediately, `query_traversal` pr
 All three triangulation algorithms did excellently with precision, but fell behind in recall compared to the `basic_retrieval`. This implies that these algorithms were good at pulling highly relevant information, but may have struggled more with pulling *all the necessary context to answer the query*. With more fine-tuning, one might be able to pull better performance out of these three algorithms depending on use case. 
 
 `kg_traversal` functioned across both evaluations as a benchmark for the lower percentile for all metrics. This is due to its agnosticism towards the original query; it only traverses based on relevancy to the current chunk. This explains the significant underperformance in `20qa-themes-gpt4omini-reasoning`, particularly in faithfulness; it frequently retrieved slightly less factually true information (pulling opinions rather than facts) when prioritizing raw knowledge graph similarity. This is also visible in its precision and recall scores across both tests. 
+
+<h1 align="center">Conclusion</h1>
+
+Semantic RAG systems and knowledge graph architecture will continue to evolve as research in both areas emerges. This research is designed to be a step in that direction. There are still many areas of exploration that one may continue to go down, if they so choose. For example:
+
+- Implementing look-ahead to each algorithm to determine the best path several steps before traversing.
+- Utilizing a significantly larger knowledge graph, exceeding 500-1000 documents in size.
+- Fine-tuning traversal algorithms for deep research, utilizing LLM recursive deep research methods to explore topics in-depth through sub-agents
+
+These algorithms are available for use via an open source license: teams and organizations may fork this repository and continue to research best practices and implementations for these systems using all code in this repository. I ask that you cite this repository as the foundation for any continued research in the field.
+
+Sources:
+
+*KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models*
+
+*Microsoft GraphRAG*
