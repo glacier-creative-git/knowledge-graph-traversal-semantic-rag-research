@@ -66,9 +66,13 @@ First, assuming we have a series of documents, we must begin by chunking them. M
 
 To understand the knowledge graph structure, take a look at the following visualization of a *similarity matrix*:
 
+---
+
 ![sample.png](docs/sample.png)
 
 *<h4 align="center">Figure A: Similarity matrix of the "Neuroscience" document on Wikipedia, with all possible 3-sentence pairwise cosine similarity comparisons visualized. Red indicates high similarity, blue, indicates low similarity.</h4>*
+
+---
 
 A *similarity matrix* is a `numpy` array that contains all possible cosine similarity comparisons between the embeddings of every single chunk within a document. For this research, `mixedbread-ai/mxbai-embed-large-v1` was used, as it is a high 1024-dimensional model and has been used in other publications.
 
@@ -78,13 +82,17 @@ Similarity matrices are best indexed at the sentence level (one entry per senten
 
 To create our knowledge graph edges, we simply take our top intra-document cosine similarities (denoted `top_k`) and our top inter-document cosine simliarities (denoted `top_x`) as graph edges. This allows us to effectively "connect" sparse similariy matrices together.
 
+---
+
 ![TRAVERAL_EXAMPLE_GLOBAL](docs/TRAVERAL_EXAMPLE_GLOBAL.png)
 *<h4 align="center">Figure B: Global raversal path an LLM took between the "Machine learning" and "Artificial intelligece" articles on Wikipedia. Traversal begins with "Machine learning," then at step 5, briefly hops to "Artificial intelligence" before hopping back.</h4>*
 
+---
 
 ![TRAVERAL_EXAMPLE_SEQUENTIAL](docs/TRAVERAL_EXAMPLE_SEQUENTIAL.png)
 *<h4 align="center">Figure C: Sequential traversal path from Figure B. The LLM found sentences ~89 to ~94 to be highly relevant to the query, then jumped to "Artificial Intelligence" before immediately returning back to the previous document.</h4>*
 
+---
 
 ### Adding Hierarchical Properties
 
@@ -94,18 +102,23 @@ Finally, for hierarchical propertiees, `ragas` and other libraries like it use t
 
 The final result is a *lightweight knowledge graph* that is designed to be traversed. 
 
+---
+
 ![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
 
 *<h4 align="center">Figure D: Multi-layer knowledge graph architecture. At the document level, themes are extracted for their similarity and all chunk/sentence nodes inherit these themes. At the chunk level, we sparsely store intrachunk and interchunk cosine similarity connections between all documents. At the sentence level, each sentence is stored as a child to the parent chunk, and sentence are only compared to other sentences in the same chunk, and to the query, to keep the knowledge graph lightweight.</h4>*
+
+---
 
 https://github.com/user-attachments/assets/eb2d7433-b884-4c9d-91bd-04b4a9169fc0
 
 *<h4 align="center">Figure E: Plotly visualization generated of a knowledge graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/Leviathanium/semantic-rag-chunking-research/releases/download/html/KG_PLOTLY.html)</h4>*
 
+---
+
 https://github.com/user-attachments/assets/b6f7539b-8fc6-4cb0-89aa-aac32dc02c0c
 
 *<h4 align="center">Figure F: Closer inspection of the LLM traversal path through the knowledge graph to retrieve relevant context to the query.</h4>*
-
 
 ---
 
