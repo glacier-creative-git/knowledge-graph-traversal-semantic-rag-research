@@ -145,7 +145,7 @@ There are **seven** total algorithms in this repository that can be used for ret
 7. `llm-guided-traversal`
 
 ---
-## 1. `basic_retrieval`
+### 1. `basic_retrieval`
 
 *Basic semantic RAG algorithm. Contains no traversal. Used as a control.*
 
@@ -165,7 +165,7 @@ $$\text{Stop when: } |S| \geq \text{limit} \text{ or } \big(|S| \geq 5 \land \ma
 
 ---
 
-## 2. `query_traversal`
+#### 2. `query_traversal`
 
 *Query-guided graph traversal that always prioritizes similarity to the original query.*
 
@@ -191,7 +191,7 @@ $$\max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \max_{c \in C
 
 ---
 
-## 3. `kg_traversal`
+###### 3. `kg_traversal`
 
 *Chunk-centric graph traversal that follows local similarity paths (not query similarity), with a focus on greater graph exploration.*
 
