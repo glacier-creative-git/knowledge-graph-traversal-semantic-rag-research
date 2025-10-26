@@ -165,7 +165,7 @@ $$\text{Stop when: } |S| \geq \text{limit} \text{ or } \big(|S| \geq 5 \land \ma
 
 ---
 
-#### 2. `query_traversal`
+### 2. `query_traversal`
 
 *Query-guided graph traversal that always prioritizes similarity to the original query.*
 
@@ -191,7 +191,7 @@ $$\max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \max_{c \in C
 
 ---
 
-###### 3. `kg_traversal`
+### 3. `kg_traversal`
 
 *Chunk-centric graph traversal that follows local similarity paths (not query similarity), with a focus on greater graph exploration.*
 
@@ -215,7 +215,7 @@ $$\text{sim}(\vec{c}_t, \vec{c}_{t+1}) \leq \text{sim}(\vec{c}_{t-1}, \vec{c}_t)
 
 ---
 
-## 4. `triangulation_average`
+### 4. `triangulation_average`
 
 *Averages cosine similarity scores between the query, current chunk, and prospective chunk/sentence nodes at each step. Creates a balanced averaged traversal that considers both the query and prospective chunks.* When a sentence belongs to a different chunk, sentence-to-chunk similarity is approximated from cached scores so the averaged triangle score stays comparable.
 
@@ -239,7 +239,7 @@ $$\max_{s \in S} \text{avg}(\vec{q}, \vec{c}_t, \vec{s}) > \max_{c \in C} \text{
 
 ---
 
-## 5. `triangulation_geometric_3d`
+### 5. `triangulation_geometric_3d`
 
 *Geometric triangulation of prospective chunk centroids using PCA-reduced 3D embeddings.*
 
@@ -259,7 +259,7 @@ $$n_{t+1} = \arg\min_{n \in \text{neighbors}(c_t)} \|\vec{\text{centroid}}(\vec{
 
 ---
 
-## 6. `triangulation_fulldim`
+### 6. `triangulation_fulldim`
 
 Geometric triangulation in *full* embedding space.
 
@@ -281,7 +281,7 @@ $$\text{Edge lengths: } d(\vec{q}, \vec{c}) = \|\vec{q} - \vec{c}\|_2$$
 
 ---
 
-## 7. `llm-guided-traversal`
+### 7. `llm-guided-traversal`
 
 Modified version of `query_traversal` but uses a lightweight LLM instead. Trades speed and cost for accuracy.
 
