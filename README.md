@@ -151,23 +151,19 @@ There are **seven** total algorithms in this repository that can be used for ret
 
 ![BASIC RETRIEVAL](docs/BASIC_RETRIEVAL.png)
 
-
 First, embed the user's query.
 
-
 $$\vec{q} = \text{embed}(\text{query})$$
-
 
 Lookup the most semantically similar chunks in the knowledge graph directly based on cosine similarity.
 
 $$\text{sim}(\vec{q}, \vec{c}_i) = \frac{\vec{q} \cdot \vec{c}_i}{\|\vec{q}\| \|\vec{c}_i\|}$$
 
-
 Continue selecting the cached top chunks until `max_sentences`, stopping early once individual sentence quality beats the next chunk option (after at least five sentences are gathered).
 
 $$\text{Stop when: } |S| \geq \text{limit} \text{ or } \big(|S| \geq 5 \land \max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \text{sim}(\vec{q}, \vec{c}_{\text{next}})\big)$$
 
-
+---
 
 ## 2. `query_traversal`
 
@@ -193,6 +189,8 @@ Stop when `max_sentences` reached or, once at least eight sentences have been co
 
 $$\max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \max_{c \in C_{\text{available}}} \text{sim}(\vec{q}, \vec{c}) \implies \text{stop}$$
 
+---
+
 ## 3. `kg_traversal`
 
 *Chunk-centric graph traversal that follows local similarity paths (not query similarity), with a focus on greater graph exploration.*
@@ -214,6 +212,8 @@ $$c \notin C_{\text{candidates}} \text{ if } \text{sentences}(c) \cap S_{\text{e
 Stop when next chunk similarity ≤ previous hop similarity (exploration-potential early stopping), or at `max_sentences`.
 
 $$\text{sim}(\vec{c}_t, \vec{c}_{t+1}) \leq \text{sim}(\vec{c}_{t-1}, \vec{c}_t) \implies \text{stop}$$
+
+---
 
 ## 4. `triangulation_average`
 
@@ -237,6 +237,8 @@ When a sentence belongs to a different chunk, sentence-to-chunk similarity is ap
 
 $$\max_{s \in S} \text{avg}(\vec{q}, \vec{c}_t, \vec{s}) > \max_{c \in C} \text{avg}(\vec{q}, \vec{c}_t, \vec{c})$$
 
+---
+
 ## 5. `triangulation_geometric_3d`
 
 *Geometric triangulation of prospective chunk centroids using PCA-reduced 3D embeddings.*
@@ -254,6 +256,8 @@ $$\vec{\text{centroid}} = \frac{\vec{q}_{3D} + \vec{c}_{t,3D} + \vec{n}_{3D}}{3}
 Traverse to the node with its centroid closest to query (minimal Euclidean distance).
 
 $$n_{t+1} = \arg\min_{n \in \text{neighbors}(c_t)} \|\vec{\text{centroid}}(\vec{q}, \vec{c}_t, \vec{n}) - \vec{q}_{3D}\|_2$$
+
+---
 
 ## 6. `triangulation_fulldim`
 
@@ -274,6 +278,8 @@ $$n_{t+1} = \arg\min_{n \in \text{neighbors}(c_t)} \|\vec{\text{centroid}}(\vec{
 Most mathematically rigorous approach, preserves all embedding information.
 
 $$\text{Edge lengths: } d(\vec{q}, \vec{c}) = \|\vec{q} - \vec{c}\|_2$$
+
+---
 
 ## 7. `llm-guided-traversal`
 
