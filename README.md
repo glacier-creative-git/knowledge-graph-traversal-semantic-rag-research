@@ -31,7 +31,7 @@ pip install -r requirements.txt
 jupyter notebook chunking_research_demonstration.ipynb
 ```
 
-Additionally, if you are interested in running the full pipeline, you may do so. First, set your environment variables in the `.env` and `.env.local`.
+Additionally, if you are interested in running the full pipeline, you may do so. First, set your environment variables in the `.env` file.
 
 ```commandline
 # OpenAI Configuration
@@ -50,7 +50,7 @@ OPENROUTER_API_KEY=openrouter-api-key
 CONFIDENT_AI_API_KEY=deepeval-api-key
 ```
 
-You'll need to set up an account with DeepEval to get your `CONFIDENT_AI_API_KEY`. You'll also need to get a dataset added through the dashboard manually if this is your first time using DeepEval. It is *strongly recommended* you use `1q-intradoc-reasoning-multicontext.csv` located in the `datasets` directory for your convenience.
+You'll need to set up an account with DeepEval to get your `CONFIDENT_AI_API_KEY`. You'll also need to get a dataset added through the dashboard manually if this is your first time using DeepEval. It is *strongly recommended* you use `1qa-intradoc-reasoning-multicontext.csv` located in the `datasets` directory for your convenience.
 
 Then take a look at the `config.yaml` which holds the configuration settings of the entire repository. Upon publication, it will be configured to test *all seven algorithms* on a single DeepEval golden. To do this, run:
 
@@ -126,14 +126,14 @@ https://github.com/user-attachments/assets/b6f7539b-8fc6-4cb0-89aa-aac32dc02c0c
 
 <h1 align="center">Algorithms</h1>
 
-With the knowledge graph established, we can begin exploring traversal methods. After embedding a user query, instead of attempting mass retrieval via cosine similarity matching like traditional RAG systems, we want to find a *single chunk* that we can "anchor" to. This "anchor" chunk is, in all algorithms, the most similar chunk to the query by cosine similarity. In other words, instead of retrieving lots of chunks via matching and then using a reranking model, we will identify *a single chunk* to anchor to, then begin traversal. Interestingly, in a related paper: *[KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models](https://arxiv.org/abs/2412.05547)*, these researchers use the term "seed" chunk rather than "anchor."
+With the knowledge graph established, we can begin exploring traversal methods. After embedding a user query, instead of attempting mass retrieval via cosine similarity matching like traditional RAG systems, we want to find a *single chunk* that we can "anchor" to. This "anchor" chunk is, in all algorithms, the most similar chunk to the query by cosine similarity. In other words, instead of retrieving lots of chunks via matching and then using a reranking model, we will identify *a single chunk* to anchor to, then begin traversal. Interestingly, in a related paper: *[KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models](https://arxiv.org/abs/2412.05547)*, these researchers identified the same problem, and used the terminology "seed" chunk rather than "anchor" in their work.
 
 Once we've identified our anchor chunk, we need an algorithmic approach to retrieving the most accurate and relevant information to user's query. Here are the most important constraints for our algorithms:
 
 1. During traversal, we need to look at all possible candidate chunks to traverse to in our sparse knowledge graph. Then decide which to traverse to based on a chosen measurement of cosine similarity. This decision should come a particular objective. The objectives that we will explore include direct query similarity, high knowledge graph similarity to candidiate chunks, and weighted average between prospective chunks.
 2. When choosing which chunk candidate to traverse to and extract sentences from, we can assume that the prospective chunk candidates are already highly connected. This means that as long as we choose to extract the *most similar and/or relevant chunk at each step*, we will then have the opportunity to choose a prospective chunk that might have only ranked second or third at the previous step. It is very unlikely that we will outright ignore or outright reject relevant information so long as we continuously prioritize the most relevant chunk at each step, save for algorithmic fine-tuning.
 3. We need to determine when our algorithms should *stop traversing*. This is crucial, otherwise we'll extract way too much information, reducing relevancy and conciseness. For many of the algorithms in this research (except for LLM guided traversal), the `max_sentences` is set to a fixed value between 10 and 15. This is to match the synthetic dataset context grouping algorithms, which group between 10 and 15 sentences to generate synthetic questions from for benchmarking (more on that in *Benchmarking*). In cases where one might attempt deep research, this could be expanded upon significantly but for research purposes, we will keep this value static and reasonable.
-4. The information we extract must be *faithful*, meaning as factually accurate as possible. This is crucial, because semantically relevant content might be within the context of an opinionated section of text, like a quote from a scientist or philosopher. This means we need to separate out facts from opinions, and if we extract any opinions, they need to be properly contextualized *as opinions, not facts*. Our three-sentence sliding window chunking strategy helps with this significantly because groups of opinions will have a higher probability of semantically separating themselves from neighboring contexts. A quote from a scientist within the context of a particular subject will gently offset the similarity in the direction of the individual being quoted, which increases the probability that if we need to extract part of a quote, we will accurately extract the *entire quote* to preserve faithfulness.
+4. The information we extract must be *faithful*, meaning as factually accurate as possible. This is crucial, because semantically relevant content might be within the context of an opinionated section of text, like a quote from a scientist or philosopher. This means we need to separate out facts from opinions, and if we extract any opinions, they need to be properly contextualized *as opinions, not facts*. 
 5. The algorithms must be *fast*, save for the LLM guided traversal, as it could be argued that this algorithm's speed aligns with it's chain of thought. We do this by effectively "adding" the user's query directly into the knowledge graph, by doing vectorized calculations against all embeddings in the knowledge graph the same way one would do in a traditional RAG system. The core difference is maintaining the cached similarities during traversal so that we don't have to repeatedly recalculate similarities to the query as we traverse.
 
 There are **seven** total algorithms in this repository that can be used for retrieval. Each will be explained in its own section:
@@ -142,7 +142,7 @@ There are **seven** total algorithms in this repository that can be used for ret
 2. `query_traversal`
 3. `kg_traversal`
 4. `triangulation_average`
-5. `triangulation_geometric`
+5. `triangulation_geometric_3d`
 6. `triangulation_fulldim`
 7. `llm-guided-traversal`
 
@@ -265,7 +265,7 @@ $$n_{t+1} = \arg\min_{n \in \text{neighbors}(c_t)} \|\vec{\text{centroid}}(\vec{
 
 Geometric triangulation in *full* embedding space.
 
-Work directly with full embeddings instead of PCA 3D reduction.
+Similar to `triangulation_geometric_3d`, but work directly with full embeddings instead of PCA 3D reduction.
 
 $$\vec{q}, \vec{c}_i \in \mathbb{R}^{d}\quad(\text{dimension auto-detected per knowledge graph, default }d=1024)$$
 

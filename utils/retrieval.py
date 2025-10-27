@@ -68,7 +68,7 @@ class RetrievalOrchestrator:
 
         self.logger.info(f"RetrievalOrchestrator initialized with {len(self.algorithms)} algorithms")
     
-    def retrieve(self, query: str, algorithm_name: str = "triangulation_centroid", 
+    def retrieve(self, query: str, algorithm_name: str = "triangulation_average", 
                  algorithm_params: Optional[Dict] = None) -> RetrievalResult:
         """
         Execute retrieval using specified algorithm.

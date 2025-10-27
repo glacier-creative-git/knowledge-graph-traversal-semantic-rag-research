@@ -322,7 +322,7 @@ deepeval:
 
   dataset:
     generation:
-      num_goldens: 50 # Number of goldens. A "golden" is a full question/answer/context entry in the dataset. Recommend to start with 1 when doing this for the first time.
+      num_goldens: 1 # Number of goldens. A "golden" is a full question/answer/context entry in the dataset. Recommend to start with 1 when doing this for the first time.
       max_goldens_per_context: 1 # Default 1, recommend keeping this default
       include_expected_output: true # IMPORTANT: Ensures that there is an "expected_output" answer saved in the golden, so that the critic model can compare the retrieved answer to the "expected_output."
 

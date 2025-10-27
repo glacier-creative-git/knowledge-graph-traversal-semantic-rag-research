@@ -765,9 +765,9 @@ def main():
             for i, query in enumerate(test_queries[:2], 1):  # Test first 2 fallback queries
                 logger.info(f"\n--- Fallback Query {i}: '{query}' ---")
                 try:
-                    # Test just the triangulation centroid algorithm on other queries
-                    result = orchestrator.retrieve(query, "triangulation_centroid")
-                    logger.info(f"✅ TriangulationCentroid: {len(result.retrieved_content)} sentences, "
+                    # Test just the full-dimension triangulation algorithm on other queries
+                    result = orchestrator.retrieve(query, "triangulation_geometric_fulldim")
+                    logger.info(f"✅ TriangulationGeometricFullDim: {len(result.retrieved_content)} sentences, "
                                 f"{result.total_hops} hops, {result.processing_time:.3f}s")
                 except Exception as e:
                     logger.error(f"❌ Failed on fallback query {i}: {str(e)}")
@@ -777,9 +777,9 @@ def main():
             for i, query in enumerate(test_queries[1:], 2):  # Skip first query (already used)
                 logger.info(f"\n--- Query {i}: '{query}' ---")
                 try:
-                    # Test just the triangulation centroid algorithm on other queries
-                    result = orchestrator.retrieve(query, "triangulation_centroid")
-                    logger.info(f"✅ TriangulationCentroid: {len(result.retrieved_content)} sentences, "
+                    # Test just the full-dimension triangulation algorithm on other queries
+                    result = orchestrator.retrieve(query, "triangulation_geometric_fulldim")
+                    logger.info(f"✅ TriangulationGeometricFullDim: {len(result.retrieved_content)} sentences, "
                                 f"{result.total_hops} hops, {result.processing_time:.3f}s")
                 except Exception as e:
                     logger.error(f"❌ Failed on query {i}: {str(e)}")

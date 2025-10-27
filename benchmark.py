@@ -20,7 +20,7 @@ Key Features:
 
 Usage:
     python benchmark.py                                    # Full pipeline with all algorithms
-    python benchmark.py --algorithm triangulation_centroid # Test specific algorithm
+    python benchmark.py --algorithm triangulation_geometric_fulldim # Test specific algorithm
     python benchmark.py --dataset-only                    # Generate dataset only
     python benchmark.py --enable-visualizations           # Force enable traversal visualizations
     python benchmark.py --disable-visualizations          # Force disable visualizations
@@ -103,7 +103,7 @@ def parse_arguments() -> argparse.Namespace:
         epilog="""
 Examples:
     python benchmark.py                                     # Full pipeline with all algorithms
-    python benchmark.py --algorithm triangulation_centroid # Test specific algorithm
+    python benchmark.py --algorithm triangulation_geometric_fulldim # Test specific algorithm
     python benchmark.py --dataset-only                     # Generate dataset only  
     python benchmark.py --force-rebuild-all                # Force rebuild everything
     python benchmark.py --verbose                          # Enable debug logging
@@ -115,7 +115,15 @@ Examples:
     parser.add_argument(
         '--algorithm',
         type=str,
-        choices=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
+        choices=[
+            'basic_retrieval',
+            'query_traversal',
+            'kg_traversal',
+            'triangulation_average',
+            'triangulation_geometric_3d',
+            'triangulation_geometric_fulldim',
+            'llm_guided_traversal'
+        ],
         help='Specific algorithm to benchmark (default: evaluate all algorithms)'
     )
     
@@ -330,7 +338,15 @@ Examples:
     parser.add_argument(
         '--test-algorithms',
         nargs='*',
-        choices=['basic_retrieval', 'query_traversal', 'kg_traversal', 'triangulation_centroid'],
+        choices=[
+            'basic_retrieval',
+            'query_traversal',
+            'kg_traversal',
+            'triangulation_average',
+            'triangulation_geometric_3d',
+            'triangulation_geometric_fulldim',
+            'llm_guided_traversal'
+        ],
         help='Specify which algorithms to test (space-separated list, default: all)'
     )
 

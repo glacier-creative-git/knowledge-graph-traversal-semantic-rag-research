@@ -8,7 +8,7 @@ Creates actual triangles with Query, Current, and Prospective chunks as vertices
 in 3D Euclidean space, calculates geometric centroid, and measures Euclidean
 distance to query point.
 
-This differs from triangulation_centroid.py which averages scalar similarities.
+This improves upon the legacy centroid variant that averaged scalar similarities.
 Here we work with actual 3D coordinates and geometric centroids.
 """
 
