@@ -10,3 +10,6 @@
 /benchmark_results/
 /temp_data/
 /problems/
+__pycache__/
+.DS_Store
+.env.local
