@@ -24,7 +24,7 @@ To run the notebook, first ensure you have Python 3.12 and `ollama` installed, t
 
 ```commandline
 git clone https://github.com/glacier-creative-git/knowledge-graph-traversal-semantic-rag-research
-cd semantic-rag-chunking-research
+cd knowledge-graph-traversal-semantic-rag-research
 python3.12 -m venv .venv 
 source .venv/bin/activate
 pip install -r requirements.txt
