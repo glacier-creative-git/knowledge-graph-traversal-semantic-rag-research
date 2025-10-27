@@ -23,12 +23,12 @@ This `README.md` contains a concise publication of the research discovered in th
 To run the notebook, first ensure you have Python 3.12 and `ollama` installed, then run:
 
 ```commandline
-git clone https://github.com/Leviathanium/semantic-rag-chunking-research
+git clone https://github.com/glacier-creative-git/knowledge-graph-traversal-semantic-rag-research
 cd semantic-rag-chunking-research
 python3.12 -m venv .venv 
 source .venv/bin/activate
 pip install -r requirements.txt
-jupyter notebook chunking_research_demonstration.ipynb
+jupyter notebook research_demonstration.ipynb
 ```
 
 Additionally, if you are interested in running the full pipeline, you may do so. First, set your environment variables in the `.env` file.
@@ -501,7 +501,7 @@ These algorithms are available for use via MIT license: teams and organizations 
 
   ```bibtext
   Eric Lester. (2025). Novel Knowledge Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems.
-  https://github.com/glacier-creative-git/knowledge-graph-traversal-research
+  https://github.com/glacier-creative-git/knowledge-graph-traversal-semantic-rag-research
   ```
 
 ---
