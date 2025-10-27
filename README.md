@@ -501,7 +501,7 @@ These algorithms are available for use via MIT license: teams and organizations 
 
   ```bibtext
   Eric Lester. (2025). Novel Knowledge Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems.
-  https://github.com/Leviathanium/semantic-rag-chunking-research
+  https://github.com/glacier-creative-git/knowledge-graph-traversal-research
   ```
 
 ---
