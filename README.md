@@ -112,13 +112,13 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 ---
 
-https://github.com/user-attachments/assets/eb2d7433-b884-4c9d-91bd-04b4a9169fc0
+
 
 *<h4 align="center">Figure E: Plotly visualization generated of a knowledge graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/Leviathanium/semantic-rag-chunking-research/releases/download/html/KG_PLOTLY.html)</h4>*
 
 ---
 
-https://github.com/user-attachments/assets/b6f7539b-8fc6-4cb0-89aa-aac32dc02c0c
+
 
 *<h4 align="center">Figure F: Closer inspection of the LLM traversal path through the knowledge graph to retrieve relevant context to the query.</h4>*
 
