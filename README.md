@@ -114,7 +114,7 @@ The final result is a *lightweight knowledge graph* that is designed to be trave
 
 https://github.com/user-attachments/assets/79fae9eb-9a0a-4633-8d65-2c9e9699305f
 
-*<h4 align="center">Figure E: Plotly visualization generated of a knowledge graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/Leviathanium/semantic-rag-chunking-research/releases/download/html/KG_PLOTLY.html)</h4>*
+*<h4 align="center">Figure E: Plotly visualization generated of a knowledge graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/glacier-creative-git/knowledge-graph-traversal-research/releases/download/html/KG_PLOTLY.html)</h4>*
 
 ---
 
