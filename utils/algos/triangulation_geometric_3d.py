@@ -38,12 +38,12 @@ class GeometricTriangleMetrics3D:
 class TriangulationGeometric3DAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm: TRUE geometric triangulation in 3D space via PCA."""
 
-    def __init__(self, knowledge_graph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float], logger=None,
                  shared_embedding_model=None,
                  shared_pca_reducer=None, shared_pca_coords_cache=None,
                  shared_pca_explained_variance=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
+        super().__init__(semantic_similarity_graph, config, query_similarity_cache, logger, shared_embedding_model)
 
         # PCA components - use shared resources if provided (memory optimization)
         # This allows reusing the same PCA projection across multiple retrievals
@@ -62,7 +62,7 @@ class TriangulationGeometric3DAlgorithm(BaseRetrievalAlgorithm):
     
     def _initialize_pca(self, query_embedding: np.ndarray, anchor_chunk: str):
         """
-        Initialize PCA by fitting on all available embeddings from the knowledge graph.
+        Initialize PCA by fitting on all available embeddings from the semantic similarity graph.
         This is done once at the start of retrieval for consistency.
         """
         if self.pca_reducer is not None:
@@ -71,20 +71,20 @@ class TriangulationGeometric3DAlgorithm(BaseRetrievalAlgorithm):
         self.logger.info("🔄 Initializing PCA projection to 3D space...")
         start_time = time.time()
         
-        # Collect all embeddings from knowledge graph
+        # Collect all embeddings from semantic similarity graph
         all_embeddings = [query_embedding]
         node_ids = ["__query__"]
         
         # Add chunk embeddings
-        for chunk_id in self.kg.chunks.keys():
-            emb = self.kg.get_chunk_embedding(chunk_id)
+        for chunk_id in self.ssg.chunks.keys():
+            emb = self.ssg.get_chunk_embedding(chunk_id)
             if emb is not None:
                 all_embeddings.append(emb)
                 node_ids.append(chunk_id)
         
         # Add sentence embeddings
-        for sentence_id in self.kg.sentences.keys():
-            emb = self.kg.get_sentence_embedding(sentence_id)
+        for sentence_id in self.ssg.sentences.keys():
+            emb = self.ssg.get_sentence_embedding(sentence_id)
             if emb is not None:
                 all_embeddings.append(emb)
                 node_ids.append(sentence_id)
@@ -114,9 +114,9 @@ class TriangulationGeometric3DAlgorithm(BaseRetrievalAlgorithm):
         
         # Get embedding based on node type
         if node_type == "chunk":
-            embedding = self.kg.get_chunk_embedding(node_id)
+            embedding = self.ssg.get_chunk_embedding(node_id)
         elif node_type == "sentence":
-            embedding = self.kg.get_sentence_embedding(node_id)
+            embedding = self.ssg.get_sentence_embedding(node_id)
         else:
             return None
         

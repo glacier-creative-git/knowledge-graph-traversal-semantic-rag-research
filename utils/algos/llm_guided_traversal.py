@@ -20,10 +20,10 @@ from ..traversal import TraversalPath, GranularityLevel, ConnectionType
 class LLMGuidedTraversalAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm: LLM-guided graph traversal using reasoning instead of pure similarity."""
 
-    def __init__(self, knowledge_graph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float], logger=None,
                  shared_embedding_model=None, llm_client=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
+        super().__init__(semantic_similarity_graph, config, query_similarity_cache, logger, shared_embedding_model)
 
         # LLM-specific parameters
         self.top_k_candidates = self.traversal_config.get('llm_top_k_candidates', 5)
@@ -82,7 +82,7 @@ class LLMGuidedTraversalAlgorithm(BaseRetrievalAlgorithm):
             candidates_text += f"{i}. [{candidate['chunk_id']}] (similarity: {candidate['similarity']:.3f})\n"
             candidates_text += f"   Preview: {chunk_preview}\n\n"
 
-        prompt = f"""You are a knowledge graph traversal agent. Your goal: find relevant content to answer the query.
+        prompt = f"""You are a semantic similarity graph traversal agent. Your goal: find relevant content to answer the query.
 
 QUERY: {query}
 
@@ -346,7 +346,7 @@ Your response:"""
             List of candidate dictionaries with chunk_id, similarity, and preview
         """
         # Get connected chunks
-        chunk_obj = self.kg.chunks.get(current_chunk)
+        chunk_obj = self.ssg.chunks.get(current_chunk)
         if not chunk_obj:
             return []
 
@@ -377,7 +377,7 @@ Your response:"""
 
     def _get_chunk_text(self, chunk_id: str) -> str:
         """Get the text content of a chunk."""
-        chunk_obj = self.kg.chunks.get(chunk_id)
+        chunk_obj = self.ssg.chunks.get(chunk_id)
         if not chunk_obj:
             return ""
 

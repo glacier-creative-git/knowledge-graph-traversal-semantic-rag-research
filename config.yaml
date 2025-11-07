@@ -105,8 +105,8 @@ similarities:
         enabled: true
         description: "Chunk to parent document summary similarity"
 
-# Knowledge Graph Assembly
-knowledge_graph:
+# Semantic Similarity Graph Assembly
+semantic_similarity_graph:
   use_cached: true
   architecture: "multi_granularity_three_tier"
 
@@ -166,7 +166,7 @@ execution:
 
 # Wikipedia Data Source
 
-# This section loads the utils.wiki.WikiLoader() and pulls articles for a knowledge graph. Absolutely crucial configuration for knowledge graph size.
+# This section loads the utils.wiki.WikiLoader() and pulls articles for a semantic similarity graph. Absolutely crucial configuration for semantic similarity graph size.
 wikipedia:
   use_cached_articles: true
   topics: # Used as "seed" topics. From here, based on articles_per_topic, WikiLoader() will pull as many articles as you ask it, for each "topic" listed.
@@ -241,7 +241,7 @@ visualization:
   traversal_paths: true
   chunk_boundaries: true
   question_distribution: true
-  knowledge_graph_structure: true
+  semantic_similarity_graph_structure: true
 
   # Benchmark visualizations
   context_grouping:
@@ -303,9 +303,9 @@ deepeval:
   project: # For deepeval dashboard
     name: "semantic-rag-chunking-research"
     id: "cmfpz4kpj03i62ad3v3a098kv"
-    description: "Benchmarking semantic RAG chunking strategies using knowledge graph traversal algorithms"
+    description: "Benchmarking semantic RAG chunking strategies using semantic similarity graph traversal algorithms"
     version: "1.0.0"
-    tags: ["rag", "knowledge-graph", "semantic-chunking", "retrieval"]
+    tags: ["rag", "semantic-similarity-graph", "semantic-chunking", "retrieval"]
 
   # ===================== #
   # DATASET CONFIGURATION #
@@ -317,7 +317,7 @@ deepeval:
   #
   # Currently, there are THREE DATASETS located in the "datasets" directory. It's strongly recommended you take a look
   # at these first and upload the 1q dataset to DeepEval to run inferences on before generating your own dataset. If
-  # you use these pre-generated datasets, don't forget to build the knowledge graph first using the current knowledge
+  # you use these pre-generated datasets, don't forget to build the semantic similarity graph first using the current knowledge
   # graph Wiki config!
 
   dataset:
@@ -380,7 +380,7 @@ deepeval:
       test_algorithms:
         - "basic_retrieval"
         - "query_traversal"
-        - "kg_traversal"
+        - "ssg_traversal"
         - "triangulation_average"
         - "triangulation_geometric_3d"
         - "triangulation_geometric_fulldim"
@@ -394,7 +394,7 @@ deepeval:
           max_hops: 5
           similarity_threshold: 0.3
           min_sentence_threshold: 10
-        kg_traversal:
+        ssg_traversal:
           max_hops: 5
           similarity_threshold: 0.3
           min_sentence_threshold: 10

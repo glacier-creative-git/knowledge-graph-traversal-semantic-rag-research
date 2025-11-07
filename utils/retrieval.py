@@ -16,7 +16,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from .algos import (
     BasicRetrievalAlgorithm,
     QueryTraversalAlgorithm,
-    KGTraversalAlgorithm,
+    SSGTraversalAlgorithm,
     TriangulationAverageAlgorithm,
     TriangulationGeometric3DAlgorithm,
     TriangulationGeometricFullDimAlgorithm,
@@ -24,20 +24,20 @@ from .algos import (
     RetrievalResult
 )
 from .traversal import TraversalPath, GranularityLevel
-from .knowledge_graph import KnowledgeGraph
+from .semantic_similarity_graph import SemanticSimilarityGraph
 from .models import EmbeddingModel
 
 
 class RetrievalOrchestrator:
     """
-    Multi-algorithm retrieval orchestrator for semantic knowledge graph traversal.
+    Multi-algorithm retrieval orchestrator for semantic similarity graph traversal.
     Provides unified interface to all retrieval algorithms and enables benchmarking.
     """
 
-    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph: SemanticSimilarityGraph, config: Dict[str, Any],
                  logger: Optional[logging.Logger] = None):
-        """Initialize orchestrator with knowledge graph and configuration."""
-        self.kg = knowledge_graph
+        """Initialize orchestrator with semantic similarity graph and configuration."""
+        self.ssg = semantic_similarity_graph
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         self.traversal_config = config['retrieval']['semantic_traversal']
@@ -59,7 +59,7 @@ class RetrievalOrchestrator:
         self.algorithms = {
             "basic_retrieval": BasicRetrievalAlgorithm,
             "query_traversal": QueryTraversalAlgorithm,
-            "kg_traversal": KGTraversalAlgorithm,
+            "ssg_traversal": SSGTraversalAlgorithm,
             "triangulation_average": TriangulationAverageAlgorithm,
             "triangulation_geometric_3d": TriangulationGeometric3DAlgorithm,
             "triangulation_geometric_fulldim": TriangulationGeometricFullDimAlgorithm,
@@ -76,7 +76,7 @@ class RetrievalOrchestrator:
         Args:
             query: Search query string
             algorithm_name: Algorithm to use ("basic_retrieval", "query_traversal",
-                          "kg_traversal", "triangulation_average",
+                          "ssg_traversal", "triangulation_average",
                           "triangulation_geometric_3d", "triangulation_geometric_fulldim")
             algorithm_params: Optional algorithm-specific parameters
             
@@ -105,7 +105,7 @@ class RetrievalOrchestrator:
         # Pass shared resources to algorithms for memory efficiency
         if algorithm_name == "triangulation_geometric_3d":
             algorithm = algorithm_class(
-                knowledge_graph=self.kg,
+                semantic_similarity_graph=self.ssg,
                 config=self.config,
                 query_similarity_cache=self.query_similarity_cache,
                 logger=self.logger,
@@ -120,7 +120,7 @@ class RetrievalOrchestrator:
             self.shared_pca_explained_variance = algorithm.pca_explained_variance
         else:
             algorithm = algorithm_class(
-                knowledge_graph=self.kg,
+                semantic_similarity_graph=self.ssg,
                 config=self.config,
                 query_similarity_cache=self.query_similarity_cache,
                 logger=self.logger,
@@ -177,7 +177,7 @@ class RetrievalOrchestrator:
                 # Pass shared resources to algorithms for memory efficiency
                 if algorithm_name == "triangulation_geometric_3d":
                     algorithm = algorithm_class(
-                        knowledge_graph=self.kg,
+                        semantic_similarity_graph=self.ssg,
                         config=self.config,
                         query_similarity_cache=self.query_similarity_cache,
                         logger=self.logger,
@@ -192,7 +192,7 @@ class RetrievalOrchestrator:
                     self.shared_pca_explained_variance = algorithm.pca_explained_variance
                 else:
                     algorithm = algorithm_class(
-                        knowledge_graph=self.kg,
+                        semantic_similarity_graph=self.ssg,
                         config=self.config,
                         query_similarity_cache=self.query_similarity_cache,
                         logger=self.logger,
@@ -227,9 +227,9 @@ class RetrievalOrchestrator:
         sentences_with_embeddings = 0
         
         # Compute similarities to all chunks
-        for chunk_id in self.kg.chunks.keys():
+        for chunk_id in self.ssg.chunks.keys():
             chunks_processed += 1
-            chunk_embedding = self.kg.get_chunk_embedding(chunk_id)
+            chunk_embedding = self.ssg.get_chunk_embedding(chunk_id)
             if chunk_embedding is not None:
                 chunks_with_embeddings += 1
                 similarity = cosine_similarity([query_embedding], [chunk_embedding])[0][0]
@@ -237,9 +237,9 @@ class RetrievalOrchestrator:
                 chunk_similarities.append((chunk_id, float(similarity)))
         
         # Compute similarities to all sentences
-        for sentence_id in self.kg.sentences.keys():
+        for sentence_id in self.ssg.sentences.keys():
             sentences_processed += 1
-            sentence_embedding = self.kg.get_sentence_embedding(sentence_id)
+            sentence_embedding = self.ssg.get_sentence_embedding(sentence_id)
             if sentence_embedding is not None:
                 sentences_with_embeddings += 1
                 similarity = cosine_similarity([query_embedding], [sentence_embedding])[0][0]
@@ -291,19 +291,19 @@ class RetrievalOrchestrator:
 
 
 # Factory function for easy initialization (backward compatibility)
-def create_retrieval_engine(knowledge_graph: KnowledgeGraph, config: Dict[str, Any], 
+def create_retrieval_engine(semantic_similarity_graph: SemanticSimilarityGraph, config: Dict[str, Any], 
                           logger: Optional[logging.Logger] = None) -> RetrievalOrchestrator:
     """Factory function to create a retrieval orchestrator."""
-    return RetrievalOrchestrator(knowledge_graph, config, logger)
+    return RetrievalOrchestrator(semantic_similarity_graph, config, logger)
 
 
 # Legacy class name for backward compatibility
 class HybridTraversalEngine:
     """Legacy class that redirects to RetrievalOrchestrator for backward compatibility."""
     
-    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any], 
+    def __init__(self, semantic_similarity_graph: SemanticSimilarityGraph, config: Dict[str, Any], 
                  logger: Optional[logging.Logger] = None):
-        self.orchestrator = RetrievalOrchestrator(knowledge_graph, config, logger)
+        self.orchestrator = RetrievalOrchestrator(semantic_similarity_graph, config, logger)
     
     def __getattr__(self, name):
         return getattr(self.orchestrator, name)

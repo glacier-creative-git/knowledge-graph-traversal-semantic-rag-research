@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Knowledge Graph Traversal 3D Visualizer with Plotly
+Semantic Similarity Graph Traversal 3D Visualizer with Plotly
 ==================================================
 
 Creates beautiful 3D visualizations of semantic graph traversal for all four algorithms.
@@ -21,7 +21,7 @@ import time
 
 from .algos.base_algorithm import RetrievalResult
 from .traversal import TraversalPath, GranularityLevel, ConnectionType
-from .knowledge_graph import KnowledgeGraph
+from .semantic_similarity_graph import SemanticSimilarityGraph
 
 
 @dataclass
@@ -39,11 +39,11 @@ class VisualizationNode:
     is_final_result: bool
 
 
-class KnowledgeGraphPlotlyVisualizer:
-    """Create 3D visualizations of knowledge graph traversal using Plotly"""
+class SemanticSimilarityGraphPlotlyVisualizer:
+    """Create 3D visualizations of semantic similarity graph traversal using Plotly"""
 
-    def __init__(self, knowledge_graph: KnowledgeGraph):
-        self.kg = knowledge_graph
+    def __init__(self, semantic_similarity_graph: SemanticSimilarityGraph):
+        self.ssg = semantic_similarity_graph
 
     def visualize_retrieval_result(self, result: RetrievalResult, query: str,
                                    method: str = "pca", max_nodes: int = 50,
@@ -55,7 +55,7 @@ class KnowledgeGraphPlotlyVisualizer:
         """
         print(f"🎨 Creating 3D visualization for {result.algorithm_name}")
 
-        # Extract visualization nodes from the result and knowledge graph
+        # Extract visualization nodes from the result and semantic similarity graph
         nodes = self._extract_visualization_nodes(result, query, show_all_visited)
         
         if len(nodes) < 2:
@@ -81,7 +81,7 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _extract_visualization_nodes(self, result: RetrievalResult, query: str, 
                                    show_all_visited: bool) -> List[VisualizationNode]:
-        """Extract all nodes for visualization from result and knowledge graph"""
+        """Extract all nodes for visualization from result and semantic similarity graph"""
         nodes = []
 
         # Add query as a special node (like reference examples)
@@ -129,14 +129,14 @@ class KnowledgeGraphPlotlyVisualizer:
         nodes = []
 
         for i, sentence_text in enumerate(result.retrieved_content):
-            # Try to find this sentence in the knowledge graph
+            # Try to find this sentence in the semantic similarity graph
             sentence_id = self._find_sentence_id(sentence_text)
             embedding = None
             document_id = "unknown"
 
             if sentence_id:
                 # Get sentence object and its embedding
-                sentence_obj = self.kg.sentences.get(sentence_id)
+                sentence_obj = self.ssg.sentences.get(sentence_id)
                 if sentence_obj:
                     embedding = self._get_sentence_embedding(sentence_id)
                     document_id = self._get_sentence_document(sentence_obj)
@@ -185,7 +185,7 @@ class KnowledgeGraphPlotlyVisualizer:
 
             if granularity == GranularityLevel.SENTENCE:
                 # This is a sentence node
-                sentence_obj = self.kg.sentences.get(node_id)
+                sentence_obj = self.ssg.sentences.get(node_id)
                 if sentence_obj:
                     embedding = self._get_sentence_embedding(node_id)
                     text = sentence_obj.sentence_text if hasattr(sentence_obj, 'sentence_text') else str(sentence_obj)
@@ -193,7 +193,7 @@ class KnowledgeGraphPlotlyVisualizer:
                     node_type = "sentence"
             else:
                 # This is a chunk node
-                chunk_obj = self.kg.chunks.get(node_id)
+                chunk_obj = self.ssg.chunks.get(node_id)
                 if chunk_obj:
                     embedding = self._get_chunk_embedding(node_id)
                     text = chunk_obj.chunk_text if hasattr(chunk_obj, 'chunk_text') else str(chunk_obj)
@@ -227,17 +227,17 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _create_3d_plot(self, nodes: List[VisualizationNode], result: RetrievalResult,
                         query: str, method: str, edge_threshold: float = 0.75) -> go.Figure:
-        """Create the 3D scatter plot showing full knowledge graph with traversal path highlighted"""
+        """Create the 3D scatter plot showing full semantic similarity graph with traversal path highlighted"""
 
         if len(nodes) < 2:
             print("❌ Not enough nodes for 3D visualization")
             return self._create_basic_plotly_visualization(result, query)
 
-        # ENHANCEMENT: Load ALL chunks from knowledge graph for full context
-        print(f"🌐 Loading full knowledge graph for context...")
-        all_kg_chunks = self._get_all_kg_chunks()
+        # ENHANCEMENT: Load ALL chunks from semantic similarity graph for full context
+        print(f"🌐 Loading full semantic similarity graph for context...")
+        all_ssg_chunks = self._get_all_ssg_chunks()
 
-        # Get embeddings for ALL chunks in KG (+ query if present)
+        # Get embeddings for ALL chunks in SSG (+ query if present)
         all_embeddings = []
         all_chunk_ids = []
         all_chunk_docs = []
@@ -255,8 +255,8 @@ class KnowledgeGraphPlotlyVisualizer:
             query_in_graph = True
             print(f"   📍 Added query to graph")
 
-        # Add all KG chunks
-        for chunk_id, chunk_obj in all_kg_chunks.items():
+        # Add all SSG chunks
+        for chunk_id, chunk_obj in all_ssg_chunks.items():
             embedding = self._get_chunk_embedding(chunk_id)
             if embedding is not None:
                 # Ensure embedding is a 1D numpy array
@@ -271,10 +271,10 @@ class KnowledgeGraphPlotlyVisualizer:
                 all_chunk_texts.append(text[:100] + '...' if len(text) > 100 else text)
 
         if len(all_embeddings) < 2:
-            print("⚠️ Not enough chunks in knowledge graph, falling back to traversal-only view")
+            print("⚠️ Not enough chunks in semantic similarity graph, falling back to traversal-only view")
             return self._create_3d_plot_traversal_only(nodes, result, query, method)
 
-        print(f"   📊 Total chunks in KG: {len(all_embeddings)}")
+        print(f"   📊 Total chunks in SSG: {len(all_embeddings)}")
 
         # Debug: Check embedding types
         embedding_types = set(type(emb).__name__ for emb in all_embeddings if emb is not None)
@@ -361,7 +361,7 @@ class KnowledgeGraphPlotlyVisualizer:
         fig = go.Figure()
 
         # STEP 1: Add graph structure edges (thin black/gray lines at configurable similarity threshold)
-        print(f"🔗 Computing knowledge graph structure...")
+        print(f"🔗 Computing semantic similarity graph structure...")
         from sklearn.metrics.pairwise import cosine_similarity
         sim_matrix = cosine_similarity(embeddings_array)
 
@@ -391,14 +391,14 @@ class KnowledgeGraphPlotlyVisualizer:
                 name='Graph Structure'
             ))
 
-        # STEP 2: Add all KG nodes (colored by document, matching demo style)
+        # STEP 2: Add all SSG nodes (colored by document, matching demo style)
         unique_docs = list(set(all_chunk_docs))
         # Remove QUERY from background nodes (it will be added separately later)
         unique_docs = [doc for doc in unique_docs if doc != 'QUERY']
         colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan']
         doc_color_map = {doc: colors[i % len(colors)] for i, doc in enumerate(unique_docs)}
 
-        print(f"   📚 Documents in KG: {unique_docs}")
+        print(f"   📚 Documents in SSG: {unique_docs}")
 
         # Add nodes grouped by document (matching demo density/visibility)
         for doc in unique_docs:
@@ -524,9 +524,9 @@ class KnowledgeGraphPlotlyVisualizer:
 
         # Update layout
         fig.update_layout(
-            title=f"{result.algorithm_name} - Full Knowledge Graph with Traversal Path<br>" +
+            title=f"{result.algorithm_name} - Full Semantic Similarity Graph with Traversal Path<br>" +
                   f"Query: '{query[:80]}...'<br>" +
-                  f"KG: {len(all_embeddings)} chunks, {len(edge_pairs)} connections | " +
+                  f"SSG: {len(all_embeddings)} chunks, {len(edge_pairs)} connections | " +
                   f"Traversal: {len(traversal_indices)} steps | " +
                   f"Score: {result.final_score:.3f}<br>" +
                   f"<i>{subtitle}</i>",
@@ -551,7 +551,7 @@ class KnowledgeGraphPlotlyVisualizer:
             margin=dict(l=0, r=0, t=150, b=0)
         )
 
-        print(f"✅ Full knowledge graph visualization created successfully")
+        print(f"✅ Full semantic similarity graph visualization created successfully")
         return fig
 
     def _group_nodes_for_visualization(self, nodes: List[VisualizationNode], 
@@ -753,21 +753,21 @@ class KnowledgeGraphPlotlyVisualizer:
     # Utility methods for data extraction
     def _get_query_embedding(self, query: str) -> Optional[np.ndarray]:
         """Get embedding for the query using available methods"""
-        # Try to use the knowledge graph's encoding method if available
-        if hasattr(self.kg, 'encode_query'):
-            return self.kg.encode_query(query)
-        elif hasattr(self.kg, 'embedding_model'):
-            return self.kg.embedding_model.encode([query])[0]
+        # Try to use the semantic similarity graph's encoding method if available
+        if hasattr(self.ssg, 'encode_query'):
+            return self.ssg.encode_query(query)
+        elif hasattr(self.ssg, 'embedding_model'):
+            return self.ssg.embedding_model.encode([query])[0]
         else:
             # Fallback: use cached model to avoid repeated loading
             return self._encode_text(query)
 
     def _encode_text(self, text: str) -> np.ndarray:
-        """Fallback text encoding method using KG's model if available"""
+        """Fallback text encoding method using SSG's model if available"""
         try:
-            # Try to use the knowledge graph's existing model first
-            if hasattr(self.kg, 'embedding_model'):
-                return self.kg.embedding_model.encode([text])[0]
+            # Try to use the semantic similarity graph's existing model first
+            if hasattr(self.ssg, 'embedding_model'):
+                return self.ssg.embedding_model.encode([text])[0]
             else:
                 # Fallback: create model once and reuse (use CURRENT model, not old one!)
                 if not hasattr(self, '_fallback_model'):
@@ -781,7 +781,7 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _get_sentence_embedding(self, sentence_id: str) -> Optional[np.ndarray]:
         """Get cached embedding for a sentence"""
-        sentence_obj = self.kg.sentences.get(sentence_id)
+        sentence_obj = self.ssg.sentences.get(sentence_id)
         if sentence_obj:
             for attr in ['embedding', 'embeddings', 'vector']:
                 if hasattr(sentence_obj, attr):
@@ -792,14 +792,14 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _get_chunk_embedding(self, chunk_id: str) -> Optional[np.ndarray]:
         """Get cached embedding for a chunk"""
-        # Use knowledge graph's built-in method first (it has the embedding cache!)
-        if hasattr(self.kg, 'get_chunk_embedding'):
-            embedding = self.kg.get_chunk_embedding(chunk_id)
+        # Use semantic similarity graph's built-in method first (it has the embedding cache!)
+        if hasattr(self.ssg, 'get_chunk_embedding'):
+            embedding = self.ssg.get_chunk_embedding(chunk_id)
             if embedding is not None:
                 return np.array(embedding)
 
         # Fallback: try to get from chunk object attributes
-        chunk_obj = self.kg.chunks.get(chunk_id)
+        chunk_obj = self.ssg.chunks.get(chunk_id)
         if chunk_obj:
             for attr in ['embedding', 'embeddings', 'vector']:
                 if hasattr(chunk_obj, attr):
@@ -810,7 +810,7 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _find_sentence_id(self, sentence_text: str) -> Optional[str]:
         """Find sentence ID by text content"""
-        for sentence_id, sentence_obj in self.kg.sentences.items():
+        for sentence_id, sentence_obj in self.ssg.sentences.items():
             if hasattr(sentence_obj, 'sentence_text') and sentence_obj.sentence_text == sentence_text:
                 return sentence_id
         return None
@@ -826,7 +826,7 @@ class KnowledgeGraphPlotlyVisualizer:
 
     def _get_chunk_document(self, chunk_id: str) -> str:
         """Get document ID for a chunk"""
-        chunk_obj = self.kg.chunks.get(chunk_id)
+        chunk_obj = self.ssg.chunks.get(chunk_id)
         if chunk_obj:
             for attr in ['source_document', 'document_id', 'doc_id']:
                 if hasattr(chunk_obj, attr):
@@ -851,8 +851,8 @@ class KnowledgeGraphPlotlyVisualizer:
                 return result.query_similarities[node_id]
 
             # For chunks, find max similarity among sentences
-            if hasattr(self.kg, 'get_chunk_sentences'):
-                chunk_sentences = self.kg.get_chunk_sentences(node_id)
+            if hasattr(self.ssg, 'get_chunk_sentences'):
+                chunk_sentences = self.ssg.get_chunk_sentences(node_id)
                 if chunk_sentences:
                     max_similarity = 0.0
                     for sentence in chunk_sentences:
@@ -869,9 +869,9 @@ class KnowledgeGraphPlotlyVisualizer:
 
         return 0.5  # Default
 
-    def _get_all_kg_chunks(self) -> Dict:
-        """Get all chunks from the knowledge graph"""
-        return self.kg.chunks
+    def _get_all_ssg_chunks(self) -> Dict:
+        """Get all chunks from the semantic similarity graph"""
+        return self.ssg.chunks
 
     def _create_3d_plot_traversal_only(self, nodes: List[VisualizationNode], result: RetrievalResult,
                                       query: str, method: str) -> go.Figure:
@@ -942,7 +942,7 @@ class KnowledgeGraphPlotlyVisualizer:
 
 
 def create_algorithm_visualization(result: RetrievalResult, query: str,
-                                   knowledge_graph: KnowledgeGraph,
+                                   semantic_similarity_graph: SemanticSimilarityGraph,
                                    method: str = "pca", max_nodes: int = 50,
                                    show_all_visited: bool = True,
                                    edge_threshold: float = 0.75) -> go.Figure:
@@ -953,7 +953,7 @@ def create_algorithm_visualization(result: RetrievalResult, query: str,
     Args:
         result: RetrievalResult from any algorithm
         query: Original query string
-        knowledge_graph: The knowledge graph instance
+        semantic_similarity_graph: The semantic similarity graph instance
         method: Dimensionality reduction method ('pca' or 'tsne')
         max_nodes: Maximum nodes to show for performance
         show_all_visited: Whether to show all visited nodes or just final results
@@ -963,7 +963,7 @@ def create_algorithm_visualization(result: RetrievalResult, query: str,
     Returns:
         Plotly Figure ready for display or saving
     """
-    visualizer = KnowledgeGraphPlotlyVisualizer(knowledge_graph)
+    visualizer = SemanticSimilarityGraphPlotlyVisualizer(semantic_similarity_graph)
     return visualizer.visualize_retrieval_result(
         result, query, method, max_nodes, show_all_visited, edge_threshold
     )
@@ -981,7 +981,7 @@ def example_usage():
     print("fig = create_algorithm_visualization(")
     print("    result=result,")
     print("    query=query,")
-    print("    knowledge_graph=kg,")
+    print("    semantic_similarity_graph=ssg,")
     print("    method='pca',  # or 'tsne'")
     print("    max_nodes=50,")
     print("    show_all_visited=True")

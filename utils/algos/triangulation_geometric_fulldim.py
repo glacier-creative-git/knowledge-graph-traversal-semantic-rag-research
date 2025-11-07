@@ -32,12 +32,12 @@ class GeometricTriangleMetricsFullDim:
 class TriangulationGeometricFullDimAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm: TRUE geometric triangulation in full embedding space (no dimensionality reduction)."""
     
-    def __init__(self, knowledge_graph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float], logger=None,
                  shared_embedding_model=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
+        super().__init__(semantic_similarity_graph, config, query_similarity_cache, logger, shared_embedding_model)
         
-        # Auto-detect embedding dimension from knowledge graph
+        # Auto-detect embedding dimension from semantic similarity graph
         self.embedding_dimension = self._detect_embedding_dimension()
         
         self.logger.info(f"TriangulationGeometricFullDimAlgorithm initialized: max_hops={self.max_hops}, "
@@ -45,12 +45,12 @@ class TriangulationGeometricFullDimAlgorithm(BaseRetrievalAlgorithm):
     
     def _detect_embedding_dimension(self) -> int:
         """
-        Auto-detect embedding dimension from knowledge graph.
+        Auto-detect embedding dimension from semantic similarity graph.
         Samples a chunk embedding to determine actual dimension.
         """
         # Try to get a sample embedding from chunks
-        for chunk_id in list(self.kg.chunks.keys())[:5]:  # Check first 5 chunks
-            sample_embedding = self.kg.get_chunk_embedding(chunk_id)
+        for chunk_id in list(self.ssg.chunks.keys())[:5]:  # Check first 5 chunks
+            sample_embedding = self.ssg.get_chunk_embedding(chunk_id)
             if sample_embedding is not None:
                 detected_dim = len(sample_embedding)
                 self.logger.info(f"📐 Detected embedding dimension: {detected_dim}D")
@@ -65,9 +65,9 @@ class TriangulationGeometricFullDimAlgorithm(BaseRetrievalAlgorithm):
         Get full embedding for a node based on its type.
         """
         if node_type == "chunk":
-            return self.kg.get_chunk_embedding(node_id)
+            return self.ssg.get_chunk_embedding(node_id)
         elif node_type == "sentence":
-            return self.kg.get_sentence_embedding(node_id)
+            return self.ssg.get_sentence_embedding(node_id)
         else:
             return None
     

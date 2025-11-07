@@ -16,10 +16,10 @@ from ..traversal import TraversalPath, GranularityLevel
 class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm 1: Pure similarity-based RAG without traversal."""
     
-    def __init__(self, knowledge_graph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float], logger=None,
                  shared_embedding_model=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
+        super().__init__(semantic_similarity_graph, config, query_similarity_cache, logger, shared_embedding_model)
         
         # Algorithm-specific parameters
         self.top_k_chunks = self.traversal_config.get('top_k_chunks', 5)
@@ -45,7 +45,7 @@ class BasicRetrievalAlgorithm(BaseRetrievalAlgorithm):
         chunk_similarities = []
         chunks_with_cache = 0
         
-        for chunk_id in self.kg.chunks.keys():
+        for chunk_id in self.ssg.chunks.keys():
             if chunk_id in self.query_similarity_cache:
                 chunks_with_cache += 1
                 similarity = self.query_similarity_cache[chunk_id]

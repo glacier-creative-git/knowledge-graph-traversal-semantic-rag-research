@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from sklearn.metrics.pairwise import cosine_similarity
 
 from ..traversal import TraversalPath, GranularityLevel
-from ..knowledge_graph import KnowledgeGraph
+from ..semantic_similarity_graph import SemanticSimilarityGraph
 
 
 @dataclass
@@ -40,7 +40,7 @@ class RetrievalResult:
 class BaseRetrievalAlgorithm(ABC):
     """Abstract base class defining the interface for all retrieval algorithms."""
 
-    def __init__(self, knowledge_graph: KnowledgeGraph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph: SemanticSimilarityGraph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float],
                  logger: Optional[logging.Logger] = None,
                  shared_embedding_model=None):
@@ -48,13 +48,13 @@ class BaseRetrievalAlgorithm(ABC):
         Initialize base algorithm with shared resources.
 
         Args:
-            knowledge_graph: The knowledge graph to traverse
+            semantic_similarity_graph: The semantic similarity graph to traverse
             config: Configuration dictionary
             query_similarity_cache: Pre-computed query similarities for all nodes
             logger: Optional logger instance
             shared_embedding_model: Shared embedding model from orchestrator (memory optimization)
         """
-        self.kg = knowledge_graph
+        self.ssg = semantic_similarity_graph
         self.config = config
         self.query_similarity_cache = query_similarity_cache
         self.logger = logger or logging.getLogger(self.__class__.__name__)
@@ -90,9 +90,9 @@ class BaseRetrievalAlgorithm(ABC):
         Get hybrid connections: both connected chunks and sentences within current chunk.
         Returns list of (node_id, node_type, query_similarity) tuples.
         """
-        chunk = self.kg.chunks.get(chunk_id)
+        chunk = self.ssg.chunks.get(chunk_id)
         if not chunk:
-            self.logger.warning(f"Chunk {chunk_id} not found in knowledge graph")
+            self.logger.warning(f"Chunk {chunk_id} not found in semantic similarity graph")
             return []
         
         hybrid_nodes = []
@@ -105,7 +105,7 @@ class BaseRetrievalAlgorithm(ABC):
                 hybrid_nodes.append((connected_chunk_id, "chunk", query_sim))
         
         # Get sentences within current chunk
-        chunk_sentences = self.kg.get_chunk_sentences(chunk_id)
+        chunk_sentences = self.ssg.get_chunk_sentences(chunk_id)
         for sentence_obj in chunk_sentences:
             sentence_id = sentence_obj.sentence_id
             if sentence_id in self.query_similarity_cache:
@@ -118,17 +118,17 @@ class BaseRetrievalAlgorithm(ABC):
     
     def get_chunk_sentences(self, chunk_id: str) -> List[str]:
         """Extract all sentences from a chunk."""
-        chunk_sentences = self.kg.get_chunk_sentences(chunk_id)
+        chunk_sentences = self.ssg.get_chunk_sentences(chunk_id)
         return [sent.sentence_text for sent in chunk_sentences]
     
     def get_chunk_text(self, chunk_id: str) -> str:
         """Get text content of a chunk."""
-        chunk = self.kg.chunks.get(chunk_id)
+        chunk = self.ssg.chunks.get(chunk_id)
         return chunk.chunk_text if chunk else ""
     
     def get_sentence_text(self, sentence_id: str) -> str:
         """Get text content of a sentence."""
-        sentence = self.kg.sentences.get(sentence_id)
+        sentence = self.ssg.sentences.get(sentence_id)
         return sentence.sentence_text if sentence else ""
     
     def deduplicate_sentences(self, new_sentences: List[str], existing_sentences: List[str]) -> List[str]:
@@ -145,8 +145,8 @@ class BaseRetrievalAlgorithm(ABC):
     
     def calculate_chunk_similarity(self, chunk1_id: str, chunk2_id: str) -> float:
         """Calculate similarity between two chunks using their embeddings."""
-        chunk1_embedding = self.kg.get_chunk_embedding(chunk1_id)
-        chunk2_embedding = self.kg.get_chunk_embedding(chunk2_id)
+        chunk1_embedding = self.ssg.get_chunk_embedding(chunk1_id)
+        chunk2_embedding = self.ssg.get_chunk_embedding(chunk2_id)
         
         if chunk1_embedding is not None and chunk2_embedding is not None:
             similarity = cosine_similarity([chunk1_embedding], [chunk2_embedding])[0][0]
@@ -169,7 +169,7 @@ class BaseRetrievalAlgorithm(ABC):
         sentence_sources = {}
         for sentence in sentences:
             # Find which chunk this sentence came from
-            for chunk_id in self.kg.chunks.keys():
+            for chunk_id in self.ssg.chunks.keys():
                 chunk_sentences = self.get_chunk_sentences(chunk_id)
                 if sentence in chunk_sentences:
                     sentence_sources[sentence] = chunk_id
@@ -178,7 +178,7 @@ class BaseRetrievalAlgorithm(ABC):
     
     def _find_sentence_id(self, sentence_text: str) -> Optional[str]:
         """Find sentence ID by text content."""
-        for sentence_id, sentence_obj in self.kg.sentences.items():
+        for sentence_id, sentence_obj in self.ssg.sentences.items():
             if sentence_obj.sentence_text == sentence_text:
                 return sentence_id
         return None

@@ -7,16 +7,17 @@ Utility modules for the semantic graph traversal RAG system.
 """
 
 # Import main classes for easy access
-from .kg_pipeline import KnowledgeGraphBuilder
+from .semantic_similarity_graph import SemanticSimilarityGraphBuilder, SemanticSimilarityGraph
+from .ssg_pipeline import SemanticSimilarityGraphPipeline
 from .wiki import WikiEngine, WikipediaArticle
 from .chunking import ChunkEngine
 from .models import EmbeddingEngine, EmbeddingModel, ChunkEmbedding
 from .similarity import SimilarityEngine
-from .knowledge_graph import KnowledgeGraph
 
 __version__ = "1.0.0"
 __all__ = [
-    "KnowledgeGraphBuilder",
+    "SemanticSimilarityGraphBuilder",
+    "SemanticSimilarityGraphPipeline",
     "WikiEngine", 
     "WikipediaArticle",
     "ChunkEngine",
@@ -24,5 +25,5 @@ __all__ = [
     "EmbeddingModel", 
     "ChunkEmbedding",
     "SimilarityEngine",
-    "KnowledgeGraph"
+    "SemanticSimilarityGraph"
 ]

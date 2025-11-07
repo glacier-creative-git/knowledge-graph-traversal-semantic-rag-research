@@ -16,10 +16,10 @@ from ..traversal import TraversalPath, GranularityLevel, ConnectionType
 class QueryTraversalAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm 2: Query similarity-guided graph traversal."""
     
-    def __init__(self, knowledge_graph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float], logger=None,
                  shared_embedding_model=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
+        super().__init__(semantic_similarity_graph, config, query_similarity_cache, logger, shared_embedding_model)
         
         self.logger.info(f"QueryTraversalAlgorithm initialized: max_hops={self.max_hops}, "
                         f"min_sentences={self.min_sentence_threshold}")
