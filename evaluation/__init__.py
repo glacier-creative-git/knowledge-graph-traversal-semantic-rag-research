@@ -7,7 +7,7 @@ for the semantic traversal retrieval system using deepeval framework.
 
 This package implements:
 - ModelManager: Centralized model configuration and validation
-- DatasetBuilder: Synthetic dataset generation from knowledge graph
+- DatasetBuilder: Synthetic dataset generation from semantic similarity graph
 - EvaluationOrchestrator: Comprehensive algorithm evaluation and comparison
 
 Key Features:

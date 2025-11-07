@@ -36,7 +36,7 @@ from deepeval.evaluate import AsyncConfig
 
 # Local imports
 from utils.retrieval import RetrievalOrchestrator
-from utils.knowledge_graph import KnowledgeGraph
+from utils.semantic_similarity_graph import SemanticSimilarityGraph
 from utils.reranker import RerankerOrchestrator
 from .models import ModelManager
 
@@ -101,7 +101,7 @@ class EvaluationOrchestrator:
             self.logger.info("Reranking disabled")
 
         # Core components (lazy-loaded)
-        self.knowledge_graph: Optional[KnowledgeGraph] = None
+        self.semantic_similarity_graph: Optional[SemanticSimilarityGraph] = None
 
         # Storage for visualization data
         self.retrieval_results: Dict[str, Dict[str, Any]] = {}  # query -> {algorithm_name -> result}
@@ -217,7 +217,7 @@ Answer:"""
             EvaluationResult: Comprehensive evaluation metrics and analysis
             
         Raises:
-            FileNotFoundError: If required files (KG, dataset) not found
+            FileNotFoundError: If required files (SSG, dataset) not found
             ValueError: If algorithm_name not supported
             RuntimeError: If evaluation execution fails
         """
@@ -425,13 +425,13 @@ Answer:"""
         return results
     
     def _initialize_components(self, dataset_path: Optional[str] = None) -> None:
-        """Initialize knowledge graph, retrieval orchestrator, and evaluation dataset."""
+        """Initialize semantic similarity graph, retrieval orchestrator, and evaluation dataset."""
         self.logger.info("🔧 Initializing evaluation components...")
         
-        # Load knowledge graph
-        kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
-        if not kg_path.exists():
-            raise FileNotFoundError(f"Knowledge graph not found at {kg_path}. Run kg_pipeline.build() first.")
+        # Load semantic similarity graph
+        ssg_path = Path(self.config['directories']['data']) / "semantic_similarity_graph.json"
+        if not ssg_path.exists():
+            raise FileNotFoundError(f"Semantic similarity graph not found at {ssg_path}. Run ssg_pipeline.build() first.")
         
         # Load embeddings for retrieval algorithms - dynamically determine path from config
         configured_model = self.config['models']['embedding_models'][0]  # Get first configured model
@@ -444,7 +444,7 @@ Answer:"""
             with open(embeddings_path, 'r') as f:
                 raw_data = json.load(f)
 
-            # Transform the file structure to what knowledge graph expects
+            # Transform the file structure to what semantic similarity graph expects
             # From: {"metadata": {...}, "embeddings": {"chunks": [...], "sentences": [...]}}
             # To: {"configured_model": {"chunks": [...], "sentences": [...]}}
             model_name = raw_data.get('metadata', {}).get('model_name', configured_model)
@@ -455,28 +455,28 @@ Answer:"""
         else:
             self.logger.warning(f"⚠️ Embeddings not found at {embeddings_path} - retrieval may not work")
 
-        self.knowledge_graph = KnowledgeGraph.load(str(kg_path), embeddings_data)
+        self.semantic_similarity_graph = SemanticSimilarityGraph.load(str(ssg_path), embeddings_data)
 
         # Debug: Check if embeddings were actually loaded
-        if hasattr(self.knowledge_graph, '_embedding_cache'):
-            cache_size = len(self.knowledge_graph._embedding_cache)
-            cache_keys = list(self.knowledge_graph._embedding_cache.keys())
-            self.logger.info(f"🧠 Knowledge graph embedding cache: {cache_size} models loaded")
+        if hasattr(self.semantic_similarity_graph, '_embedding_cache'):
+            cache_size = len(self.semantic_similarity_graph._embedding_cache)
+            cache_keys = list(self.semantic_similarity_graph._embedding_cache.keys())
+            self.logger.info(f"🧠 Semantic similarity graph embedding cache: {cache_size} models loaded")
             self.logger.info(f"🔑 Cache model keys: {cache_keys}")
 
             # Check specific cache contents for debugging
             for model_key in cache_keys:
-                model_cache = self.knowledge_graph._embedding_cache[model_key]
+                model_cache = self.semantic_similarity_graph._embedding_cache[model_key]
                 chunk_count = len(model_cache.get('chunks', {}))
                 sentence_count = len(model_cache.get('sentences', {}))
                 self.logger.info(f"   Model '{model_key}': {chunk_count} chunks, {sentence_count} sentences")
         else:
-            self.logger.warning("⚠️ Knowledge graph has no embedding cache")
-        self.logger.info(f"✅ Knowledge graph loaded: {len(self.knowledge_graph.chunks)} chunks")
+            self.logger.warning("⚠️ Semantic similarity graph has no embedding cache")
+        self.logger.info(f"✅ Semantic similarity graph loaded: {len(self.semantic_similarity_graph.chunks)} chunks")
         
         # Initialize retrieval orchestrator
         self.retrieval_orchestrator = RetrievalOrchestrator(
-            self.knowledge_graph, self.config, self.logger
+            self.semantic_similarity_graph, self.config, self.logger
         )
         
         # Load evaluation dataset

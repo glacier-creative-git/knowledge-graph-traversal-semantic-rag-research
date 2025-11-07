@@ -3,12 +3,12 @@
 Synthetic Dataset Generation System
 ==================================
 
-Generates sophisticated evaluation datasets from knowledge graph chunks using
+Generates sophisticated evaluation datasets from semantic similarity graph chunks using
 deepeval's evolution techniques. Creates challenging questions that test semantic
 traversal capabilities through progressive complexity enhancement.
 
 Key Features:
-- Knowledge graph chunk processing and context preparation
+- Semantic similarity graph chunk processing and context preparation
 - Evolution-based question complexity enhancement
 - Multi-granularity context grouping for optimal question generation
 - Comprehensive dataset statistics and quality validation
@@ -28,17 +28,17 @@ from deepeval.synthesizer.config import EvolutionConfig, Evolution, FiltrationCo
 from deepeval.dataset import EvaluationDataset
 
 # Local imports
-from utils.knowledge_graph import KnowledgeGraph
+from utils.semantic_similarity_graph import SemanticSimilarityGraph
 from .models import ModelManager
 from .context_grouping import ContextGroupingOrchestrator
 
 
 class DatasetBuilder:
     """
-    Generates synthetic evaluation datasets from knowledge graph chunks.
+    Generates synthetic evaluation datasets from semantic similarity graph chunks.
     
     Uses deepeval's sophisticated evolution system to create questions that require
-    semantic navigation across knowledge graph connections - the perfect testbed
+    semantic navigation across semantic similarity graph connections - the perfect testbed
     for evaluating semantic traversal algorithm superiority.
     """
     
@@ -72,31 +72,31 @@ class DatasetBuilder:
         
         self.logger.info("DatasetBuilder initialized")
     
-    def build(self, knowledge_graph: Optional[KnowledgeGraph] = None, 
+    def build(self, semantic_similarity_graph: Optional[SemanticSimilarityGraph] = None, 
               force_regenerate: bool = False) -> EvaluationDataset:
         """
         Main entry point for synthetic dataset generation.
         
-        Creates sophisticated questions from knowledge graph chunks using evolution
+        Creates sophisticated questions from semantic similarity graph chunks using evolution
         techniques specifically designed to challenge semantic traversal algorithms.
         
         Args:
-            knowledge_graph: Pre-loaded KG instance (loads from file if None)
+            semantic_similarity_graph: Pre-loaded SSG instance (loads from file if None)
             force_regenerate: Force regeneration even if cached dataset exists
             
         Returns:
             EvaluationDataset: Ready-to-use dataset with evolved questions
             
         Raises:
-            FileNotFoundError: If knowledge graph file not found
+            FileNotFoundError: If semantic similarity graph file not found
             RuntimeError: If dataset generation fails
         """
         self.generation_stats['start_time'] = time.time()
         self.logger.info("🎯 Starting synthetic dataset generation using deepeval evolution")
         
-        # Load knowledge graph if not provided
-        if knowledge_graph is None:
-            knowledge_graph = self._load_knowledge_graph()
+        # Load semantic similarity graph if not provided
+        if semantic_similarity_graph is None:
+            semantic_similarity_graph = self._load_semantic_similarity_graph()
         
         # Check dataset loading configuration
         dataset_config = self.deepeval_config.get('dataset', {})
@@ -140,8 +140,8 @@ class DatasetBuilder:
         # Generate new dataset
         self.logger.info("🧠 Generating new synthetic dataset with evolution techniques")
         
-        # Prepare contexts from knowledge graph chunks
-        contexts = self._prepare_contexts_from_kg(knowledge_graph)
+        # Prepare contexts from semantic similarity graph chunks
+        contexts = self._prepare_contexts_from_ssg(semantic_similarity_graph)
         self.generation_stats['total_contexts'] = len(contexts)
         
         # Configure evolution strategies for semantic traversal testing
@@ -177,30 +177,30 @@ class DatasetBuilder:
 
         return dataset
     
-    def _load_knowledge_graph(self) -> KnowledgeGraph:
-        """Load knowledge graph from standard data directory location."""
-        kg_path = Path(self.config['directories']['data']) / "knowledge_graph.json"
+    def _load_semantic_similarity_graph(self) -> SemanticSimilarityGraph:
+        """Load semantic similarity graph from standard data directory location."""
+        ssg_path = Path(self.config['directories']['data']) / "semantic_similarity_graph.json"
         
-        if not kg_path.exists():
+        if not ssg_path.exists():
             raise FileNotFoundError(
-                f"Knowledge graph not found at {kg_path}. "
-                "Please run kg_pipeline.build() first to generate the knowledge graph."
+                f"Semantic similarity graph not found at {ssg_path}. "
+                "Please run ssg_pipeline.build() first to generate the semantic similarity graph."
             )
         
-        self.logger.info(f"📂 Loading knowledge graph from {kg_path}")
+        self.logger.info(f"📂 Loading semantic similarity graph from {ssg_path}")
         
         # Load embeddings if available for enhanced context preparation
         try:
-            kg = KnowledgeGraph.load(str(kg_path))
+            ssg = SemanticSimilarityGraph.load(str(ssg_path))
             self.logger.info(
-                f"✅ Knowledge graph loaded: {len(kg.chunks)} chunks, "
-                f"{len(kg.sentences)} sentences, {len(kg.documents)} documents"
+                f"✅ Semantic similarity graph loaded: {len(ssg.chunks)} chunks, "
+                f"{len(ssg.sentences)} sentences, {len(ssg.documents)} documents"
             )
-            return kg
+            return ssg
         except Exception as e:
-            raise RuntimeError(f"Failed to load knowledge graph: {e}")
+            raise RuntimeError(f"Failed to load semantic similarity graph: {e}")
     
-    def _prepare_contexts_from_kg(self, kg: KnowledgeGraph) -> List[List[str]]:
+    def _prepare_contexts_from_ssg(self, ssg: SemanticSimilarityGraph) -> List[List[str]]:
         """
         Create context groups using sophisticated semantic traversal strategies.
         
@@ -208,7 +208,7 @@ class DatasetBuilder:
         mirror retrieval algorithm capabilities, creating self-validating benchmarks.
         
         Args:
-            kg: Knowledge graph instance with chunks, documents, and similarities
+            ssg: Semantic similarity graph instance with chunks, documents, and similarities
             
         Returns:
             List of context groups (each containing related chunk texts)
@@ -217,7 +217,7 @@ class DatasetBuilder:
         
         # Initialize context grouping orchestrator
         context_orchestrator = ContextGroupingOrchestrator(
-            kg=kg,
+            ssg=ssg,
             config=self.config,
             logger=self.logger
         )
@@ -230,7 +230,7 @@ class DatasetBuilder:
         # Calculate desired number of context groups
         # Use ceiling division to get exactly the number needed
         import math
-        base_contexts_needed = min(len(kg.chunks), math.ceil(num_goldens / max_goldens_per_context))
+        base_contexts_needed = min(len(ssg.chunks), math.ceil(num_goldens / max_goldens_per_context))
         total_context_groups = base_contexts_needed  # Generate exactly what's needed
         
         # Generate context groups using all enabled strategies

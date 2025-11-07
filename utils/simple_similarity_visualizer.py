@@ -4,7 +4,7 @@ Simple Similarity Matrix Visualizer
 ===================================
 
 Uses the exact same visualization code as matplotlib_visualizer.py but with
-just a numpy similarity matrix - no knowledge graph or retrieval algorithms needed.
+just a numpy similarity matrix - no semantic similarity graph or retrieval algorithms needed.
 """
 
 import numpy as np

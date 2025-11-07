@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 class ConnectionType(Enum):
     """
-    Defines all possible connection types in the semantic knowledge graph.
+    Defines all possible connection types in the semantic semantic similarity graph.
     Each type has specific granularity constraints and navigation rules.
     """
     RAW_SIMILARITY = "raw_similarity"           # Direct cosine similarity between nodes
@@ -40,7 +40,7 @@ class GranularityLevel(Enum):
 @dataclass
 class TraversalPath:
     """
-    Represents a complete traversal path through the knowledge graph.
+    Represents a complete traversal path through the semantic similarity graph.
     Used for both question generation and retrieval validation.
     """
     nodes: List[str]                    # Node IDs in traversal order

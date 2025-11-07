@@ -1,30 +1,43 @@
-<h1 align="center">Novel Knowledge Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems</h1>
+<h1 align="center">Novel Semantic Similarity Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems</h1>
 
 ---
 ![2D_VIS.png](docs/2D_VIS.png)
 ![2D_VIS_LOCAL.png](docs/2D_VIS_LOCAL.png)
----
 
-<h1 align="center">Abstract</h1>
-<div align="center">Semantic retrieval augmented generation (RAG) systems are designed to provide large language models (LLMs) with the necessary context to answer user queries precisely and accurately from a database or knowledge graph. However, the innate challenge with traditional RAG systems is their dependence on fine-tuned, raw text matching via a vector store based on the user's query. This research proposes novel traversal algorithms that meaningfully move through knowledge bases with the goal of extracting highly relevant and precise information for user queries. These traversal algorithms provide the foundational bedrock in the pursuit of accurate semantic RAG systems and can be easily built upon or fine-tuned depending on use case. </div>
 
----
 <div align="center">
   <img src="docs/3D_VIS_1.png" width="49%" />
   <img src="docs/3D_VIS_2.png" width="49%" />
 </div>
 
+<h1 align="center">Abstract</h1>
+<div align="center">Semantic retrieval augmented generation (RAG) systems are designed to provide large language models (LLMs) with the necessary context to answer user queries precisely and accurately from a database or semantic similarity graph. However, the innate challenge with traditional RAG systems is their dependence on fine-tuned, raw text matching via a vector store based on the user's query. This research proposes novel traversal algorithms that meaningfully move through knowledge bases with the goal of extracting highly relevant and precise information for user queries. These traversal algorithms provide the foundational bedrock in the pursuit of accurate semantic RAG systems and can be easily built upon or fine-tuned depending on use case. </div>
+
+
+---
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=HcHFBAQqe_k">
+    <img src="https://img.youtube.com/vi/HcHFBAQqe_k/maxresdefault.jpg" alt="Video" width="600">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=HcHFBAQqe_k">
+    <img src="https://img.shields.io/badge/▶%20Watch%20Video-red?style=for-the-badge">
+  </a>
+</p>
+
 ---
 
 <h1 align="center">Foreword</h1>
 
-This `README.md` contains a concise publication of the research discovered in this repository. For a thorough, guided demonstration with interactive elements (algorithm testing, knowledge graph visualizations like the ones above), please view the Jupyter notebook in the root of this repository. It is intended to be run locally via a Python `venv` due to dependencies.
+This `README.md` contains a concise publication of the research discovered in this repository. For a thorough, guided demonstration with interactive elements (algorithm testing, semantic similarity graph visualizations like the ones above), please view the Jupyter notebook in the root of this repository. It is intended to be run locally via a Python `venv` due to dependencies.
+
+> **Terminology update (2025-01):** Earlier drafts described this work as "knowledge graph" research. After community feedback we now refer to the data structure as a *semantic similarity graph* (SSG). An SSG stores untyped nodes connected by cosine-similarity edges; it does not provide ontological typing, relation semantics, or rule-based inference the way a formal knowledge graph does. Throughout this document, "semantic similarity graph" and "SSG" are now used to accurately describe the system.
 
 To run the notebook, first ensure you have Python 3.12 and `ollama` installed, then run:
 
 ```commandline
-git clone https://github.com/glacier-creative-git/knowledge-graph-traversal-semantic-rag-research
-cd knowledge-graph-traversal-semantic-rag-research
+git clone https://github.com/glacier-creative-git/semantic-similarity-graph-traversal-semantic-rag-research
+cd semantic-similarity-graph-traversal-semantic-rag-research
 python3.12 -m venv .venv 
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -58,15 +71,15 @@ Then take a look at the `config.yaml` which holds the configuration settings of 
 python benchmark.py --help
 ```
 
-Lastly, two notes. First, reranking code exists in the repository but has been depreciated. The final results from evaluation contained *no reranking*. Additionally, many ideas here build on other publications such as Microsoft's GraphRAG and Xiaomi's KG-Retriever algorithm. They are recommended reads and will be cited at the end of this publication.
+Lastly, two notes. First, reranking code exists in the repository but has been depreciated. The final results from evaluation contained *no reranking*. Additionally, many ideas here build on other publications such as Microsoft's GraphRAG and Xiaomi's SSG-Retriever algorithm. They are recommended reads and will be cited at the end of this publication.
 
-<h1 align="center">Knowledge Graph Architecture</h1>
+<h1 align="center">Semantic Similarity Graph Architecture</h1>
 
-To maximize traversal quality, a novel knowledge graph architecture is necessary. This section will outline the architecture behind this hierarchical knowledge graph structure.
+To maximize traversal quality, a novel semantic similarity graph architecture is necessary. This section will outline the architecture behind this hierarchical semantic similarity graph structure.
 
-First, assuming we have a series of documents, we must begin by chunking them. Many strategies for semantic chunking have been proposed, but for this knowledge graph, it is absolutely crucial that we have a degree of consistent overlap between chunk boundaries.  This provides a "smoothness" between chunks.
+First, assuming we have a series of documents, we must begin by chunking them. Many strategies for semantic chunking have been proposed, but for this semantic similarity graph, it is absolutely crucial that we have a degree of consistent overlap between chunk boundaries.  This provides a "smoothness" between chunks.
 
-To understand the knowledge graph structure, take a look at the following visualization of a *similarity matrix*:
+To understand the semantic similarity graph structure, take a look at the following visualization of a *similarity matrix*:
 
 ---
 
@@ -80,9 +93,9 @@ A *similarity matrix* is a `numpy` array that contains all possible cosine simil
 
 This visualization shows the "Neuroscience" article on Wikipedia and it is very clear where larger, thematic groupings are throughout the document symmetrically along the diagonal, where every chunk is completely red due to being compared directly to itself. It is very apparent in the visualization that sentences 1 through 15 are very dissimilar to the rest of the document, as evidenced by the deep blue hue.
 
-Similarity matrices are best indexed at the sentence level (one entry per sentence in the document). This means that for the best traversal results, we use a *three sentence sliding window* that moves through the document 1 sentence at a time. So every entry in the array is actually an embedding comparison for *three sentences*. Additionally, to minimize memory usage, we can choose to *sparsely store our top comparisons for each position*, typically only the top 10 chunk comparisons for each chunk. This significantly reduces memory usage by multiple factors and is crucial for larger knowledge graphs.
+Similarity matrices are best indexed at the sentence level (one entry per sentence in the document). This means that for the best traversal results, we use a *three sentence sliding window* that moves through the document 1 sentence at a time. So every entry in the array is actually an embedding comparison for *three sentences*. Additionally, to minimize memory usage, we can choose to *sparsely store our top comparisons for each position*, typically only the top 10 chunk comparisons for each chunk. This significantly reduces memory usage by multiple factors and is crucial for larger semantic similarity graphs.
 
-To create our knowledge graph edges, we simply take our top intra-document cosine similarities (denoted `top_k`) and our top inter-document cosine simliarities (denoted `top_x`) as graph edges. This allows us to effectively "connect" sparse similariy matrices together.
+To create our semantic similarity graph edges, we simply take our top intra-document cosine similarities (denoted `top_k`) and our top inter-document cosine simliarities (denoted `top_x`) as graph edges. This allows us to effectively "connect" sparse similariy matrices together.
 
 ---
 
@@ -98,49 +111,49 @@ To create our knowledge graph edges, we simply take our top intra-document cosin
 
 ### Adding Hierarchical Properties
 
-Building off Microsoft's GraphRAG publication, we want to add *hierarchical properties* to our graph nodes. At this point the chunk level has been established, but we still want to have a thematic/document level for broader themes, as well as the sentence level for granular comparisons. We can implement sentence-level nodes by *only storing them as children to the parent windows they came from.* This allows us to reference sentences within our knowledge graph for sentence-level accuracy, while minimizing unnecessary noise, as sentence nodes in the graph will only connect to their respective parent chunks.
+Building off Microsoft's GraphRAG publication, we want to add *hierarchical properties* to our graph nodes. At this point the chunk level has been established, but we still want to have a thematic/document level for broader themes, as well as the sentence level for granular comparisons. We can implement sentence-level nodes by *only storing them as children to the parent windows they came from.* This allows us to reference sentences within our semantic similarity graph for sentence-level accuracy, while minimizing unnecessary noise, as sentence nodes in the graph will only connect to their respective parent chunks.
 
 Finally, for hierarchical propertiees, `ragas` and other libraries like it use tools like NER (Named Entity Recognition) to extract named entities and themes. To keep things simple and lightweight, we take the first 500 words of a Wikipedia document, feed this summary to an LLM, then have it generate *5 unique themes* from the summary. These 5 themes then get passed down to *all chunk and sentence nodes* inside that particular document. We can also take those five themes as a list, embed them as one chunk, then compare all thematic chunk similarities between each other to then, create another bridge between the most similar documents by theme, denoted by a `top_t`.
 
-The final result is a *lightweight knowledge graph* that is designed to be traversed. 
+The final result is a *lightweight semantic similarity graph* that is designed to be traversed. 
 
 ---
 
-![KG_ARCHITECTURE.png](docs/KG_ARCHITECTURE.png)
+![SSG_ARCHITECTURE.png](docs/SSG_ARCHITECTURE.png)
 
-*<h4 align="center">Figure D: Multi-layer knowledge graph architecture. At the document level, themes are extracted for their similarity and all chunk/sentence nodes inherit these themes. At the chunk level, we sparsely store intrachunk and interchunk cosine similarity connections between all documents. At the sentence level, each sentence is stored as a child to the parent chunk, and sentence are only compared to other sentences in the same chunk, and to the query, to keep the knowledge graph lightweight.</h4>*
+*<h4 align="center">Figure D: Multi-layer semantic similarity graph architecture. At the document level, themes are extracted for their similarity and all chunk/sentence nodes inherit these themes. At the chunk level, we sparsely store intrachunk and interchunk cosine similarity connections between all documents. At the sentence level, each sentence is stored as a child to the parent chunk, and sentence are only compared to other sentences in the same chunk, and to the query, to keep the semantic similarity graph lightweight.</h4>*
 
 ---
 
 https://github.com/user-attachments/assets/79fae9eb-9a0a-4633-8d65-2c9e9699305f
 
-*<h4 align="center">Figure E: Plotly visualization generated of a knowledge graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/glacier-creative-git/knowledge-graph-traversal-semantic-rag-research/releases/download/html/KG_PLOTLY.html)</h4>*
+*<h4 align="center">Figure E: Plotly visualization generated of a semantic similarity graph of three Wikipedia documents with an LLM traversal path through the graph. You may explore this run by downloading the Plotly HTML graph [here.](https://github.com/glacier-creative-git/semantic-similarity-graph-traversal-semantic-rag-research/releases/download/html/SSG_PLOTLY.html)</h4>*
 
 ---
 
 https://github.com/user-attachments/assets/c18a3ef3-4685-4632-ae70-913e8f668a3d
 
-*<h4 align="center">Figure F: Closer inspection of the LLM traversal path through the knowledge graph to retrieve relevant context to the query.</h4>*
+*<h4 align="center">Figure F: Closer inspection of the LLM traversal path through the semantic similarity graph to retrieve relevant context to the query.</h4>*
 
 ---
 
 <h1 align="center">Algorithms</h1>
 
-With the knowledge graph established, we can begin exploring traversal methods. After embedding a user query, instead of attempting mass retrieval via cosine similarity matching like traditional RAG systems, we want to find a *single chunk* that we can "anchor" to. This "anchor" chunk is, in all algorithms, the most similar chunk to the query by cosine similarity. In other words, instead of retrieving lots of chunks via matching and then using a reranking model, we will identify *a single chunk* to anchor to, then begin traversal. Interestingly, in a related paper: *[KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models](https://arxiv.org/abs/2412.05547)*, these researchers identified the same problem, and used the terminology "seed" chunk rather than "anchor" in their work.
+With the semantic similarity graph established, we can begin exploring traversal methods. After embedding a user query, instead of attempting mass retrieval via cosine similarity matching like traditional RAG systems, we want to find a *single chunk* that we can "anchor" to. This "anchor" chunk is, in all algorithms, the most similar chunk to the query by cosine similarity. In other words, instead of retrieving lots of chunks via matching and then using a reranking model, we will identify *a single chunk* to anchor to, then begin traversal. Interestingly, in a related paper: *[KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models](https://arxiv.org/abs/2412.05547)*, these researchers identified the same problem, and used the terminology "seed" chunk rather than "anchor" in their work.
 
 Once we've identified our anchor chunk, we need an algorithmic approach to retrieving the most accurate and relevant information to user's query. Here are the most important constraints for our algorithms:
 
-1. During traversal, we need to look at all possible candidate chunks to traverse to in our sparse knowledge graph. Then decide which to traverse to based on a chosen measurement of cosine similarity. This decision should come a particular objective. The objectives that we will explore include direct query similarity, high knowledge graph similarity to candidiate chunks, and weighted average between prospective chunks.
+1. During traversal, we need to look at all possible candidate chunks to traverse to in our sparse semantic similarity graph. Then decide which to traverse to based on a chosen measurement of cosine similarity. This decision should come a particular objective. The objectives that we will explore include direct query similarity, high semantic similarity graph similarity to candidiate chunks, and weighted average between prospective chunks.
 2. When choosing which chunk candidate to traverse to and extract sentences from, we can assume that the prospective chunk candidates are already highly connected. This means that as long as we choose to extract the *most similar and/or relevant chunk at each step*, we will then have the opportunity to choose a prospective chunk that might have only ranked second or third at the previous step. It is very unlikely that we will outright ignore or outright reject relevant information so long as we continuously prioritize the most relevant chunk at each step, save for algorithmic fine-tuning.
 3. We need to determine when our algorithms should *stop traversing*. This is crucial, otherwise we'll extract way too much information, reducing relevancy and conciseness. For many of the algorithms in this research (except for LLM guided traversal), the `max_sentences` is set to a fixed value between 10 and 15. This is to match the synthetic dataset context grouping algorithms, which group between 10 and 15 sentences to generate synthetic questions from for benchmarking (more on that in *Benchmarking*). In cases where one might attempt deep research, this could be expanded upon significantly but for research purposes, we will keep this value static and reasonable.
 4. The information we extract must be *faithful*, meaning as factually accurate as possible. This is crucial, because semantically relevant content might be within the context of an opinionated section of text, like a quote from a scientist or philosopher. This means we need to separate out facts from opinions, and if we extract any opinions, they need to be properly contextualized *as opinions, not facts*. 
-5. The algorithms must be *fast*, save for the LLM guided traversal, as it could be argued that this algorithm's speed aligns with it's chain of thought. We do this by effectively "adding" the user's query directly into the knowledge graph, by doing vectorized calculations against all embeddings in the knowledge graph the same way one would do in a traditional RAG system. The core difference is maintaining the cached similarities during traversal so that we don't have to repeatedly recalculate similarities to the query as we traverse.
+5. The algorithms must be *fast*, save for the LLM guided traversal, as it could be argued that this algorithm's speed aligns with it's chain of thought. We do this by effectively "adding" the user's query directly into the semantic similarity graph, by doing vectorized calculations against all embeddings in the semantic similarity graph the same way one would do in a traditional RAG system. The core difference is maintaining the cached similarities during traversal so that we don't have to repeatedly recalculate similarities to the query as we traverse.
 
 There are **seven** total algorithms in this repository that can be used for retrieval. Each will be explained in its own section:
 
 1. `basic_retrieval`
 2. `query_traversal`
-3. `kg_traversal`
+3. `ssg_traversal`
 4. `triangulation_average`
 5. `triangulation_geometric_3d`
 6. `triangulation_fulldim`
@@ -157,7 +170,7 @@ First, embed the user's query.
 
 $$\vec{q} = \text{embed}(\text{query})$$
 
-Lookup the most semantically similar chunks in the knowledge graph directly based on cosine similarity.
+Lookup the most semantically similar chunks in the semantic similarity graph directly based on cosine similarity.
 
 $$\text{sim}(\vec{q}, \vec{c}_i) = \frac{\vec{q} \cdot \vec{c}_i}{\|\vec{q}\| \|\vec{c}_i\|}$$
 
@@ -193,11 +206,11 @@ $$\max_{s \in S_{\text{extracted}}} \text{sim}(\vec{q}, \vec{s}) > \max_{c \in C
 
 ---
 
-### 3. `kg_traversal`
+### 3. `ssg_traversal`
 
 *Chunk-centric graph traversal that follows local similarity paths (not query similarity), with a focus on greater graph exploration.*
 
-![KG TRAVERSAL](docs/KG_TRAVERSAL.png)
+![SSG TRAVERSAL](docs/SSG_TRAVERSAL.png)
 
 Similar to the `query_traversal` algorithm, start at the anchor chunk.
 
@@ -267,7 +280,7 @@ Geometric triangulation in *full* embedding space.
 
 Similar to `triangulation_geometric_3d`, but work directly with full embeddings instead of PCA 3D reduction.
 
-$$\vec{q}, \vec{c}_i \in \mathbb{R}^{d}\quad(\text{dimension auto-detected per knowledge graph, default }d=1024)$$
+$$\vec{q}, \vec{c}_i \in \mathbb{R}^{d}\quad(\text{dimension auto-detected per semantic similarity graph, default }d=1024)$$
 
 Similarly to the other triangulation algorithms, identify triangles. But this time, in full embedding dimensional space.
 
@@ -300,7 +313,7 @@ $$C_{\text{candidates}} = \text{top-k}\{c \in \text{neighbors}(c_t) \mid \text{s
 At each hop, the LLM receives this prompt:
 
 ```
-You are a knowledge graph traversal agent. Your goal: find relevant content to answer the query.
+You are a semantic similarity graph traversal agent. Your goal: find relevant content to answer the query.
 
 QUERY: {user's question}
 
@@ -429,9 +442,9 @@ context_strategies:
 
 ---
 
-## Knowledge Graph and Evolved Datasets
+## Semantic Similarity Graph and Evolved Datasets
 
-There are *two* synthetic datasets created, as well as a small knowledge graph from Wikipedia for retrieval. The datasets are available in the `datasets` directory:
+There are *two* synthetic datasets created, as well as a small semantic similarity graph from Wikipedia for retrieval. The datasets are available in the `datasets` directory:
 
 - `20q-themes-gpt4omini-reasoning`: For this evaluation, 20 questions were generated using `theme_based` context grouping, with `max_sentences` set to 10, resulting in 3 hops each time. The question, expected output, answer, and critic generation were done using `gpt-4o-mini` for both dataset generation and retrieval. Every question was evolved a single time using DeepEval's "reasoning" evolution type.
 
@@ -443,12 +456,12 @@ There are *two* synthetic datasets created, as well as a small knowledge graph f
   - Comparative: 20% distribution
 
 
-For the knowledge graph, a `WikiEngine()` was created to extract and clean text from articles of particular topics. The two chosen were:
+For the semantic similarity graph, a `WikiEngine()` was created to extract and clean text from articles of particular topics. The two chosen were:
 
 - "Machine Learning" 
 - "Artificial Intelligence"
 
-`articles_per_topic` was set to 5, resulting in 10 total documents in the knowledge graph. For theme extraction, `llama 3.1: 8b` was used to extract document themes to be inherited by all chunk/sentence nodes in each respective document. `mixedbread-ai/mxbai-embed-large-v1` was used for embeddings. Named Entity Recognition (NER) processing was disabled, as it was difficult to make use of compared to raw theme extraction, and the knowledge graph specifically relies on cosine simliarity edges rather than raw entity overlap. Quality scoring was also disabled.
+`articles_per_topic` was set to 5, resulting in 10 total documents in the semantic similarity graph. For theme extraction, `llama 3.1: 8b` was used to extract document themes to be inherited by all chunk/sentence nodes in each respective document. `mixedbread-ai/mxbai-embed-large-v1` was used for embeddings. Named Entity Recognition (NER) processing was disabled, as it was difficult to make use of compared to raw theme extraction, and the semantic similarity graph specifically relies on cosine simliarity edges rather than raw entity overlap. Quality scoring was also disabled.
 
 ---
 
@@ -460,7 +473,7 @@ $$\Large\text{20qa-themes-gpt4omini-reasoning}$$
 |:---|:---:|:---:|:---:|:---:|:---:|
 | `basic_retrieval` | 0.87 | 0.74 | 0.91 | 0.93 | 16/20 |
 | `query_traversal` | 0.83 | 0.83 | 0.91 | 1.00 | 16/20 |
-| `kg_traversal` | 0.73 | 0.72 | 0.98 | 0.92 | 15/20 |
+| `ssg_traversal` | 0.73 | 0.72 | 0.98 | 0.92 | 15/20 |
 | `triangulation_average` | 0.84 | 0.77 | 0.96 | 1.00 | 16/20 |
 | `triangulation_geometric_3d` | 0.86 | 0.77 | 0.96 | 1.00 | 16/20 |
 | `triangulation_fulldim` | 0.90 | 0.78 | 0.95 | 0.99 | 17/20 |
@@ -475,7 +488,7 @@ $$\Large\text{50qa-seq-multihop-gpt4o-reasoning-comparative-multicontext}$$
 |:---|:---:|:---:|:---:|:---:|:---:|
 | `basic_retrieval` | 0.93 | 0.88 | 0.99 | 0.99 | 48/50 |
 | `query_traversal` | 0.91 | 0.91 | 0.98 | 1.00 | 50/50 |
-| `kg_traversal` | 0.93 | 0.87 | 0.99 | 0.99 | 49/50 |
+| `ssg_traversal` | 0.93 | 0.87 | 0.99 | 0.99 | 49/50 |
 | `triangulation_average` | 0.92 | 0.87 | 0.98 | 0.99 | 49/50 |
 | `triangulation_geometric_3d` | 0.93 | 0.85 | 0.98 | 1.00 | 48/50 |
 | `triangulation_fulldim` | 0.93 | 0.87 | 1.00 | 0.97 | 47/50 |
@@ -487,21 +500,21 @@ This evaluation was significantly more robust. Immediately, `query_traversal` pr
 
 All three triangulation algorithms did excellently with precision, but fell behind in recall compared to the `basic_retrieval`. This implies that these algorithms were good at pulling highly relevant information, but may have struggled more with pulling *all the necessary context to answer the query*. With more fine-tuning, one might be able to pull better performance out of these three algorithms depending on use case. 
 
-`kg_traversal` functioned across both evaluations as a benchmark for the lower percentile for all metrics. This is due to its agnosticism towards the original query; it only traverses based on relevancy to the current chunk. This explains the significant underperformance in `20qa-themes-gpt4omini-reasoning`, particularly in faithfulness; it frequently retrieved slightly less factually true information (pulling opinions rather than facts) when prioritizing raw knowledge graph similarity. This is also visible in its precision and recall scores across both tests. 
+`ssg_traversal` functioned across both evaluations as a benchmark for the lower percentile for all metrics. This is due to its agnosticism towards the original query; it only traverses based on relevancy to the current chunk. This explains the significant underperformance in `20qa-themes-gpt4omini-reasoning`, particularly in faithfulness; it frequently retrieved slightly less factually true information (pulling opinions rather than facts) when prioritizing raw semantic similarity graph similarity. This is also visible in its precision and recall scores across both tests. 
 
 <h1 align="center">Conclusion</h1>
 
-Semantic RAG systems and knowledge graph architecture will continue to evolve as research in both areas emerges. This research is designed to be a step in that direction. There are still many areas of exploration that one may continue to go down, if they so choose. For example:
+Semantic RAG systems and semantic similarity graph architecture will continue to evolve as research in both areas emerges. This research is designed to be a step in that direction. There are still many areas of exploration that one may continue to go down, if they so choose. For example:
 
 - Implementing look-ahead to each algorithm to determine the best path several steps before traversing.
-- Utilizing a significantly larger knowledge graph, exceeding 500-1000 documents in size.
+- Utilizing a significantly larger semantic similarity graph, exceeding 500-1000 documents in size.
 - Fine-tuning traversal algorithms for deep research, utilizing LLM recursive deep research methods to explore topics in-depth through sub-agents
 
 These algorithms are available for use via MIT license: teams and organizations may fork this repository and continue to research best practices and implementations for these systems using all code in this repository. All I ask is if you use this research or code in your work, please cite it as:
 
   ```bibtext
-  Eric Lester. (2025). Novel Knowledge Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems.
-  https://github.com/glacier-creative-git/knowledge-graph-traversal-semantic-rag-research
+  Eric Lester. (2025). Novel Semantic Similarity Graph Traversal Algorithms for Semantic Retrieval Augmented Generation Systems.
+  https://github.com/glacier-creative-git/semantic-similarity-graph-traversal-semantic-rag-research
   ```
 
 ---
@@ -511,7 +524,7 @@ These algorithms are available for use via MIT license: teams and organizations 
 
 
 ```bibtext
-  Paper 1: Xiaomi KG-Retriever
+  Paper 1: Xiaomi SSG-Retriever
   
   @article{chen2024kgretriever,
     title={KG-Retriever: Efficient Knowledge Indexing for Retrieval-Augmented Large Language Models},

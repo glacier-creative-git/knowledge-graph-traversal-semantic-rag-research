@@ -21,7 +21,7 @@ project_root = Path(__file__).parent
 sys.path.append(str(project_root))
 
 from utils.retrieval import RetrievalOrchestrator
-from utils.knowledge_graph import KnowledgeGraph
+from utils.semantic_similarity_graph import SemanticSimilarityGraph
 from utils.plotly_visualizer import create_algorithm_visualization
 from utils.matplotlib_visualizer import (
     create_heatmap_visualization,
@@ -59,17 +59,17 @@ def load_config() -> Dict[str, Any]:
     return config
 
 
-def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> KnowledgeGraph:
-    """Load an existing knowledge graph with cached embeddings for testing."""
-    logger.info("Loading knowledge graph for testing...")
+def load_semantic_similarity_graph(config: Dict[str, Any], logger: logging.Logger) -> SemanticSimilarityGraph:
+    """Load an existing semantic similarity graph with cached embeddings for testing."""
+    logger.info("Loading semantic similarity graph for testing...")
 
-    # Load knowledge graph from data directory
-    kg_file = project_root / "data" / "knowledge_graph.json"
+    # Load semantic similarity graph from data directory
+    ssg_file = project_root / "data" / "semantic_similarity_graph.json"
 
-    if not kg_file.exists():
-        raise FileNotFoundError(f"Knowledge graph file not found: {kg_file}")
+    if not ssg_file.exists():
+        raise FileNotFoundError(f"Semantic similarity graph file not found: {ssg_file}")
 
-    logger.info(f"Loading knowledge graph from: {kg_file}")
+    logger.info(f"Loading semantic similarity graph from: {ssg_file}")
 
     # Load cached embeddings
     embeddings_dir = project_root / "embeddings" / "raw"
@@ -88,8 +88,8 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
     
     if not embeddings_file:
         logger.warning(f"Embeddings file not found: {embeddings_file}")
-        logger.warning("Loading knowledge graph without embeddings")
-        kg = KnowledgeGraph.load(str(kg_file))
+        logger.warning("Loading semantic similarity graph without embeddings")
+        ssg = SemanticSimilarityGraph.load(str(ssg_file))
     else:
         logger.info(f"Loading cached embeddings from: {embeddings_file}")
 
@@ -113,7 +113,7 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
             nested_embeddings = raw_embeddings
             logger.info(f"Using direct embeddings structure with keys: {list(nested_embeddings.keys())}")
 
-        # Convert to the expected format for KnowledgeGraph.load()
+        # Convert to the expected format for SemanticSimilarityGraph.load()
         # Use the DETECTED model name, not a hardcoded one!
         embeddings_data = {model_name: nested_embeddings}
 
@@ -123,15 +123,15 @@ def load_knowledge_graph(config: Dict[str, Any], logger: logging.Logger) -> Know
                 logger.info(f"  {key}: {len(value)} items")
                 if len(value) > 0 and isinstance(value[0], dict):
                     logger.info(f"    Sample item keys: {list(value[0].keys())}")
-        # Load knowledge graph with embeddings
-        kg = KnowledgeGraph.load(str(kg_file), embeddings_data)
+        # Load semantic similarity graph with embeddings
+        ssg = SemanticSimilarityGraph.load(str(ssg_file), embeddings_data)
 
-    logger.info(f"Knowledge graph loaded:")
-    logger.info(f"  Chunks: {len(kg.chunks)}")
-    logger.info(f"  Sentences: {len(kg.sentences)}")
-    logger.info(f"  Documents: {len(kg.documents) if hasattr(kg, 'documents') else 'N/A'}")
+    logger.info(f"Semantic similarity graph loaded:")
+    logger.info(f"  Chunks: {len(ssg.chunks)}")
+    logger.info(f"  Sentences: {len(ssg.sentences)}")
+    logger.info(f"  Documents: {len(ssg.documents) if hasattr(ssg, 'documents') else 'N/A'}")
 
-    return kg
+    return ssg
 
 
 def setup_visualization_output() -> Path:
@@ -142,7 +142,7 @@ def setup_visualization_output() -> Path:
     return output_dir
 
 
-def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name: str,
+def create_visualizations(result, query: str, ssg: SemanticSimilarityGraph, algorithm_name: str,
                           output_dir: Path, logger: logging.Logger) -> None:
     """Create both plotly and matplotlib visualizations for an algorithm result."""
     try:
@@ -156,7 +156,7 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
             plotly_fig = create_algorithm_visualization(
                 result=result,
                 query=query,
-                knowledge_graph=kg,
+                semantic_similarity_graph=ssg,
                 method='pca',
                 max_nodes=40,
                 show_all_visited=True
@@ -176,7 +176,7 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
             global_fig = create_global_visualization(
                 result=result,
                 query=query,
-                knowledge_graph=kg,
+                semantic_similarity_graph=ssg,
                 figure_size=(24, 10),  # Larger for global view
                 max_documents=6
             )
@@ -195,7 +195,7 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
             sequential_fig = create_sequential_visualization(
                 result=result,
                 query=query,
-                knowledge_graph=kg,
+                semantic_similarity_graph=ssg,
                 figure_size=(20, 8)
             )
 
@@ -212,7 +212,7 @@ def create_visualizations(result, query: str, kg: KnowledgeGraph, algorithm_name
         logger.error(f"   ❌ Visualization creation failed: {str(e)}")
 
 
-def generate_test_golden(kg: KnowledgeGraph, config: Dict[str, Any],
+def generate_test_golden(ssg: SemanticSimilarityGraph, config: Dict[str, Any],
                          logger: logging.Logger) -> tuple[str, ContextGroup]:
     """
     Generate a test golden by creating context group and question using Ollama.
@@ -224,7 +224,7 @@ def generate_test_golden(kg: KnowledgeGraph, config: Dict[str, Any],
 
     # Initialize context grouping orchestrator
     context_orchestrator = ContextGroupingOrchestrator(
-        kg=kg,
+        ssg=ssg,
         config=config,
         logger=logger
     )
@@ -252,7 +252,7 @@ def generate_test_golden(kg: KnowledgeGraph, config: Dict[str, Any],
     if len(context_text) > 3000:
         context_text = context_text[:3000] + "..."
 
-    prompt = f"""Given the following context from a knowledge base, generate a single, clear, and specific question that would require information from this context to answer properly.
+    prompt = f"""Given the following context from a semantic similarity graph corpus, generate a single, clear, and specific question that would require information from this context to answer properly.
 
 Context:
 {context_text}
@@ -357,13 +357,13 @@ def cache_generated_golden(question: str, context_group: ContextGroup, output_di
         logger.error(f"❌ Failed to cache golden: {e}")
 
 
-def create_context_grouping_visualizations(context_group: ContextGroup, kg: KnowledgeGraph,
+def create_context_grouping_visualizations(context_group: ContextGroup, ssg: SemanticSimilarityGraph,
                                            output_dir: Path, logger: logging.Logger) -> None:
     """Create all 3 matplotlib visualizations for the context grouping process."""
     logger.info("🎨 Creating context grouping visualizations...")
 
     # Convert ContextGroup to RetrievalResult format for visualization compatibility
-    def convert_to_retrieval_result(context_group: ContextGroup, kg: KnowledgeGraph) -> RetrievalResult:
+    def convert_to_retrieval_result(context_group: ContextGroup, ssg: SemanticSimilarityGraph) -> RetrievalResult:
         """Convert ContextGroup to RetrievalResult format for visualization."""
         # Convert simple traversal path to TraversalPath object
         traversal_path = TraversalPath(
@@ -395,7 +395,7 @@ def create_context_grouping_visualizations(context_group: ContextGroup, kg: Know
 
     try:
         # Convert to RetrievalResult format
-        pseudo_result = convert_to_retrieval_result(context_group, kg)
+        pseudo_result = convert_to_retrieval_result(context_group, ssg)
         query = "Context Grouping Process"
 
         viz_types = [
@@ -411,7 +411,7 @@ def create_context_grouping_visualizations(context_group: ContextGroup, kg: Know
                 fig = create_heatmap_visualization(
                     result=pseudo_result,
                     query=query,
-                    knowledge_graph=kg,
+                    semantic_similarity_graph=ssg,
                     visualization_type=viz_type
                 )
 
@@ -523,7 +523,7 @@ def create_test_queries() -> List[str]:
 
 
 def test_individual_algorithm(orchestrator: RetrievalOrchestrator, algorithm_name: str,
-                              query: str, kg: KnowledgeGraph, output_dir: Path,
+                              query: str, ssg: SemanticSimilarityGraph, output_dir: Path,
                               logger: logging.Logger) -> None:
     """Test a single algorithm with detailed output."""
     logger.info(f"\n{'=' * 60}")
@@ -565,7 +565,7 @@ def test_individual_algorithm(orchestrator: RetrievalOrchestrator, algorithm_nam
 
 
 def run_benchmark_comparison(orchestrator: RetrievalOrchestrator, query: str,
-                             kg: KnowledgeGraph, output_dir: Path,
+                             ssg: SemanticSimilarityGraph, output_dir: Path,
                              logger: logging.Logger, ground_truth_context: ContextGroup = None) -> None:
     """Run all algorithms on the same query for comparison."""
     logger.info(f"\n{'=' * 80}")
@@ -688,7 +688,7 @@ def run_benchmark_comparison(orchestrator: RetrievalOrchestrator, query: str,
             logger.info(f"\n🎨 Generating benchmark visualizations...")
             for algorithm_name, result in successful_results.items():
                 if not result.metadata.get('error'):
-                    create_visualizations(result, query, kg, f"benchmark_{algorithm_name}", output_dir, logger)
+                    create_visualizations(result, query, ssg, f"benchmark_{algorithm_name}", output_dir, logger)
 
     except Exception as e:
         logger.error(f"❌ Benchmark failed: {str(e)}")
@@ -704,12 +704,12 @@ def main():
     logger.info("=" * 50)
 
     try:
-        # Load configuration and knowledge graph
+        # Load configuration and semantic similarity graph
         config = load_config()
-        kg = load_knowledge_graph(config, logger)
+        ssg = load_semantic_similarity_graph(config, logger)
 
         # Initialize orchestrator
-        orchestrator = RetrievalOrchestrator(kg, config, logger)
+        orchestrator = RetrievalOrchestrator(ssg, config, logger)
 
         # Setup visualization output directory
         output_dir = setup_visualization_output()
@@ -719,7 +719,7 @@ def main():
         try:
             logger.info("\n🧬 GENERATING TEST GOLDEN WITH CONTEXT GROUPING")
             logger.info("=" * 60)
-            primary_query, ground_truth_context = generate_test_golden(kg, config, logger)
+            primary_query, ground_truth_context = generate_test_golden(ssg, config, logger)
             logger.info(f"✅ Using generated question: '{primary_query}'")
             logger.info(f"✅ Ground truth path: {len(ground_truth_context.traversal_path)} nodes")
 
@@ -731,7 +731,7 @@ def main():
             # Create context grouping visualizations
             logger.info("\n🎨 CREATING CONTEXT GROUPING VISUALIZATIONS")
             logger.info("=" * 60)
-            create_context_grouping_visualizations(ground_truth_context, kg, output_dir, logger)
+            create_context_grouping_visualizations(ground_truth_context, ssg, output_dir, logger)
         except Exception as e:
             logger.warning(f"⚠️ Context grouping failed: {e}")
             logger.info("Falling back to hardcoded test queries...")
@@ -745,18 +745,18 @@ def main():
         algorithms = [
             "basic_retrieval", 
             "query_traversal", 
-            "kg_traversal", 
+            "ssg_traversal", 
             "triangulation_average",
             "triangulation_geometric_3d",
             "triangulation_geometric_768d"
         ]
 
         for algorithm_name in algorithms:
-            test_individual_algorithm(orchestrator, algorithm_name, primary_query, kg, output_dir, logger)
+            test_individual_algorithm(orchestrator, algorithm_name, primary_query, ssg, output_dir, logger)
 
         # Test 2: Benchmark comparison (with ground truth path comparison if available)
         logger.info(f"\n🏁 PHASE 2: Benchmark Comparison")
-        run_benchmark_comparison(orchestrator, primary_query, kg, output_dir, logger, ground_truth_context)
+        run_benchmark_comparison(orchestrator, primary_query, ssg, output_dir, logger, ground_truth_context)
 
         # Test 3: Quick test on fallback queries (if context grouping was used, test some hardcoded queries too)
         if ground_truth_context:
@@ -794,7 +794,7 @@ def main():
         else:
             logger.info(f"  - Used fallback hardcoded questions")
             logger.info(f"  - Ground truth path comparison disabled ❌")
-        logger.info(f"  - Knowledge graph: {len(kg.chunks)} chunks, {len(kg.sentences)} sentences")
+        logger.info(f"  - Semantic similarity graph: {len(ssg.chunks)} chunks, {len(ssg.sentences)} sentences")
         logger.info(f"  - Visualizations saved to: {output_dir}")
 
     except Exception as e:

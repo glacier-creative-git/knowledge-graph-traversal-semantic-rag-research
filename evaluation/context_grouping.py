@@ -19,7 +19,7 @@ Strategies:
 2. Inter-Document: Cross-document similarity navigation
 3. Theme-Based: Cross-document theme overlap traversal
 4. Sequential Multi-Hop: Structured reading with configurable cross-document hops
-5. Knowledge Graph Similarity: Pure exploration without constraints
+5. Semantic Similarity Graph Similarity: Pure exploration without constraints
 """
 
 import random
@@ -29,7 +29,7 @@ from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass
 
 # Local imports
-from utils.knowledge_graph import KnowledgeGraph
+from utils.semantic_similarity_graph import SemanticSimilarityGraph
 
 
 @dataclass
@@ -56,18 +56,18 @@ class ContextGroupingStrategy:
     the capabilities of retrieval algorithms being benchmarked.
     """
     
-    def __init__(self, kg: KnowledgeGraph, config: Dict[str, Any], 
+    def __init__(self, ssg: SemanticSimilarityGraph, config: Dict[str, Any], 
                  strategy_config: Dict[str, Any], logger: Optional[logging.Logger] = None):
         """
-        Initialize strategy with knowledge graph and configuration.
+        Initialize strategy with semantic similarity graph and configuration.
         
         Args:
-            kg: Knowledge graph instance with chunks, similarities, and themes
+            ssg: Semantic similarity graph instance with chunks, similarities, and themes
             config: Global system configuration
             strategy_config: Strategy-specific configuration parameters
             logger: Optional logger instance
         """
-        self.kg = kg
+        self.ssg = ssg
         self.config = config
         self.strategy_config = strategy_config
         self.logger = logger or logging.getLogger(__name__)
@@ -107,7 +107,7 @@ class ContextGroupingStrategy:
             min_quality = 0.8
 
         # Start with all chunks
-        available_chunks = list(self.kg.chunks.keys())
+        available_chunks = list(self.ssg.chunks.keys())
 
         # Apply exclusion filter
         if exclude_chunks:
@@ -116,7 +116,7 @@ class ContextGroupingStrategy:
         # Apply quality filter if quality scores are available
         quality_filtered_chunks = []
         for chunk_id in available_chunks:
-            chunk = self.kg.chunks[chunk_id]
+            chunk = self.ssg.chunks[chunk_id]
             if chunk.quality_score is not None and chunk.quality_score >= min_quality:
                 quality_filtered_chunks.append(chunk_id)
 
@@ -126,7 +126,7 @@ class ContextGroupingStrategy:
         if final_chunks:
             selected_chunk = random.choice(final_chunks)
             if quality_filtered_chunks:
-                chunk = self.kg.chunks[selected_chunk]
+                chunk = self.ssg.chunks[selected_chunk]
                 self.logger.debug(f"Selected high-quality anchor: {selected_chunk} (quality: {chunk.quality_score:.3f})")
             else:
                 self.logger.debug(f"Selected anchor from fallback pool: {selected_chunk} (no quality filter)")
@@ -148,8 +148,8 @@ class ContextGroupingStrategy:
         """
         quality_filtered = []
         for chunk_id in chunk_ids:
-            if chunk_id in self.kg.chunks:
-                chunk = self.kg.chunks[chunk_id]
+            if chunk_id in self.ssg.chunks:
+                chunk = self.ssg.chunks[chunk_id]
                 if chunk.quality_score is not None and chunk.quality_score >= min_quality:
                     quality_filtered.append(chunk_id)
                 elif chunk.quality_score is None:
@@ -160,31 +160,31 @@ class ContextGroupingStrategy:
 
     def _get_chunk_sentences(self, chunk_id: str) -> List[str]:
         """
-        Extract actual sentence texts from a chunk using knowledge graph sentence ID mapping.
+        Extract actual sentence texts from a chunk using semantic similarity graph sentence ID mapping.
         
-        Leverages the existing KG infrastructure:
-        chunk.sentence_ids -> kg.sentences[sentence_id].sentence_text
+        Leverages the existing SSG infrastructure:
+        chunk.sentence_ids -> ssg.sentences[sentence_id].sentence_text
         
         Args:
-            chunk_id: Chunk identifier in knowledge graph
+            chunk_id: Chunk identifier in semantic similarity graph
             
         Returns:
             List of sentence text strings from the chunk
         """
-        if chunk_id not in self.kg.chunks:
-            self.logger.warning(f"Chunk {chunk_id} not found in knowledge graph")
+        if chunk_id not in self.ssg.chunks:
+            self.logger.warning(f"Chunk {chunk_id} not found in semantic similarity graph")
             return []
         
-        chunk = self.kg.chunks[chunk_id]
+        chunk = self.ssg.chunks[chunk_id]
         sentence_texts = []
         
         # Extract sentence texts using sentence ID references
         for sentence_id in chunk.sentence_ids:
-            if sentence_id in self.kg.sentences:
-                sentence_obj = self.kg.sentences[sentence_id]
+            if sentence_id in self.ssg.sentences:
+                sentence_obj = self.ssg.sentences[sentence_id]
                 sentence_texts.append(sentence_obj.sentence_text)
             else:
-                self.logger.warning(f"Sentence ID {sentence_id} not found in knowledge graph")
+                self.logger.warning(f"Sentence ID {sentence_id} not found in semantic similarity graph")
         
         return sentence_texts
     
@@ -199,7 +199,7 @@ class ContextGroupingStrategy:
                                cross_document_only: bool = False,
                                existing_sentences: Optional[List[str]] = None) -> List[Tuple[str, float]]:
         """
-        Get chunks most similar to anchor using PRE-COMPUTED similarities from knowledge graph.
+        Get chunks most similar to anchor using PRE-COMPUTED similarities from semantic similarity graph.
 
         Args:
             anchor_chunk_id: Reference chunk for similarity lookup
@@ -210,10 +210,10 @@ class ContextGroupingStrategy:
         Returns:
             List of (chunk_id, similarity_score) tuples, sorted by similarity
         """
-        if anchor_chunk_id not in self.kg.chunks:
+        if anchor_chunk_id not in self.ssg.chunks:
             return []
 
-        anchor_chunk = self.kg.chunks[anchor_chunk_id]
+        anchor_chunk = self.ssg.chunks[anchor_chunk_id]
         similarities = []
 
         # Get candidate chunks based on cross_document_only flag
@@ -222,7 +222,7 @@ class ContextGroupingStrategy:
         else:
             candidate_chunks = anchor_chunk.intra_doc_connections + anchor_chunk.inter_doc_connections
 
-        # Look up PRE-COMPUTED similarity scores from knowledge graph
+        # Look up PRE-COMPUTED similarity scores from semantic similarity graph
         for chunk_id in candidate_chunks:
             if chunk_id not in exclude_chunks:
                 # If existing_sentences provided, filter out chunks with sentence overlap
@@ -236,14 +236,14 @@ class ContextGroupingStrategy:
     
     def _calculate_chunk_similarity(self, chunk1_id: str, chunk2_id: str) -> float:
         """
-        Get pre-computed similarity between two chunks from knowledge graph connections.
+        Get pre-computed similarity between two chunks from semantic similarity graph connections.
         
         Uses the existing connection_scores infrastructure instead of recalculating.
         """
-        if chunk1_id not in self.kg.chunks:
+        if chunk1_id not in self.ssg.chunks:
             return 0.0
             
-        chunk1 = self.kg.chunks[chunk1_id]
+        chunk1 = self.ssg.chunks[chunk1_id]
         return chunk1.connection_scores.get(chunk2_id, 0.0)
     
     def _has_sentence_overlap(self, chunk_id: str, existing_sentences: List[str]) -> bool:
@@ -281,12 +281,12 @@ class IntraDocumentStrategy(ContextGroupingStrategy):
             # Extract sentences from anchor
             anchor_sentences = self._get_chunk_sentences(anchor_chunk_id)
             sentences.extend(anchor_sentences)
-            chunk_texts.append(self.kg.chunks[anchor_chunk_id].chunk_text)
+            chunk_texts.append(self.ssg.chunks[anchor_chunk_id].chunk_text)
             
             self.logger.debug(f"🏁 Anchor chunk {anchor_chunk_id}: {len(anchor_sentences)} sentences")
             
             current_chunk = anchor_chunk_id
-            anchor_doc = self.kg.chunks[anchor_chunk_id].source_document
+            anchor_doc = self.ssg.chunks[anchor_chunk_id].source_document
             
             # Traverse within document until max_sentences reached
             safety_counter = 0
@@ -303,7 +303,7 @@ class IntraDocumentStrategy(ContextGroupingStrategy):
                 # Filter to same document only
                 same_doc_chunks = [
                     (chunk_id, sim) for chunk_id, sim in similar_chunks
-                    if self.kg.chunks[chunk_id].source_document == anchor_doc
+                    if self.ssg.chunks[chunk_id].source_document == anchor_doc
                 ]
                 
                 if not same_doc_chunks:
@@ -336,7 +336,7 @@ class IntraDocumentStrategy(ContextGroupingStrategy):
                 # Update traversal state
                 visited_chunks.add(next_chunk)
                 traversal_path.append(next_chunk)
-                chunk_texts.append(self.kg.chunks[next_chunk].chunk_text)
+                chunk_texts.append(self.ssg.chunks[next_chunk].chunk_text)
                 current_chunk = next_chunk
                 
                 self.logger.debug(f"➡️ Added chunk {next_chunk}: +{len(new_sentences)} sentences (total: {len(sentences)})")
@@ -393,7 +393,7 @@ class InterDocumentStrategy(ContextGroupingStrategy):
             # Extract sentences from anchor
             anchor_sentences = self._get_chunk_sentences(anchor_chunk_id)
             sentences.extend(anchor_sentences)
-            chunk_texts.append(self.kg.chunks[anchor_chunk_id].chunk_text)
+            chunk_texts.append(self.ssg.chunks[anchor_chunk_id].chunk_text)
             
             self.logger.debug(f"🏁 Inter-doc anchor {anchor_chunk_id}: {len(anchor_sentences)} sentences")
             
@@ -441,14 +441,14 @@ class InterDocumentStrategy(ContextGroupingStrategy):
                 # Update traversal state
                 visited_chunks.add(next_chunk)
                 traversal_path.append(next_chunk)
-                chunk_texts.append(self.kg.chunks[next_chunk].chunk_text)
+                chunk_texts.append(self.ssg.chunks[next_chunk].chunk_text)
                 current_chunk = next_chunk
                 
                 self.logger.debug(f"➡️ Added cross-doc chunk {next_chunk}: +{len(new_sentences)} sentences (total: {len(sentences)})")
             
             # Calculate cross-document diversity
             documents_visited = set(
-                self.kg.chunks[chunk_id].source_document 
+                self.ssg.chunks[chunk_id].source_document 
                 for chunk_id in traversal_path
             )
             
@@ -510,7 +510,7 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
             # Extract sentences from anchor
             anchor_sentences = self._get_chunk_sentences(anchor_chunk_id)
             sentences.extend(anchor_sentences)
-            chunk_texts.append(self.kg.chunks[anchor_chunk_id].chunk_text)
+            chunk_texts.append(self.ssg.chunks[anchor_chunk_id].chunk_text)
             
             # Get anchor themes
             anchor_themes = self._get_chunk_themes(anchor_chunk_id)
@@ -527,10 +527,10 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
                 safety_counter += 1
 
                 # Get current document for theme similarity lookup
-                current_doc = self.kg.chunks[current_chunk].source_document
+                current_doc = self.ssg.chunks[current_chunk].source_document
 
                 # Get theme-similar documents using new embedding-based approach
-                theme_similar_docs = self.kg.get_theme_similar_documents_by_title(current_doc)
+                theme_similar_docs = self.ssg.get_theme_similar_documents_by_title(current_doc)
 
                 next_chunk = None
                 theme_candidates_found = False
@@ -538,19 +538,19 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
                 # Try each theme-similar document in order of theme similarity
                 for target_doc_id in theme_similar_docs:
                     # Convert doc_id back to document title for chunk matching
-                    target_doc = self.kg.get_document_title_by_id(target_doc_id)
+                    target_doc = self.ssg.get_document_title_by_id(target_doc_id)
                     if target_doc == current_doc:
                         continue  # Skip same document
 
                     # Get existing connections from current chunk (both intra and inter)
-                    current_chunk_obj = self.kg.chunks[current_chunk]
+                    current_chunk_obj = self.ssg.chunks[current_chunk]
                     all_connections = current_chunk_obj.intra_doc_connections + current_chunk_obj.inter_doc_connections
 
                     # Filter connections to only include chunks from the target document
                     target_doc_connections = [
                         chunk_id for chunk_id in all_connections
-                        if (chunk_id in self.kg.chunks and
-                            self.kg.chunks[chunk_id].source_document == target_doc and
+                        if (chunk_id in self.ssg.chunks and
+                            self.ssg.chunks[chunk_id].source_document == target_doc and
                             chunk_id not in visited_chunks)
                     ]
 
@@ -575,11 +575,11 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
 
                         # Convert current_doc title to doc_id for theme similarity score lookup
                         current_doc_id = None
-                        for doc_id, doc in self.kg.documents.items():
+                        for doc_id, doc in self.ssg.documents.items():
                             if doc.title == current_doc:
                                 current_doc_id = doc_id
                                 break
-                        theme_sim_score = self.kg.get_theme_similarity_score(current_doc_id, target_doc_id) if current_doc_id else 0.0
+                        theme_sim_score = self.ssg.get_theme_similarity_score(current_doc_id, target_doc_id) if current_doc_id else 0.0
 
                         self.logger.debug(f"🎯 Theme bridge: {current_doc} -> {target_doc} "
                                         f"(theme_sim: {theme_sim_score:.3f}, chunk_sim: {best_similarity:.3f}, connected: True)")
@@ -618,7 +618,7 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
                 # Update traversal state
                 visited_chunks.add(next_chunk)
                 traversal_path.append(next_chunk)
-                chunk_texts.append(self.kg.chunks[next_chunk].chunk_text)
+                chunk_texts.append(self.ssg.chunks[next_chunk].chunk_text)
                 current_chunk = next_chunk
                 
                 self.logger.debug(f"➡️ Added theme chunk {next_chunk}: +{len(new_sentences)} sentences (total: {len(sentences)})")
@@ -648,10 +648,10 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
     
     def _get_chunk_themes(self, chunk_id: str) -> List[str]:
         """Get themes associated with a chunk (inherited from document)."""
-        if chunk_id not in self.kg.chunks:
+        if chunk_id not in self.ssg.chunks:
             return []
 
-        chunk = self.kg.chunks[chunk_id]
+        chunk = self.ssg.chunks[chunk_id]
 
         # First try to get themes from chunk's inherited themes
         if hasattr(chunk, 'inherited_themes') and chunk.inherited_themes:
@@ -659,8 +659,8 @@ class ThemeBasedStrategy(ContextGroupingStrategy):
 
         # Fallback to document themes if chunk doesn't have inherited themes
         doc_id = chunk.source_document
-        if hasattr(self.kg, 'documents') and doc_id in self.kg.documents:
-            doc = self.kg.documents[doc_id]
+        if hasattr(self.ssg, 'documents') and doc_id in self.ssg.documents:
+            doc = self.ssg.documents[doc_id]
             if hasattr(doc, 'doc_themes') and doc.doc_themes:
                 return doc.doc_themes
 
@@ -701,7 +701,7 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
 
             # Log anchor selection with themes
             anchor_themes = self._get_chunk_themes(anchor_chunk_id)
-            anchor_doc = self.kg.chunks[anchor_chunk_id].source_document
+            anchor_doc = self.ssg.chunks[anchor_chunk_id].source_document
             self.logger.debug(f"🏁 Sequential multi-hop anchor {anchor_chunk_id}: "
                             f"doc='{anchor_doc}', themes: {anchor_themes}")
             
@@ -715,7 +715,7 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
                         traversal_path.append(current_chunk)
                 
                 # Sequential reading within current document
-                current_doc = self.kg.chunks[current_chunk].source_document
+                current_doc = self.ssg.chunks[current_chunk].source_document
                 paragraph_sentences = self._sequential_reading_within_document(
                     current_chunk, self.num_reading_hops, self.num_paragraph_sentences
                 )
@@ -776,14 +776,14 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
         Reads forward or backward based on similarity to create narrative flow.
         """
         current_chunk = start_chunk_id
-        doc_id = self.kg.chunks[start_chunk_id].source_document
+        doc_id = self.ssg.chunks[start_chunk_id].source_document
         sentences = []
         chunk_texts = []
         chunk_ids = []
         
         # Get all chunks in this document for sequential navigation
         doc_chunks = [
-            chunk_id for chunk_id, chunk in self.kg.chunks.items()
+            chunk_id for chunk_id, chunk in self.ssg.chunks.items()
             if chunk.source_document == doc_id
         ]
         
@@ -797,7 +797,7 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
             sentences.extend(new_sentences)
             
             if current_chunk not in chunk_ids:  # Avoid duplicate chunks
-                chunk_texts.append(self.kg.chunks[current_chunk].chunk_text)
+                chunk_texts.append(self.ssg.chunks[current_chunk].chunk_text)
                 chunk_ids.append(current_chunk)
             
             if hop < num_hops - 1:  # Don't navigate on last hop
@@ -847,10 +847,10 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
             Next chunk ID or None if no suitable chunk found
         """
         # Get current document for theme similarity lookup
-        current_doc = self.kg.chunks[current_chunk].source_document
+        current_doc = self.ssg.chunks[current_chunk].source_document
 
         # Get theme-similar documents using embedding-based approach
-        theme_similar_docs = self.kg.get_theme_similar_documents_by_title(current_doc)
+        theme_similar_docs = self.ssg.get_theme_similar_documents_by_title(current_doc)
 
         next_chunk = None
         theme_candidates_found = False
@@ -858,19 +858,19 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
         # Try each theme-similar document in order of theme similarity
         for target_doc_id in theme_similar_docs:
             # Convert doc_id back to document title for chunk matching
-            target_doc = self.kg.get_document_title_by_id(target_doc_id)
+            target_doc = self.ssg.get_document_title_by_id(target_doc_id)
             if target_doc == current_doc:
                 continue  # Skip same document
 
             # Get existing connections from current chunk
-            current_chunk_obj = self.kg.chunks[current_chunk]
+            current_chunk_obj = self.ssg.chunks[current_chunk]
             all_connections = current_chunk_obj.intra_doc_connections + current_chunk_obj.inter_doc_connections
 
             # Filter connections to only include chunks from the target theme-similar document
             target_doc_connections = [
                 chunk_id for chunk_id in all_connections
-                if (chunk_id in self.kg.chunks and
-                    self.kg.chunks[chunk_id].source_document == target_doc and
+                if (chunk_id in self.ssg.chunks and
+                    self.ssg.chunks[chunk_id].source_document == target_doc and
                     chunk_id not in visited_chunks)
             ]
 
@@ -902,7 +902,7 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
             )
             if fallback_candidates:
                 next_chunk = fallback_candidates[0][0]
-                target_doc = self.kg.chunks[next_chunk].source_document
+                target_doc = self.ssg.chunks[next_chunk].source_document
                 self.logger.debug(f"🔄 Sequential multi-hop: fallback hop {current_doc} -> {target_doc} "
                                 f"(chunk: {next_chunk}, similarity: {fallback_candidates[0][1]:.3f})")
 
@@ -910,10 +910,10 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
 
     def _get_chunk_themes(self, chunk_id: str) -> List[str]:
         """Get themes associated with a chunk (inherited from document)."""
-        if chunk_id not in self.kg.chunks:
+        if chunk_id not in self.ssg.chunks:
             return []
 
-        chunk = self.kg.chunks[chunk_id]
+        chunk = self.ssg.chunks[chunk_id]
 
         # First try to get themes from chunk's inherited themes
         if hasattr(chunk, 'inherited_themes') and chunk.inherited_themes:
@@ -921,19 +921,19 @@ class SequentialMultiHopStrategy(ContextGroupingStrategy):
 
         # Fallback to document themes if chunk doesn't have inherited themes
         doc_id = chunk.source_document
-        if hasattr(self.kg, 'documents') and doc_id in self.kg.documents:
-            doc = self.kg.documents[doc_id]
+        if hasattr(self.ssg, 'documents') and doc_id in self.ssg.documents:
+            doc = self.ssg.documents[doc_id]
             if hasattr(doc, 'doc_themes') and doc.doc_themes:
                 return doc.doc_themes
 
         return []
 
 
-class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
+class SemanticSimilarityGraphSimilarityStrategy(ContextGroupingStrategy):
     """
-    Pure knowledge graph similarity strategy.
+    Pure semantic similarity graph similarity strategy.
     
-    Performs unrestricted similarity-based traversal across the entire knowledge graph,
+    Performs unrestricted similarity-based traversal across the entire semantic similarity graph,
     allowing the algorithm to explore wherever semantic similarity leads,
     whether within documents or across them.
     """
@@ -961,9 +961,9 @@ class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
             # Extract sentences from anchor
             anchor_sentences = self._get_chunk_sentences(anchor_chunk_id)
             sentences.extend(anchor_sentences)
-            chunk_texts.append(self.kg.chunks[anchor_chunk_id].chunk_text)
+            chunk_texts.append(self.ssg.chunks[anchor_chunk_id].chunk_text)
             
-            self.logger.debug(f"🏁 KG similarity anchor {anchor_chunk_id}: {len(anchor_sentences)} sentences")
+            self.logger.debug(f"🏁 SSG similarity anchor {anchor_chunk_id}: {len(anchor_sentences)} sentences")
             
             current_chunk = anchor_chunk_id
             
@@ -1007,14 +1007,14 @@ class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
                 # Update traversal state
                 visited_chunks.add(next_chunk)
                 traversal_path.append(next_chunk)
-                chunk_texts.append(self.kg.chunks[next_chunk].chunk_text)
+                chunk_texts.append(self.ssg.chunks[next_chunk].chunk_text)
                 current_chunk = next_chunk
                 
-                self.logger.debug(f"➡️ Added KG chunk {next_chunk}: +{len(new_sentences)} sentences (total: {len(sentences)})")
+                self.logger.debug(f"➡️ Added SSG chunk {next_chunk}: +{len(new_sentences)} sentences (total: {len(sentences)})")
             
             # Analyze traversal pattern
             documents_visited = set(
-                self.kg.chunks[chunk_id].source_document 
+                self.ssg.chunks[chunk_id].source_document 
                 for chunk_id in traversal_path
             )
             
@@ -1025,13 +1025,13 @@ class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
                 chunks=chunk_texts,
                 chunk_ids=traversal_path,
                 sentences=sentences[:final_sentence_count],
-                strategy="knowledge_graph_similarity",
+                strategy="semantic_similarity_graph_similarity",
                 metadata={
                     'documents_visited': list(documents_visited),
                     'cross_document_hops': sum(
                         1 for i in range(len(traversal_path) - 1)
-                        if self.kg.chunks[traversal_path[i]].source_document != 
-                           self.kg.chunks[traversal_path[i + 1]].source_document
+                        if self.ssg.chunks[traversal_path[i]].source_document != 
+                           self.ssg.chunks[traversal_path[i + 1]].source_document
                     ),
                     'final_sentence_count': final_sentence_count,
                     'safety_hops_used': safety_counter,
@@ -1040,7 +1040,7 @@ class KnowledgeGraphSimilarityStrategy(ContextGroupingStrategy):
                 traversal_path=traversal_path
             )
             
-            self.logger.debug(f"✅ KG similarity group {group_idx}: {len(chunk_texts)} chunks, {final_sentence_count} sentences, {len(documents_visited)} documents")
+            self.logger.debug(f"✅ SSG similarity group {group_idx}: {len(chunk_texts)} chunks, {final_sentence_count} sentences, {len(documents_visited)} documents")
             context_groups.append(context_group)
         
         return context_groups
@@ -1052,7 +1052,7 @@ class DeepEvalNativeStrategy(ContextGroupingStrategy):
     
     Uses simple random or sequential chunk extraction without sophisticated semantic traversal.
     Relies on DeepEval's FiltrationConfig quality scoring (clarity, self-containment) to ensure
-    high-quality contexts, rather than using pre-computed KG similarities.
+    high-quality contexts, rather than using pre-computed SSG similarities.
     
     This strategy prioritizes:
     - Simplicity: Random/sequential chunk selection
@@ -1086,7 +1086,7 @@ class DeepEvalNativeStrategy(ContextGroupingStrategy):
         context_groups = []
         
         # Get all available chunks and apply quality filtering
-        all_chunk_ids = list(self.kg.chunks.keys())
+        all_chunk_ids = list(self.ssg.chunks.keys())
 
         if not all_chunk_ids:
             self.logger.warning("No chunks available for DeepEval native strategy")
@@ -1135,7 +1135,7 @@ class DeepEvalNativeStrategy(ContextGroupingStrategy):
                         attempts += 1
                         continue
                 
-                candidate_doc = self.kg.chunks[candidate_chunk].source_document
+                candidate_doc = self.ssg.chunks[candidate_chunk].source_document
                 
                 # Check document diversity if enabled
                 if self.ensure_document_diversity and candidate_doc in group_documents:
@@ -1155,7 +1155,7 @@ class DeepEvalNativeStrategy(ContextGroupingStrategy):
             
             for chunk_id in group_chunk_ids:
                 # Get chunk text
-                chunk = self.kg.chunks[chunk_id]
+                chunk = self.ssg.chunks[chunk_id]
                 chunks_texts.append(chunk.chunk_text)
                 
                 # Extract sentences from chunk (with deduplication)
@@ -1215,17 +1215,17 @@ class ContextGroupingOrchestrator:
     context groups for comprehensive algorithm testing.
     """
     
-    def __init__(self, kg: KnowledgeGraph, config: Dict[str, Any], 
+    def __init__(self, ssg: SemanticSimilarityGraph, config: Dict[str, Any], 
                  logger: Optional[logging.Logger] = None):
         """
-        Initialize orchestrator with knowledge graph and configuration.
+        Initialize orchestrator with semantic similarity graph and configuration.
         
         Args:
-            kg: Knowledge graph instance
+            ssg: Semantic similarity graph instance
             config: Complete system configuration with context_strategies section
             logger: Optional logger instance
         """
-        self.kg = kg
+        self.ssg = ssg
         self.config = config
         self.logger = logger or logging.getLogger(__name__)
         
@@ -1247,7 +1247,7 @@ class ContextGroupingOrchestrator:
             'sequential_multi_hop': SequentialMultiHopStrategy,
             'deepeval_native': DeepEvalNativeStrategy
             # 'inter_document': InterDocumentStrategy  # DEPRECATED: Redundant with ThemeBasedStrategy fallback
-            # 'knowledge_graph_similarity': KnowledgeGraphSimilarityStrategy  # DEPRECATED: Redundant with inter_document
+            # 'semantic_similarity_graph_similarity': SemanticSimilarityGraphSimilarityStrategy  # DEPRECATED: Redundant with inter_document
         }
         
         for strategy_name, strategy_class in strategy_classes.items():
@@ -1255,7 +1255,7 @@ class ContextGroupingOrchestrator:
             
             if strategy_config.get('enabled', False):
                 strategy_instance = strategy_class(
-                    self.kg, self.config, strategy_config, self.logger
+                    self.ssg, self.config, strategy_config, self.logger
                 )
                 strategies[strategy_name] = strategy_instance
                 self.logger.info(f"✅ Enabled strategy: {strategy_name} (weight: {strategy_config.get('weight', 1.0)})")

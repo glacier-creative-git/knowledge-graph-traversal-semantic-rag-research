@@ -34,10 +34,10 @@ class TriangleMetrics:
 class TriangulationAverageAlgorithm(BaseRetrievalAlgorithm):
     """Algorithm: Similarity-averaging based semantic navigation (similarity space triangulation)."""
     
-    def __init__(self, knowledge_graph, config: Dict[str, Any],
+    def __init__(self, semantic_similarity_graph, config: Dict[str, Any],
                  query_similarity_cache: Dict[str, float], logger=None,
                  shared_embedding_model=None):
-        super().__init__(knowledge_graph, config, query_similarity_cache, logger, shared_embedding_model)
+        super().__init__(semantic_similarity_graph, config, query_similarity_cache, logger, shared_embedding_model)
 
         self.logger.info(f"TriangulationAverageAlgorithm initialized: max_hops={self.max_hops}, "
                         f"min_sentences={self.min_sentence_threshold}, "
@@ -332,7 +332,7 @@ class TriangulationAverageAlgorithm(BaseRetrievalAlgorithm):
 
     def _find_sentence_chunk(self, sentence: str) -> Optional[str]:
         """Find which chunk a sentence belongs to."""
-        for chunk_id, chunk in self.kg.chunks.items():
+        for chunk_id, chunk in self.ssg.chunks.items():
             chunk_sentences = self.get_chunk_sentences(chunk_id)
             if sentence in chunk_sentences:
                 return chunk_id

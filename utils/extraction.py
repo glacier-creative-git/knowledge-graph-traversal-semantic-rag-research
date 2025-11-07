@@ -4,7 +4,7 @@ Phase 5: Theme Extraction Engine
 ===============================
 
 Dedicated phase for extracting themes at document level.
-This phase runs after Phase 4 (similarity computation) and before Phase 6 (knowledge graph assembly).
+This phase runs after Phase 4 (similarity computation) and before Phase 6 (semantic similarity graph assembly).
 
 Architecture:
 - Document-level themes: Ollama-based conceptual theme extraction with fallback

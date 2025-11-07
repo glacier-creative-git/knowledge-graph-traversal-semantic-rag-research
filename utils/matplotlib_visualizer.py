@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Knowledge Graph Traversal 2D Heatmap Visualizer with Matplotlib
+Semantic Similarity Graph Traversal 2D Heatmap Visualizer with Matplotlib
 ==============================================================
 
 Creates publication-ready 2D heatmap visualizations showing semantic similarity
@@ -23,7 +23,7 @@ import textwrap
 
 from .algos.base_algorithm import RetrievalResult
 from .traversal import TraversalPath, GranularityLevel, ConnectionType
-from .knowledge_graph import KnowledgeGraph
+from .semantic_similarity_graph import SemanticSimilarityGraph
 
 
 @dataclass
@@ -49,11 +49,11 @@ class TraversalStep:
     is_early_stop_point: bool = False
 
 
-class KnowledgeGraphMatplotlibVisualizer:
-    """Create 2D heatmap visualizations of knowledge graph traversal"""
+class SemanticSimilarityGraphMatplotlibVisualizer:
+    """Create 2D heatmap visualizations of semantic similarity graph traversal"""
 
-    def __init__(self, knowledge_graph: KnowledgeGraph, figure_size: Tuple[int, int] = (20, 8), dpi: int = 150):
-        self.kg = knowledge_graph
+    def __init__(self, semantic_similarity_graph: SemanticSimilarityGraph, figure_size: Tuple[int, int] = (20, 8), dpi: int = 150):
+        self.ssg = semantic_similarity_graph
         self.figure_size = figure_size
         self.dpi = dpi
         
@@ -314,9 +314,9 @@ class KnowledgeGraphMatplotlibVisualizer:
         Returns:
             List of chunk IDs in sequential order within the window
         """
-        # Get all chunks for this document from knowledge graph
+        # Get all chunks for this document from semantic similarity graph
         all_doc_chunks = []
-        for chunk_id, chunk_obj in self.kg.chunks.items():
+        for chunk_id, chunk_obj in self.ssg.chunks.items():
             if self._get_chunk_document(chunk_id) == doc_id:
                 chunk_index = self._extract_chunk_index_from_id(chunk_id)
                 if chunk_index is not None:
@@ -383,9 +383,9 @@ class KnowledgeGraphMatplotlibVisualizer:
         Returns:
             List of all chunk IDs in sequential order for this document
         """
-        # Get all chunks for this document from knowledge graph
+        # Get all chunks for this document from semantic similarity graph
         all_doc_chunks = []
-        for chunk_id, chunk_obj in self.kg.chunks.items():
+        for chunk_id, chunk_obj in self.ssg.chunks.items():
             if self._get_chunk_document(chunk_id) == doc_id:
                 chunk_index = self._extract_chunk_index_from_id(chunk_id)
                 if chunk_index is not None:
@@ -1286,8 +1286,8 @@ class KnowledgeGraphMatplotlibVisualizer:
 
     def _get_chunk_document(self, chunk_id: str) -> str:
         """Get document ID for a chunk (robust approach)"""
-        # Try to get the chunk object from knowledge graph
-        chunk_obj = self.kg.chunks.get(chunk_id)
+        # Try to get the chunk object from semantic similarity graph
+        chunk_obj = self.ssg.chunks.get(chunk_id)
         if chunk_obj and hasattr(chunk_obj, 'source_document'):
             return chunk_obj.source_document
         
@@ -1310,9 +1310,9 @@ class KnowledgeGraphMatplotlibVisualizer:
         return "unknown"
 
     def _get_chunk_embedding(self, chunk_id: str) -> Optional[np.ndarray]:
-        """Get embedding for a chunk using cached embeddings from knowledge graph"""
-        # Use the knowledge graph's embedding cache system
-        return self.kg.get_chunk_embedding(chunk_id)
+        """Get embedding for a chunk using cached embeddings from semantic similarity graph"""
+        # Use the semantic similarity graph's embedding cache system
+        return self.ssg.get_chunk_embedding(chunk_id)
 
     def _calculate_node_relevance(self, node_id: str, result: RetrievalResult) -> float:
         """Calculate relevance score for a node"""
@@ -1322,7 +1322,7 @@ class KnowledgeGraphMatplotlibVisualizer:
                 return result.query_similarities[node_id]
             
             # For chunks, try to find the highest similarity among its sentences
-            chunk_sentences = self.kg.get_chunk_sentences(node_id)
+            chunk_sentences = self.ssg.get_chunk_sentences(node_id)
             if chunk_sentences:
                 max_similarity = 0.0
                 for sentence in chunk_sentences:
@@ -1341,7 +1341,7 @@ class KnowledgeGraphMatplotlibVisualizer:
 
 
 def create_heatmap_visualization(result: RetrievalResult, query: str,
-                                 knowledge_graph: KnowledgeGraph,
+                                 semantic_similarity_graph: SemanticSimilarityGraph,
                                  figure_size: Tuple[int, int] = (20, 8),
                                  max_documents: int = 6,
                                  visualization_type: str = "windowed") -> plt.Figure:
@@ -1352,7 +1352,7 @@ def create_heatmap_visualization(result: RetrievalResult, query: str,
     Args:
         result: RetrievalResult from any algorithm
         query: Original query string
-        knowledge_graph: The knowledge graph instance
+        semantic_similarity_graph: The semantic similarity graph instance
         figure_size: Figure size as (width, height)
         max_documents: Maximum number of documents to show (for windowed/global views)
         visualization_type: Type of visualization:
@@ -1363,7 +1363,7 @@ def create_heatmap_visualization(result: RetrievalResult, query: str,
     Returns:
         Matplotlib Figure ready for display or saving
     """
-    visualizer = KnowledgeGraphMatplotlibVisualizer(knowledge_graph, figure_size)
+    visualizer = SemanticSimilarityGraphMatplotlibVisualizer(semantic_similarity_graph, figure_size)
     
     if visualization_type == "global":
         return visualizer.create_global_visualization(result, query, max_documents)
@@ -1374,7 +1374,7 @@ def create_heatmap_visualization(result: RetrievalResult, query: str,
 
 
 def create_global_visualization(result: RetrievalResult, query: str,
-                              knowledge_graph: KnowledgeGraph,
+                              semantic_similarity_graph: SemanticSimilarityGraph,
                               figure_size: Tuple[int, int] = (20, 8),
                               max_documents: int = 6) -> plt.Figure:
     """
@@ -1386,19 +1386,19 @@ def create_global_visualization(result: RetrievalResult, query: str,
     Args:
         result: RetrievalResult from any algorithm
         query: Original query string
-        knowledge_graph: The knowledge graph instance
+        semantic_similarity_graph: The semantic similarity graph instance
         figure_size: Figure size as (width, height)
         max_documents: Maximum number of documents to show
         
     Returns:
         Matplotlib Figure showing global document structure and traversal
     """
-    visualizer = KnowledgeGraphMatplotlibVisualizer(knowledge_graph, figure_size)
+    visualizer = SemanticSimilarityGraphMatplotlibVisualizer(semantic_similarity_graph, figure_size)
     return visualizer.create_global_visualization(result, query, max_documents)
 
 
 def create_sequential_visualization(result: RetrievalResult, query: str,
-                                  knowledge_graph: KnowledgeGraph,
+                                  semantic_similarity_graph: SemanticSimilarityGraph,
                                   figure_size: Tuple[int, int] = (20, 8)) -> plt.Figure:
     """
     Create sequential window visualization showing reading sessions chronologically.
@@ -1409,13 +1409,13 @@ def create_sequential_visualization(result: RetrievalResult, query: str,
     Args:
         result: RetrievalResult from any algorithm
         query: Original query string
-        knowledge_graph: The knowledge graph instance
+        semantic_similarity_graph: The semantic similarity graph instance
         figure_size: Figure size as (width, height)
         
     Returns:
         Matplotlib Figure showing sequential reading sessions
     """
-    visualizer = KnowledgeGraphMatplotlibVisualizer(knowledge_graph, figure_size)
+    visualizer = SemanticSimilarityGraphMatplotlibVisualizer(semantic_similarity_graph, figure_size)
     return visualizer.create_sequential_window_visualization(result, query)
 
 
@@ -1427,11 +1427,11 @@ def example_usage():
     print("from utils.matplotlib_visualizer import create_heatmap_visualization")
     print("")
     print("# After running an algorithm:")
-    print("result = retrieval_orchestrator.retrieve(query, 'kg_traversal')")
+    print("result = retrieval_orchestrator.retrieve(query, 'ssg_traversal')")
     print("fig = create_heatmap_visualization(")
     print("    result=result,")
     print("    query=query,")
-    print("    knowledge_graph=kg,")
+    print("    semantic_similarity_graph=ssg,")
     print("    figure_size=(20, 8),")
     print("    max_documents=6")
     print(")")

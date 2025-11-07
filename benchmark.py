@@ -3,11 +3,11 @@
 DeepEval-Powered Semantic Traversal Benchmark Orchestrator
 =========================================================
 
-Orchestrates knowledge graph building, dataset generation, and algorithm evaluation
+Orchestrates semantic similarity graph building, dataset generation, and algorithm evaluation
 using deepeval's synthetic data generation and sophisticated evaluation metrics.
 
 This script replaces the original benchmark.py with a clean three-phase architecture:
-1. Knowledge Graph Construction (kg_pipeline.build)
+1. Semantic Similarity Graph Construction (ssg_pipeline.build)
 2. Synthetic Dataset Generation (dataset.build) 
 3. Algorithm Evaluation (evaluation.run)
 
@@ -46,7 +46,7 @@ sys.path.append(str(project_root))
 from dotenv import load_dotenv
 
 # Import our three main components
-from utils.kg_pipeline import KnowledgeGraphPipeline
+from utils.ssg_pipeline import SemanticSimilarityGraphPipeline
 from evaluation.dataset import DatasetBuilder
 from evaluation.evaluation import EvaluationOrchestrator
 
@@ -118,7 +118,7 @@ Examples:
         choices=[
             'basic_retrieval',
             'query_traversal',
-            'kg_traversal',
+            'ssg_traversal',
             'triangulation_average',
             'triangulation_geometric_3d',
             'triangulation_geometric_fulldim',
@@ -137,14 +137,14 @@ Examples:
     parser.add_argument(
         '--evaluation-only',
         action='store_true',
-        help='Run evaluation only, skip KG building and dataset generation'
+        help='Run evaluation only, skip SSG building and dataset generation'
     )
     
     # Force rebuild options
     parser.add_argument(
-        '--force-rebuild-kg',
+        '--force-rebuild-ssg',
         action='store_true',
-        help='Force knowledge graph rebuild even if cache exists'
+        help='Force semantic similarity graph rebuild even if cache exists'
     )
     
     parser.add_argument(
@@ -156,7 +156,7 @@ Examples:
     parser.add_argument(
         '--force-rebuild-all',
         action='store_true',
-        help='Force rebuild of all components (KG + dataset)'
+        help='Force rebuild of all components (SSG + dataset)'
     )
     
     # Configuration and output
@@ -323,14 +323,14 @@ Examples:
     parser.add_argument(
         '--enable-context-strategies',
         nargs='*',
-        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'knowledge_graph_similarity', 'deepeval_native'],
+        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'semantic_similarity_graph_similarity', 'deepeval_native'],
         help='Enable specific context grouping strategies (space-separated list)'
     )
 
     parser.add_argument(
         '--disable-context-strategies',
         nargs='*',
-        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'knowledge_graph_similarity', 'deepeval_native'],
+        choices=['intra_document', 'theme_based', 'sequential_multi_hop', 'semantic_similarity_graph_similarity', 'deepeval_native'],
         help='Disable specific context grouping strategies (space-separated list)'
     )
 
@@ -341,7 +341,7 @@ Examples:
         choices=[
             'basic_retrieval',
             'query_traversal',
-            'kg_traversal',
+            'ssg_traversal',
             'triangulation_average',
             'triangulation_geometric_3d',
             'triangulation_geometric_fulldim',
@@ -416,11 +416,11 @@ def apply_model_overrides(config: Dict[str, Any], args: argparse.Namespace) -> D
         logger.info(f"🔧 Override: Embedding model -> {args.embedding_model}")
 
     if args.quality_scoring_provider:
-        config.setdefault('knowledge_graph', {}).setdefault('quality_scoring', {})['provider'] = args.quality_scoring_provider
+        config.setdefault('semantic_similarity_graph', {}).setdefault('quality_scoring', {})['provider'] = args.quality_scoring_provider
         logger.info(f"🔧 Override: Quality scoring provider -> {args.quality_scoring_provider}")
 
     if args.quality_scoring_model_name:
-        config.setdefault('knowledge_graph', {}).setdefault('quality_scoring', {})['model_name'] = args.quality_scoring_model_name
+        config.setdefault('semantic_similarity_graph', {}).setdefault('quality_scoring', {})['model_name'] = args.quality_scoring_model_name
         logger.info(f"🔧 Override: Quality scoring model -> {args.quality_scoring_model_name}")
 
     if args.reranking_model:
@@ -563,13 +563,13 @@ def create_context_grouping_visualizations(context_groups: List[ContextGroup], o
 
     logger.info("🎨 Creating context grouping visualizations...")
 
-    # Load knowledge graph for visualization with embeddings
-    kg_path = Path(config['directories']['data']) / "knowledge_graph.json"
-    if not kg_path.exists():
-        logger.warning("   ⚠️ Knowledge graph not found, skipping context grouping visualizations")
+    # Load semantic similarity graph for visualization with embeddings
+    ssg_path = Path(config['directories']['data']) / "semantic_similarity_graph.json"
+    if not ssg_path.exists():
+        logger.warning("   ⚠️ Semantic similarity graph not found, skipping context grouping visualizations")
         return
 
-    from utils.knowledge_graph import KnowledgeGraph
+    from utils.semantic_similarity_graph import SemanticSimilarityGraph
     import json
 
     # Load embeddings for visualization - dynamically determine path from config
@@ -583,7 +583,7 @@ def create_context_grouping_visualizations(context_groups: List[ContextGroup], o
         model_name = raw_data.get('metadata', {}).get('model_name', embedding_model)
         embeddings_data = {model_name: raw_data['embeddings']}
 
-    kg = KnowledgeGraph.load(str(kg_path), embeddings_data)
+    ssg = SemanticSimilarityGraph.load(str(ssg_path), embeddings_data)
 
     # Create visualizations for first few context groups (to avoid overwhelming output)
     max_groups_to_visualize = min(3, len(context_groups))
@@ -602,7 +602,7 @@ def create_context_grouping_visualizations(context_groups: List[ContextGroup], o
                     fig = create_heatmap_visualization(
                         result=pseudo_result,
                         query=f"Context Group {i+1}",
-                        knowledge_graph=kg,
+                        semantic_similarity_graph=ssg,
                         visualization_type=viz_type
                     )
 
@@ -666,13 +666,13 @@ def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_
 
     logger.info("🎨 Creating retrieval path visualizations...")
 
-    # Load knowledge graph for visualization with embeddings
-    kg_path = Path(config['directories']['data']) / "knowledge_graph.json"
-    if not kg_path.exists():
-        logger.warning("   ⚠️ Knowledge graph not found, skipping retrieval visualizations")
+    # Load semantic similarity graph for visualization with embeddings
+    ssg_path = Path(config['directories']['data']) / "semantic_similarity_graph.json"
+    if not ssg_path.exists():
+        logger.warning("   ⚠️ Semantic similarity graph not found, skipping retrieval visualizations")
         return
 
-    from utils.knowledge_graph import KnowledgeGraph
+    from utils.semantic_similarity_graph import SemanticSimilarityGraph
     import json
 
     # Load embeddings for visualization - dynamically determine path from config
@@ -686,7 +686,7 @@ def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_
         model_name = raw_data.get('metadata', {}).get('model_name', embedding_model)
         embeddings_data = {model_name: raw_data['embeddings']}
 
-    kg = KnowledgeGraph.load(str(kg_path), embeddings_data)
+    ssg = SemanticSimilarityGraph.load(str(ssg_path), embeddings_data)
 
     # Create safe filename for query
     safe_query = query.replace(' ', '_').replace('?', '').replace('!', '').replace('.', '')[:50]
@@ -705,7 +705,7 @@ def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_
                     plotly_fig = create_algorithm_visualization(
                         result=result,
                         query=query,
-                        knowledge_graph=kg,
+                        semantic_similarity_graph=ssg,
                         method='pca',
                         max_nodes=viz_config.get('max_nodes', 40),
                         show_all_visited=viz_config.get('show_all_visited', True)
@@ -729,7 +729,7 @@ def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_
                             fig = create_global_visualization(
                                 result=result,
                                 query=query,
-                                knowledge_graph=kg,
+                                semantic_similarity_graph=ssg,
                                 figure_size=tuple(config.get('visualization', {}).get('output', {}).get('figure_size', [24, 10])),
                                 max_documents=6
                             )
@@ -737,7 +737,7 @@ def create_retrieval_visualizations(results: Dict[str, Any], query: str, output_
                             fig = create_sequential_visualization(
                                 result=result,
                                 query=query,
-                                knowledge_graph=kg,
+                                semantic_similarity_graph=ssg,
                                 figure_size=tuple(config.get('visualization', {}).get('output', {}).get('figure_size', [20, 8]))
                             )
 
@@ -788,33 +788,33 @@ def validate_environment() -> None:
     logging.getLogger("DeepEvalBenchmark").info(f"✅ Available providers: {', '.join(providers_available)}")
 
 
-def run_kg_pipeline_phase(config: Dict[str, Any], force_rebuild: bool, logger: logging.Logger) -> Dict[str, Any]:
-    """Execute Phase 1: Knowledge Graph Construction."""
-    logger.info("📊 Phase 1: Knowledge Graph Construction")
+def run_ssg_pipeline_phase(config: Dict[str, Any], force_rebuild: bool, logger: logging.Logger) -> Dict[str, Any]:
+    """Execute Phase 1: Semantic Similarity Graph Construction."""
+    logger.info("📊 Phase 1: Semantic Similarity Graph Construction")
     logger.info("=" * 50)
     
     try:
-        # Check if KG already exists and force_rebuild is False
-        kg_path = Path(config['directories']['data']) / "knowledge_graph.json"
+        # Check if SSG already exists and force_rebuild is False
+        ssg_path = Path(config['directories']['data']) / "semantic_similarity_graph.json"
         
-        if kg_path.exists() and not force_rebuild:
-            logger.info(f"✅ Knowledge graph found at {kg_path} - skipping rebuild")
-            logger.info("   Use --force-rebuild-kg to force regeneration")
-            return {"status": "loaded_existing", "path": str(kg_path)}
+        if ssg_path.exists() and not force_rebuild:
+            logger.info(f"✅ Semantic similarity graph found at {ssg_path} - skipping rebuild")
+            logger.info("   Use --force-rebuild-ssg to force regeneration")
+            return {"status": "loaded_existing", "path": str(ssg_path)}
         
-        # Build knowledge graph using existing pipeline
-        logger.info("🏗️ Building knowledge graph from Wikipedia data...")
-        pipeline = KnowledgeGraphPipeline()
+        # Build semantic similarity graph using existing pipeline
+        logger.info("🏗️ Building semantic similarity graph from Wikipedia data...")
+        pipeline = SemanticSimilarityGraphPipeline()
         result = pipeline.build()
         
-        logger.info(f"✅ Knowledge graph construction completed")
+        logger.info(f"✅ Semantic similarity graph construction completed")
         logger.info(f"   Result: {result}")
         
         return {"status": "built_new", "result": result}
         
     except Exception as e:
         logger.error(f"❌ Phase 1 failed: {e}")
-        raise RuntimeError(f"Knowledge graph construction failed: {e}")
+        raise RuntimeError(f"Semantic similarity graph construction failed: {e}")
 
 
 def run_dataset_generation_phase(config: Dict[str, Any], force_rebuild: bool, logger: logging.Logger,
@@ -998,7 +998,7 @@ def main():
         validate_environment()
         
         # Determine force rebuild flags
-        force_rebuild_kg = args.force_rebuild_kg or args.force_rebuild_all
+        force_rebuild_ssg = args.force_rebuild_ssg or args.force_rebuild_all
         force_rebuild_dataset = args.force_rebuild_dataset or args.force_rebuild_all
 
         # Setup visualization output directory if enabled
@@ -1014,10 +1014,10 @@ def main():
 
         phase_results = {}
 
-        # Phase 1: Knowledge Graph Construction (unless evaluation-only)
+        # Phase 1: Semantic Similarity Graph Construction (unless evaluation-only)
         if not args.evaluation_only:
-            kg_result = run_kg_pipeline_phase(config, force_rebuild_kg, logger)
-            phase_results['knowledge_graph'] = kg_result
+            ssg_result = run_ssg_pipeline_phase(config, force_rebuild_ssg, logger)
+            phase_results['semantic_similarity_graph'] = ssg_result
 
         # Phase 2: Synthetic Dataset Generation (unless evaluation-only or dataset-only completed)
         if not args.evaluation_only:
