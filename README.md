@@ -3,17 +3,6 @@
 ---
 ![2D_VIS.png](docs/2D_VIS.png)
 ![2D_VIS_LOCAL.png](docs/2D_VIS_LOCAL.png)
----
-
-<h1 align="center">Abstract</h1>
-<div align="center">Semantic retrieval augmented generation (RAG) systems are designed to provide large language models (LLMs) with the necessary context to answer user queries precisely and accurately from a database or semantic similarity graph. However, the innate challenge with traditional RAG systems is their dependence on fine-tuned, raw text matching via a vector store based on the user's query. This research proposes novel traversal algorithms that meaningfully move through knowledge bases with the goal of extracting highly relevant and precise information for user queries. These traversal algorithms provide the foundational bedrock in the pursuit of accurate semantic RAG systems and can be easily built upon or fine-tuned depending on use case. </div>
-
----
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=HcHFBAQqe_k">
-    <img src="https://img.youtube.com/vi/HcHFBAQqe_k/maxresdefault.jpg" alt="Video">
-  </a>
-</p>
 
 
 <div align="center">
@@ -21,7 +10,20 @@
   <img src="docs/3D_VIS_2.png" width="49%" />
 </div>
 
+<h1 align="center">Abstract</h1>
+<div align="center">Semantic retrieval augmented generation (RAG) systems are designed to provide large language models (LLMs) with the necessary context to answer user queries precisely and accurately from a database or semantic similarity graph. However, the innate challenge with traditional RAG systems is their dependence on fine-tuned, raw text matching via a vector store based on the user's query. This research proposes novel traversal algorithms that meaningfully move through knowledge bases with the goal of extracting highly relevant and precise information for user queries. These traversal algorithms provide the foundational bedrock in the pursuit of accurate semantic RAG systems and can be easily built upon or fine-tuned depending on use case. </div>
 
+
+---
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=HcHFBAQqe_k">
+    <img src="https://img.youtube.com/vi/HcHFBAQqe_k/maxresdefault.jpg" alt="Video" width="600">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=HcHFBAQqe_k">
+    <img src="https://img.shields.io/badge/▶%20Watch%20Video-red?style=for-the-badge">
+  </a>
+</p>
 
 ---
 
