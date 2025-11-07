@@ -9,9 +9,11 @@
 <div align="center">Semantic retrieval augmented generation (RAG) systems are designed to provide large language models (LLMs) with the necessary context to answer user queries precisely and accurately from a database or semantic similarity graph. However, the innate challenge with traditional RAG systems is their dependence on fine-tuned, raw text matching via a vector store based on the user's query. This research proposes novel traversal algorithms that meaningfully move through knowledge bases with the goal of extracting highly relevant and precise information for user queries. These traversal algorithms provide the foundational bedrock in the pursuit of accurate semantic RAG systems and can be easily built upon or fine-tuned depending on use case. </div>
 
 ---
-<div align="center">
-  <iframe width="560" height="315" src="https://www.youtube.com/embed/HcHFBAQqe_k" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-</div>
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=HcHFBAQqe_k">
+    <img src="https://img.youtube.com/vi/HcHFBAQqe_k/maxresdefault.jpg" alt="Video">
+  </a>
+</p>
 
 
 <div align="center">
